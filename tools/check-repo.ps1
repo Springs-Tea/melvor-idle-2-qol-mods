@@ -22,7 +22,7 @@ try {
 
     # 2. Pictures stay small enough to browse, and there are no stray large files.
     foreach ($file in $files) {
-        $size = (Get-Item -LiteralPath $file).Length
+        $size = (Get-Item -LiteralPath $file -Force).Length   # -Force: dot files are hidden on Linux
         if ($size -gt 1MB) { Fail ('{0} : {1:N0} bytes. Keep files under 1 MB.' -f $file, $size) }
     }
 
