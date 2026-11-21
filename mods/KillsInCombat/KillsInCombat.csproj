@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KillsInCombat</AssemblyName>
+    <RootNamespace>KillsInCombat</RootNamespace>
+    <Version>0.1.0</Version>
+    <Nullable>enable</Nullable>
+    <DebugType>none</DebugType>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+
+    <!-- Override with: dotnet build -p:GameDir="..." -->
+    <GameDir Condition="'$(GameDir)' == ''">D:\Steam\steamapps\common\Melvor Idle 2</GameDir>
+
+    <!-- Builds straight into the game's mods folder. Close the game first: the DLL is locked while it runs. -->
+    <OutputPath>$(GameDir)\mods\$(AssemblyName)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The game's look, shared by every mod in this repository. -->
+    <Compile Include="..\Shared\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only: the running game already has these. -->
+    <Reference Include="MelvorModLoader">
+      <HintPath>$(GameDir)\data_MelvorModLoader_windows_x86_64\MelvorModLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(GameDir)\data_GamesByMalcs.Melvor2_windows_x86_64\GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GamesByMalcs.Melvor2">
+      <HintPath>$(GameDir)\data_GamesByMalcs.Melvor2_windows_x86_64\GamesByMalcs.Melvor2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

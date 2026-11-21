@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>MelvorModLoader</AssemblyName>
+    <RootNamespace>MelvorModLoader</RootNamespace>
+    <Version>0.1.3</Version>
+    <!-- Kept fixed so mods built against an older loader keep loading; Version above is what users see. -->
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Melvor Mod Loader</Product>
+    <AssemblyTitle>Melvor Mod Loader</AssemblyTitle>
+    <Description>Unofficial mod loader for Melvor Idle 2. Loads C# mods from the "mods" folder.</Description>
+    <Company>Melvor Mod Loader</Company>
+    <Copyright>MIT License</Copyright>
+    <Nullable>enable</Nullable>
+    <!-- Ships its own .NET runtime so the loader folder works by plain copy (no junction, no installer). -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <!-- Same runtime patch version the game ships with. -->
+    <RuntimeFrameworkVersion>10.0.15</RuntimeFrameworkVersion>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GameData>..\..\data_GamesByMalcs.Melvor2_windows_x86_64</GameData>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile-time only: at runtime these are loaded from the game's own folder. -->
+    <Reference Include="GodotSharp"><HintPath>$(GameData)\GodotSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="GamesByMalcs.Melvor2"><HintPath>$(GameData)\GamesByMalcs.Melvor2.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Same runtime switches the game itself uses. -->
+    <RuntimeHostConfigurationOption Include="System.Reflection.Metadata.MetadataUpdater.IsSupported" Value="false" />
+    <RuntimeHostConfigurationOption Include="System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization" Value="false" />
+  </ItemGroup>
+</Project>

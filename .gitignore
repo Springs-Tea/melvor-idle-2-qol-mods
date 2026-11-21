@@ -1,0 +1,9 @@
+# build output
+bin/
+obj/
+
+# personal save backups
+_save-backup/
+
+# release zips (rebuilt by tools/package.ps1)
+dist/
