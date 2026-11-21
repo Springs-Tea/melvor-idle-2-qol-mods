@@ -30,9 +30,22 @@ sealed class SimState
     /// <summary>Equipment slot id -> item id to wear there instead of the loadout's ("" is nothing).</summary>
     public Dictionary<string, string> Overrides = new();
     public List<GearSlot> Gear = new();
+    /// <summary>The attack stances of the weapon in <see cref="Gear"/>.</summary>
+    public List<(string Id, string Name)> Stances = new();
+
+    /// <summary>
+    /// False: simulate the fights of one area. True: look for the best place to train, by trying every
+    /// unlocked fight in every stance and ranking them by the XP of <see cref="TrainSkillId"/>.
+    /// </summary>
+    public bool BestMode;
+    /// <summary>The skill to rank by in best mode; "" is all combat XP together.</summary>
+    public string TrainSkillId = "";
+    public List<(string Id, string Name)> Skills = new();
 
     /// <summary>Key of the selected fight (a <see cref="SimTarget.Key"/>).</summary>
     public string? Selected;
+    /// <summary>The player clicked a row: until then the details follow whatever is on top.</summary>
+    public bool Pinned;
     public int SortColumn = 1;
     public bool SortDescending = true;
     public string FoodLine = "";
@@ -44,7 +57,25 @@ sealed class SimState
     public static readonly (string Label, double Hours)[] Durations =
         { ("15 minutes", 0.25), ("1 hour", 1), ("4 hours", 4), ("12 hours", 12) };
 
-    public IEnumerable<SimTarget> InScope => Catalog.Where(t => ScopeAreaId == "" || t.AreaId == ScopeAreaId);
+    public IEnumerable<SimTarget> InScope => BestMode ? Catalog : Catalog.Where(t => ScopeAreaId == "" || t.AreaId == ScopeAreaId);
+
+    /// <summary>What a run simulates: in best mode every fight once per stance.</summary>
+    public List<SimTarget> ToSimulate()
+    {
+        if (!BestMode || Stances.Count == 0) return InScope.ToList();
+        return InScope.SelectMany(t => Stances.Select(s => t with { StanceId = s.Id, StanceName = s.Name })).ToList();
+    }
+
+    /// <summary>XP per hour as the table ranks it: of the trained skill in best mode, all combat XP otherwise.</summary>
+    public double Xp(SimResult r) => BestMode && TrainSkillId != "" ? r.PerHour(r.Xp.GetValueOrDefault(TrainSkillId)) : r.XpPerHour;
+
+    /// <summary>The result to show for a fight: in best mode, the stance that trains the skill best.</summary>
+    public SimResult? Shown(SimTarget fight)
+    {
+        if (!BestMode || Stances.Count == 0) return ResultFor(fight);
+        return Stances.Select(s => ResultFor(fight with { StanceId = s.Id, StanceName = s.Name }))
+            .Where(r => r != null).OrderByDescending(r => r!.Failed ? -1 : Xp(r)).FirstOrDefault();
+    }
 
     public string SetupKey => LoadoutId + ";" + string.Join(",", Overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => o.Key + "=" + o.Value));
     public string SetupLabel
@@ -80,10 +111,10 @@ sealed class SimView
 
     sealed record Column(string Title, string Tip, float Width, Func<SimResult, double> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint);
 
-    static readonly Column[] Columns =
+    Column[] Columns => _columns ??= new Column[]
     {
         new("Kills", "Enemies killed per hour", 58, r => r.KillsPerHour, r => Fmt(r.KillsPerHour), _ => GameStyle.TextWhite),
-        new("XP", "Combat experience per hour, all combat skills together", 66, r => r.XpPerHour, r => Fmt(r.XpPerHour), _ => GameStyle.TextWhite),
+        new("XP", "Experience per hour: all combat skills together, or the skill you are training", 66, r => _state.Xp(r), r => Fmt(_state.Xp(r)), _ => GameStyle.TextWhite),
         new("Gold", "Coins dropped plus what the dropped items sell for, per hour", 66, r => r.GoldPerHour, r => Fmt(r.GoldPerHour), _ => GameStyle.TextGold),
         new("Food", "Food eaten per hour", 52, r => r.FoodPerHour, r => Fmt(r.FoodPerHour), _ => GameStyle.TextWhite),
         new("Deaths", "Times you die per hour", 60, r => r.DeathsPerHour, r => r.Deaths == 0 ? "0" : Fmt(r.DeathsPerHour),
@@ -92,11 +123,16 @@ sealed class SimView
             r => r.Deaths > 0 || r.LowestHpFraction < 0.15 ? Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite),
     };
 
+    Column[]? _columns;
     readonly GameWindow _window;
     readonly GameStyle _s;
     readonly SimState _state;
     readonly ISimLookup _lookup;
-    readonly Action _simulate, _cancel, _changed, _gearChanged;
+    readonly Action _simulate, _cancel, _changed, _gearChanged, _rebuild;
+    readonly Action<SimTarget> _fight;
+    Button _fightButton = null!;
+    Label _fightNote = null!;
+    SimTarget? _fightTarget;
 
     OptionButton _scope = null!, _duration = null!, _loadout = null!;
     Button _unlimited = null!, _fromBank = null!, _go = null!, _reset = null!;
@@ -108,10 +144,12 @@ sealed class SimView
     readonly List<Button> _headers = new();
     string _tableSignature = "", _detailsSignature = "";
 
-    public SimView(GameWindow window, SimState state, ISimLookup lookup, Action simulate, Action cancel, Action changed, Action gearChanged)
+    public SimView(GameWindow window, SimState state, ISimLookup lookup, Action simulate, Action cancel, Action changed, Action gearChanged, Action rebuild,
+        Action<SimTarget> fight)
     {
+        _fight = fight;
         _window = window; _s = window.Style; _state = state; _lookup = lookup;
-        _simulate = simulate; _cancel = cancel; _changed = changed; _gearChanged = gearChanged;
+        _simulate = simulate; _cancel = cancel; _changed = changed; _gearChanged = gearChanged; _rebuild = rebuild;
 
         var columns = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass, CustomMinimumSize = new Vector2(0, _s.Px(640)) }, 10);
         columns.AddChild(BuildSetup());
@@ -130,19 +168,51 @@ sealed class SimView
     {
         Control column = _s.Column("Setup", out VBoxContainer body, SetupWidth);
 
-        body.AddChild(Caption("Where"));
+        // Two questions the window answers: "what does this area give me" and "where should I train".
+        var modes = _s.Spaced(new HBoxContainer(), 4);
+        var modeGroup = new ButtonGroup();
+        Button fights = Toggle("One area", modeGroup, "Simulate the fights of an area or a dungeon you choose");
+        Button best = Toggle("Best for", modeGroup, "Find the best place to train a skill: every unlocked fight is tried in every attack stance of your weapon");
+        fights.ButtonPressed = !_state.BestMode;
+        best.ButtonPressed = _state.BestMode;
+        fights.Pressed += () => { if (_state.BestMode) { _state.BestMode = false; _state.Selected = null; _changed(); _rebuild(); } };
+        best.Pressed += () => { if (!_state.BestMode) { _state.BestMode = true; _state.Selected = null; _changed(); _rebuild(); } };
+        modes.AddChild(fights);
+        modes.AddChild(best);
+        body.AddChild(modes);
+
         _scope = _s.Dropdown();
-        _scope.TooltipText = "An area simulates every enemy in it; a dungeon is simulated as a whole";
         _scope.ClipText = true;
-        foreach (var (label, _) in _state.Scopes) _scope.AddItem(label);
-        _scope.Selected = Math.Max(0, _state.Scopes.FindIndex(s => s.AreaId == _state.ScopeAreaId));
-        _scope.ItemSelected += index =>
+        if (_state.BestMode)
         {
-            _state.ScopeAreaId = _state.Scopes[(int)index].AreaId;
-            _state.Selected = null;
-            _changed();
-            Refresh();
-        };
+            body.AddChild(Caption("Train"));
+            _scope.TooltipText = "Fights are ranked by the experience they give in this skill";
+            _scope.AddItem("All combat XP");
+            foreach (var (_, name) in _state.Skills) _scope.AddItem(name);
+            _scope.Selected = Math.Max(0, _state.Skills.FindIndex(k => k.Id == _state.TrainSkillId) + 1);
+            _scope.ItemSelected += index =>
+            {
+                _state.TrainSkillId = index == 0 ? "" : _state.Skills[(int)index - 1].Id;
+                _state.Selected = null;
+                _tableSignature = "";
+                _changed();
+                Refresh();
+            };
+        }
+        else
+        {
+            body.AddChild(Caption("Where"));
+            _scope.TooltipText = "An area simulates every enemy in it; a dungeon is simulated as a whole";
+            foreach (var (label, _) in _state.Scopes) _scope.AddItem(label);
+            _scope.Selected = Math.Max(0, _state.Scopes.FindIndex(s => s.AreaId == _state.ScopeAreaId));
+            _scope.ItemSelected += index =>
+            {
+                _state.ScopeAreaId = _state.Scopes[(int)index].AreaId;
+                _state.Selected = null;
+                _changed();
+                Refresh();
+            };
+        }
         body.AddChild(_scope);
 
         var timing = _s.Spaced(new HBoxContainer(), 6);
@@ -468,7 +538,7 @@ sealed class SimView
 
     void FillRows()
     {
-        var results = _state.InScope.Select(_state.ResultFor).Where(r => r != null).Select(r => r!).ToList();
+        var results = _state.InScope.Select(_state.Shown).Where(r => r != null).Select(r => r!).ToList();
         IEnumerable<SimResult> sorted = _state.SortColumn < 0
             ? results.OrderBy(r => r.Target.Name, StringComparer.OrdinalIgnoreCase)
             : results.OrderBy(r => r.Failed ? double.MinValue : Columns[_state.SortColumn].Value(r));
@@ -476,19 +546,25 @@ sealed class SimView
 
         foreach (Button header in _headers)
         {
+            // The XP column says whose experience it is.
+            if (header.GetMeta("column").AsInt32() == 1)
+                header.Text = _state.BestMode && _state.TrainSkillId != "" ? _state.Skills.FirstOrDefault(k => k.Id == _state.TrainSkillId).Name ?? "XP" : "XP";
             bool active = header.GetMeta("column").AsInt32() == _state.SortColumn;
             Color color = active ? GameStyle.TextGold : GameStyle.TextGrey;
             foreach (string name in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_focus_color" })
                 header.AddThemeColorOverride(name, color);
         }
 
-        string signature = _state.SetupKey + "#" + string.Join("|", ordered.Select(r => r.Target.Key + r.RealMilliseconds)) + "#" + _state.Selected + "#" + _state.SortColumn + _state.SortDescending;
+        string signature = _state.SetupKey + "#" + _state.BestMode + _state.TrainSkillId + "#" + string.Join("|", ordered.Select(r => r.Target.Key + r.RealMilliseconds)) + "#" + _state.Selected + "#" + _state.SortColumn + _state.SortDescending;
         if (signature != _tableSignature)
         {
             _tableSignature = signature;
             foreach (Node old in _rows.GetChildren()) old.QueueFree();
-            if (_state.Selected == null || ordered.All(r => r.Target.Key != _state.Selected))
+            if (!_state.Pinned || _state.Selected == null || ordered.All(r => r.Target.Key != _state.Selected))
+            {
                 _state.Selected = ordered.FirstOrDefault()?.Target.Key;
+                _state.Pinned = false;
+            }
             var group = new ButtonGroup();
             foreach (SimResult result in ordered) _rows.AddChild(BuildRow(result, group));
         }
@@ -496,11 +572,14 @@ sealed class SimView
         bool any = ordered.Count > 0;
         _rows.GetParent<Control>().Visible = any;
         _empty.Visible = !any;
-        _showing.Text = "With: " + _state.SetupLabel;
+        _showing.Text = _state.BestMode
+            ? $"Best stance for each fight, with: {_state.SetupLabel}"
+            : "With: " + _state.SetupLabel;
         bool otherSetups = _state.Results.Values.Any(r => r.SetupKey != _state.SetupKey);
         _empty.Text = _state.Running ? "Simulating..." : _state.Catalog.Count == 0
             ? "No area is unlocked yet."
             : otherSetups ? "Nothing simulated with this equipment yet.\n\nPress Simulate to compare it with what you ran before."
+            : _state.BestMode ? "Choose the skill you want to train on the left, then press Simulate.\n\nEvery unlocked fight is tried in each attack stance of your weapon, and the fights are ranked by what they give that skill."
             : "Choose where to fight and with which equipment on the left, then press Simulate.\n\nEvery fight is run with the game's own combat, on a hidden copy of your character. Nothing is saved.";
     }
 
@@ -514,7 +593,7 @@ sealed class SimView
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
             TooltipText = result.Note,
         };
-        row.Pressed += () => { _state.Selected = result.Target.Key; FillDetails(); };
+        row.Pressed += () => { _state.Selected = result.Target.Key; _state.Pinned = true; FillDetails(); };
 
         var line = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 6);
         line.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect, Control.LayoutPresetMode.Minsize, _s.Px(8));
@@ -526,7 +605,15 @@ sealed class SimView
         name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         name.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(name);
+        if (result.Target.StanceName != "")
+        {
+            Label stance = _s.Text(result.Target.StanceName, GameStyle.TextPaper, 12);
+            stance.MouseFilter = Control.MouseFilterEnum.Ignore;
+            line.AddChild(stance);
+        }
         Label level = _s.Text(result.Target.IsDungeon ? "Dungeon" : "Lv " + result.Target.CombatLevel, GameStyle.TextDim, 12);
+        level.CustomMinimumSize = new Vector2(_s.Px(36), 0);
+        level.HorizontalAlignment = HorizontalAlignment.Right;
         level.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(level);
 
@@ -553,6 +640,24 @@ sealed class SimView
         _details = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(_s.Px(width - 30), 0) }, 4);
         scroll.AddChild(_details);
         body.AddChild(scroll);
+
+        // Below the list, always in sight: go and fight what is selected.
+        _fightNote = Wrapped("", width - 30, GameStyle.TextGrey, 11);
+        _fightNote.HorizontalAlignment = HorizontalAlignment.Center;
+        body.AddChild(_fightNote);
+        _fightButton = _s.GameButton("Fight", "TexturedButtonCancel8x", 18);
+        _fightButton.CustomMinimumSize = new Vector2(0, _s.Px(46));
+        _fightButton.Icon = GameStyle.Icon("Combat");
+        _fightButton.ExpandIcon = true;
+        _fightButton.AddThemeConstantOverride("icon_max_width", _s.Px(26));
+        _fightButton.AddThemeConstantOverride("h_separation", _s.Px(8));
+        _fightButton.ClipText = true;
+        _fightButton.Pressed += () => { if (_fightTarget != null) _fight(_fightTarget); };
+        body.AddChild(_fightButton);
+        // A slow breath of light, so the way out of the numbers and into the fight is easy to find.
+        Tween glow = _fightButton.CreateTween().SetLoops();
+        glow.TweenProperty(_fightButton, "self_modulate", new Color(1.22f, 1.1f, 1.1f), 0.9).SetTrans(Tween.TransitionType.Sine);
+        glow.TweenProperty(_fightButton, "self_modulate", Colors.White, 0.9).SetTrans(Tween.TransitionType.Sine);
         return column;
     }
 
@@ -561,7 +666,21 @@ sealed class SimView
         SimResult? r = _state.Selected != null ? _state.Results.GetValueOrDefault(SimResult.MakeKey(_state.SetupKey, _state.Selected)) : null;
         var others = r == null ? new List<SimResult>()
             : _state.Results.Values.Where(o => o.Target.Key == r.Target.Key && o.SetupKey != r.SetupKey && !o.Failed).ToList();
-        string signature = r == null ? "none" : r.Key + r.RealMilliseconds + "/" + string.Join(",", others.Select(o => o.Key + o.RealMilliseconds));
+        string signature = r == null ? "none" : r.Key + r.RealMilliseconds + _state.TrainSkillId + "/" + string.Join(",", others.Select(o => o.Key + o.RealMilliseconds))
+            + "/" + _state.Results.Values.Count(o => o.SetupKey == r.SetupKey && o.Target.FightKey == r.Target.FightKey);
+        // The button follows the selection even when the list itself did not change.
+        _fightTarget = r is { Failed: false } ? r.Target : null;
+        _fightButton.Visible = _fightTarget != null;
+        _fightNote.Visible = _fightTarget != null;
+        if (_fightTarget != null)
+        {
+            _fightButton.Text = "Fight " + _fightTarget.Name;
+            _fightButton.TooltipText = _fightTarget.IsDungeon ? $"Enter {_fightTarget.Name} now" : $"Start fighting {_fightTarget.Name} in {_fightTarget.AreaName} now";
+            _fightNote.Text = _state.Overrides.Count > 0 || !_state.SetupLabel.Contains("worn now")
+                ? "Starts with what you are wearing now, not the equipment simulated here."
+                : _fightTarget.StanceName != "" ? $"Switches to the {_fightTarget.StanceName} stance." : "";
+            _fightNote.Visible = _fightNote.Text != "";
+        }
         if (signature == _detailsSignature) return;
         _detailsSignature = signature;
         foreach (Node old in _details.GetChildren()) old.QueueFree();
@@ -581,7 +700,7 @@ sealed class SimView
         name.ClipText = true;
         title.AddChild(name);
         title.AddChild(_s.Text(r.Target.IsDungeon ? r.Target.CategoryName : $"{r.Target.AreaName}  ·  Level {r.Target.CombatLevel}", GameStyle.TextGrey, 12));
-        Label with = _s.Text(r.SetupLabel, GameStyle.TextDim, 12);
+        Label with = _s.Text(r.Target.StanceName == "" ? r.SetupLabel : $"{r.Target.StanceName}  ·  {r.SetupLabel}", GameStyle.TextDim, 12);
         with.ClipText = true;
         title.AddChild(with);
         head.AddChild(title);
@@ -589,6 +708,16 @@ sealed class SimView
 
         if (r.Note != "") _details.AddChild(Wrapped(r.Note, 250, r.Failed ? Bad : GameStyle.TextGold, 12));
         if (r.Failed) return;
+
+        // The same fight in the other stances of the weapon.
+        var stances = _state.Results.Values.Where(o => o.SetupKey == r.SetupKey && o.Target.FightKey == r.Target.FightKey && o.Target.Key != r.Target.Key && !o.Failed).ToList();
+        if (stances.Count > 0)
+        {
+            _details.AddChild(_s.Section("Other stances"));
+            foreach (SimResult other in stances.OrderByDescending(_state.Xp))
+                _details.AddChild(Stat(other.Target.StanceName, Fmt(_state.Xp(other)), null,
+                    string.Join("  ·  ", other.Xp.OrderByDescending(x => x.Value).Take(3).Select(x => $"{_lookup.Skill(x.Key).Name} {Fmt(other.PerHour(x.Value))}"))));
+        }
 
         // The same fight with other equipment, when it was simulated: this one against each of them.
         if (others.Count > 0)
@@ -674,24 +803,26 @@ sealed class SimView
     {
         var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         panel.AddThemeStyleboxOverride("panel", _s.StatLine());
+        var rows = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, -2);
         var line = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 6);
         if (icon != null) line.AddChild(_s.Picture(icon, 18));
         Label label = _s.Text(name);
         label.ClipText = true;
         label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         line.AddChild(label);
-        var right = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, -2);
         Label number = _s.Text(value, tint ?? GameStyle.TextWhite, 14, GameStyle.Bold);
         number.HorizontalAlignment = HorizontalAlignment.Right;
-        right.AddChild(number);
+        line.AddChild(number);
+        rows.AddChild(line);
+        // Under the whole line: a long note must not squeeze the name.
         if (note != null)
         {
             Label small = _s.Text(note, GameStyle.TextGrey, 11);
             small.HorizontalAlignment = HorizontalAlignment.Right;
-            right.AddChild(small);
+            small.ClipText = true;
+            rows.AddChild(small);
         }
-        line.AddChild(right);
-        panel.AddChild(line);
+        panel.AddChild(rows);
         return panel;
     }
 
@@ -701,7 +832,7 @@ sealed class SimView
     {
         if (!_window.IsAlive) return;
         var (_, hours) = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)];
-        int fights = _state.InScope.Count();
+        int fights = _state.ToSimulate().Count;
 
         _supplyHint.Text = _state.Unlimited
             ? "Never runs out: what a fight gives and uses while you keep it supplied."
@@ -709,7 +840,7 @@ sealed class SimView
         // A copy of the character takes about a second per fight; the fighting itself is the small part.
         double seconds = fights * (1.25 + 0.25 * hours);
         _estimate.Text = fights == 0 ? "Nothing to simulate here"
-            : $"{fights} {(fights == 1 ? "fight" : "fights")}  ·  about {(seconds < 90 ? $"{Math.Max(1, Math.Round(seconds))}s" : $"{Math.Round(seconds / 60)} min")}";
+            : $"{fights} {(fights == 1 ? "fight" : "fights")}{(_state.BestMode && _state.Stances.Count > 1 ? $" ({_state.Stances.Count} stances each)" : "")}  ·  about {(seconds < 90 ? $"{Math.Max(1, Math.Round(seconds))}s" : $"{Math.Round(seconds / 60)} min")}";
 
         _go.Text = _state.Running ? "Cancel" : "Simulate";
         _go.ThemeTypeVariation = _state.Running ? "TexturedButtonCancel8x" : "TexturedActionButtonGreen8x";

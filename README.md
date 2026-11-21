@@ -13,7 +13,8 @@ of them changes the save or makes the game easier.
 | [Kills in Combat](mods/KillsInCombat) | The number of times you have killed the current enemy, next to its name. |
 | [Dungeon Completions](mods/DungeonCompletions) | The number of times you have completed each dungeon, in the combat areas menu. |
 | [Recipe Rates](mods/RecipeRates) | XP per hour on every recipe of a skill's list, and in the XP tooltip the whole hour: XP, items made and used, sell value, and how long your materials last. |
-| [Combat Simulator](mods/CombatSim) | What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Pick a saved loadout or swap any item in to compare. |
+| [Combat Simulator](mods/CombatSim) | What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Pick a saved loadout or swap any item in to compare, or let it find the best place to train a skill. |
+| [Item Sources](mods/ItemSources) | Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, which recipe, chest, thieving target or shop purchase gives or uses it. |
 
 ## Installing
 

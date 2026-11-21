@@ -6,8 +6,14 @@ namespace CombatSim;
 /// <summary>One thing to fight: an enemy of an area, or a whole dungeon.</summary>
 sealed record SimTarget(string AreaId, string? EnemyId, string Name, string AreaName, string CategoryName, int CombatLevel)
 {
+    /// <summary>The attack stance to fight in; null is the one that is selected now.</summary>
+    public string? StanceId { get; init; }
+    public string StanceName { get; init; } = "";
+
     public bool IsDungeon => EnemyId == null;
-    public string Key => EnemyId == null ? AreaId : AreaId + "|" + EnemyId;
+    /// <summary>The fight, whatever the stance.</summary>
+    public string FightKey => EnemyId == null ? AreaId : AreaId + "|" + EnemyId;
+    public string Key => StanceId == null ? FightKey : FightKey + "@" + StanceId;
 }
 
 sealed class SimOptions

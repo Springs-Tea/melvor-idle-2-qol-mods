@@ -167,6 +167,7 @@ sealed class SimEngine
         StopPassiveSkills(sim);
         var notes = new List<string>();
         Wear(sim, combat, bank, options, notes);
+        if (target.StanceId != null) Stand(combat, target, notes);
         combat.Player.GlobalHealth.Set(combat.Player.GlobalHealth.Max);
         result.MaxHp = combat.Player.Health.Max;
         result.LowestHp = combat.Player.Health.Current;
@@ -323,6 +324,15 @@ sealed class SimEngine
             if (!combat.Equipment.IsItemEquipped(item))
                 notes.Add($"{item.DisplayName.GetPluralText(1)} could not be equipped (requirements not met?).");
         }
+    }
+
+    // Selects one of the attack stances of the weapon that is worn (they decide which skills get the XP).
+    static void Stand(CombatEntity combat, SimTarget target, List<string> notes)
+    {
+        WeaponType? weapon = (combat.Equipment.CurrentWeapon ?? combat.Equipment.DefaultWeapon)?.Weapon?.Type;
+        AttackStance? stance = weapon?.Stances.FirstOrDefault(s => s.Id == target.StanceId);
+        if (weapon == null || stance == null) { notes.Add($"The stance {target.StanceName} is not available with this weapon."); return; }
+        combat.Player.SetSelectedStance(weapon, stance);
     }
 
     // Farming and Ranching run on their own beside combat and use items from the same bank: left running,

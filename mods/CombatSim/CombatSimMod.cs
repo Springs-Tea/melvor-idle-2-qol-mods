@@ -36,12 +36,20 @@ public class CombatSimMod : IMod, ISimLookup
         public string Scope { get; set; } = "";
         public int Duration { get; set; } = 1;
         public bool Unlimited { get; set; } = true;
+        public bool BestMode { get; set; }
+        public string TrainSkill { get; set; } = "";
     }
 
     // What each saved loadout holds is kept inside the equipment component; only the one that is worn right
     // now can be read from the slots themselves.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Loadouts")]
     static extern Dictionary<LoadoutSlot, EquipmentLoadout> SavedLoadouts(EquipmentComponent equipment);
+
+    static readonly string[] CombatSkillIds =
+    {
+        "MelvorBase:Attack", "MelvorBase:Strength", "MelvorBase:Defence", "MelvorBase:Hitpoints",
+        "MelvorBase:Ranged", "MelvorBase:Magic", "MelvorBase:Prayer", "MelvorBase:Slayer",
+    };
 
     ModContext _ctx = null!;
     Settings _settings = new();
@@ -64,6 +72,8 @@ public class CombatSimMod : IMod, ISimLookup
         _state.ScopeAreaId = _settings.Scope;
         _state.Duration = _settings.Duration;
         _state.Unlimited = _settings.Unlimited;
+        _state.BestMode = _settings.BestMode;
+        _state.TrainSkillId = _settings.TrainSkill;
         _engine = new SimEngine(ctx.Log);
         ctx.Frame += OnFrame;
         ctx.Log("Ready. The round button on the right edge of the screen opens the simulator.");
@@ -192,6 +202,7 @@ public class CombatSimMod : IMod, ISimLookup
         }
 
         var items = _game.Data.GetDataRegistryOutput<Item>();
+        WeaponType? weapon = null;
         foreach (EquipmentSlot slot in _game.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects())
         {
             if (!_combat.Equipment.TryGetActiveSlot(slot, out IActiveEquipmentSlot? active) || active == null) continue;
@@ -210,7 +221,18 @@ public class CombatSimMod : IMod, ISimLookup
             }
             _state.Gear.Add(new GearSlot(slot.Id, slot.DisplayName.Text, active.GridPosition.X, active.GridPosition.Y,
                 item?.Id, item?.DisplayName.GetPluralText(1) ?? "", quantity, item?.Icon, slot.FitsType?.Icon, changed));
+            if (item != null && item.Capabilities.TryGet(out WeaponCapability? held)) weapon = held.Type;
         }
+
+        // The attack stances belong to the weapon of this setup; bare hands have their own.
+        weapon ??= _combat.Equipment.DefaultWeapon?.Weapon?.Type;
+        _state.Stances.Clear();
+        if (weapon != null) _state.Stances.AddRange(weapon.Stances.Select(s => (s.Id, s.DisplayName.Text)));
+
+        _state.Skills.Clear();
+        foreach (string id in CombatSkillIds)
+            if (_game.LeveledEntities.FirstOrDefault(s => s.Id == id) is { } skill) _state.Skills.Add((id, skill.DisplayName.Text));
+        if (_state.Skills.All(k => k.Id != _state.TrainSkillId)) _state.TrainSkillId = "";
     }
 
     List<GearChoice> ISimLookup.ChoicesFor(GearSlot slot)
@@ -227,7 +249,7 @@ public class CombatSimMod : IMod, ISimLookup
         return choices;
     }
 
-    Texture2D? ISimLookup.TargetIcon(SimTarget target) => _targetIcons.GetValueOrDefault(target.Key);
+    Texture2D? ISimLookup.TargetIcon(SimTarget target) => _targetIcons.GetValueOrDefault(target.FightKey);
 
     Texture2D? ISimLookup.AmountIcon(Amount amount)
     {
@@ -279,7 +301,7 @@ public class CombatSimMod : IMod, ISimLookup
             Build();
             _window!.Visible = true;
         };
-        _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear);
+        _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, () => { Build(); _window!.Visible = true; }, Fight);
     }
 
     void SaveChoices()
@@ -287,13 +309,15 @@ public class CombatSimMod : IMod, ISimLookup
         _settings.Scope = _state.ScopeAreaId;
         _settings.Duration = _state.Duration;
         _settings.Unlimited = _state.Unlimited;
+        _settings.BestMode = _state.BestMode;
+        _settings.TrainSkill = _state.TrainSkillId;
         WriteSettings();
     }
 
     void Simulate()
     {
         if (_game == null) return;
-        var targets = _state.InScope.ToList();
+        var targets = _state.ToSimulate();
         var options = new SimOptions
         {
             Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
@@ -312,6 +336,47 @@ public class CombatSimMod : IMod, ISimLookup
             _ctx.Log($"Simulating {targets.Count} fights, {options.Hours:0.##} h each, supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {options.SetupLabel}.");
         }
         Pump(force: true);
+    }
+
+    // The real thing: start the selected fight in the game, the way its own area menu does. Equipment is
+    // left as it is; the stance the result was simulated with is selected when the weapon has it.
+    void Fight(SimTarget target)
+    {
+        if (_combat == null) return;
+        try
+        {
+            BaseCombatArea? area = _combat.Areas.ActiveAreas.Keys.FirstOrDefault(a => a.Id == target.AreaId);
+            if (area == null) { _state.Message = "That area is not available."; _view?.Refresh(); return; }
+
+            if (target.StanceId != null)
+            {
+                WeaponType? weapon = (_combat.Equipment.CurrentWeapon ?? _combat.Equipment.DefaultWeapon)?.Weapon?.Type;
+                AttackStance? stance = weapon?.Stances.FirstOrDefault(s => s.Id == target.StanceId);
+                if (weapon != null && stance != null) _combat.Player.SetSelectedStance(weapon, stance);
+            }
+
+            // Selecting what is already being fought would stop it: the game's button is a switch.
+            bool fighting = _combat.Action.IsStarted;
+            if (target.EnemyId != null && area is CombatArea open && open.Enemies.FirstOrDefault(e => e.Id == target.EnemyId) is { } enemy)
+            {
+                if (!(fighting && ReferenceEquals(_combat.Areas.SelectedEnemy, enemy))) _combat.Areas.SelectEnemy(open, enemy);
+            }
+            else if (area is Dungeon dungeon)
+            {
+                if (!(fighting && ReferenceEquals(_combat.Areas.CurrentArea?.Area, dungeon))) _combat.Areas.SelectDungeon(dungeon);
+            }
+            else { _state.Message = "That fight is not available."; _view?.Refresh(); return; }
+
+            _state.Message = "";
+            _ctx.Log($"Fight started from the simulator: {target.Name}{(target.StanceName != "" ? " (" + target.StanceName + ")" : "")}.");
+            Close();   // out of the way: the fight is on
+        }
+        catch (Exception e)
+        {
+            _state.Message = "The fight could not be started.";
+            _ctx.Log("Could not start the fight: " + e);
+            _view?.Refresh();
+        }
     }
 
     // Results come from the background thread; the window is only touched here, on the game's thread.
@@ -414,6 +479,8 @@ public class CombatSimMod : IMod, ISimLookup
             File.Delete(request);
             Open();
             string where = parts[0].Trim();
+            _state.BestMode = where.StartsWith("best", StringComparison.OrdinalIgnoreCase);
+            if (_state.BestMode) _state.TrainSkillId = _state.Skills.FirstOrDefault(k => where.EndsWith(k.Name, StringComparison.OrdinalIgnoreCase)).Id ?? "";
             var scope = _state.Scopes.FirstOrDefault(s => s.AreaId != "" && s.Label.Contains(where, StringComparison.OrdinalIgnoreCase));
             _state.ScopeAreaId = where.Equals("all", StringComparison.OrdinalIgnoreCase) || scope.AreaId == null ? "" : scope.AreaId;
             if (parts.Length > 1 && int.TryParse(parts[1], out int duration)) _state.Duration = duration;
@@ -451,7 +518,7 @@ public class CombatSimMod : IMod, ISimLookup
             _ctx.Tree.Root.GetTexture().GetImage().SavePng(Path.Combine(_ctx.Directory, "shot-sim.png"));
             _ctx.Log("Dev: saved shot-sim.png");
             foreach (SimResult r in _state.Results.Values.OrderByDescending(r => r.XpPerHour))
-                _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name,-22} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
+                _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name + " " + r.Target.StanceName,-30} {string.Join(" ", r.Xp.Select(x => x.Key.Replace("MelvorBase:", "") + "=" + (x.Value / Math.Max(r.Hours, 1e-9)).ToString("N0")))} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
                          $"lowHP {r.LowestHpFraction,4:P0}  {r.RealMilliseconds,5:N0} ms  {r.Note}");
         }
     }

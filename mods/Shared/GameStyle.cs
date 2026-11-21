@@ -46,6 +46,10 @@ public sealed class GameStyle(float scale = 1f)
     public StyleBox InnerPanel() =>
         Textured("res://Assets/UI/Textures/Combat/TEX_Combat_22.png", 6, 6, 6, 6, Colors.White, new Color("111110"), new Color("50483d"));
 
+    /// <summary>The dark panel of the game's own tooltips.</summary>
+    public StyleBox TooltipPanel() =>
+        Textured("res://Assets/UI/Textures/Tooltips/TEX_Tooltip_Dark_Large.png", 14, 10, 14, 18, Colors.White, new Color("2f2314"), new Color("524943"));
+
     /// <summary>The frame of the game's large pop-up windows (the Mastery Guild, the combat areas menu).</summary>
     public StyleBox ModalPanel() =>
         Textured("res://Assets/UI/Textures/Combat/TEX_Combat_21.png", 16, 14, 16, 26, Colors.White, new Color("1d1916"), new Color("524943"));

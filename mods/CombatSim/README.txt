@@ -18,6 +18,11 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
   - Details: per skill XP, loot item by item, what was used (food, ammo, runes, prayer points),
     damage taken, time of the first death. When the same fight was simulated with other
     equipment, the difference is shown.
+  - Best for: instead of one area, pick the skill you want to train. Every unlocked fight is
+    tried in each attack stance of your weapon and the fights are ranked by what they give
+    that skill, with the best stance named on each line.
+  - Fight: the red button under the details starts the selected fight in the game (and
+    switches to the stance of that result). Your equipment is left as it is.
 
 Good to know
   - "Unlimited" supplies hand food, ammo, runes and prayer points back as they are used. "From

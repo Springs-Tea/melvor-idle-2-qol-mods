@@ -34,7 +34,7 @@ public sealed class GameWindow
     Vector2 _resizeFrom;
     float _resizeTo;
 
-    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 95)
+    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105)
     {
         Style = new GameStyle(Math.Clamp(scale, MinScale, MaxScale));
         _startAt = position;
