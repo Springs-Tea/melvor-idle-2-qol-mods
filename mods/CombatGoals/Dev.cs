@@ -16,7 +16,7 @@ static class Dev
 {
     static ModContext s_ctx = null!;
     static ulong s_started, s_lastCheck, s_gameAt;
-    static bool s_menuDone, s_gameDone, s_loadPressed;
+    static bool s_menuDone, s_gameDone, s_loadPressed, s_welcomeConfirmed;
 
     public static void Start(ModContext ctx)
     {
@@ -63,6 +63,19 @@ static class Dev
                     s_loadPressed = true;
                     s_ctx.Log("Dev: pressing Load on the only character.");
                     loads[0].EmitSignal(BaseButton.SignalName.Pressed);
+                }
+            }
+            // The "Welcome Back" summary after a restart dims the whole screen: confirm it, so pictures taken
+            // during development show the game.
+            if (!s_welcomeConfirmed && s_gameDone && now - s_gameAt < 20000)
+            {
+                var confirm = s_ctx.Tree.Root.FindChildren("*", "Button", true, false)
+                    .OfType<Button>().FirstOrDefault(b => b.Text == "Confirm" && b.IsVisibleInTree() && !b.Disabled);
+                if (confirm != null)
+                {
+                    s_welcomeConfirmed = true;
+                    s_ctx.Log("Dev: confirming the Welcome Back summary.");
+                    confirm.EmitSignal(BaseButton.SignalName.Pressed);
                 }
             }
             AreasRequest(now);

@@ -46,6 +46,69 @@ public sealed class GameStyle(float scale = 1f)
     public StyleBox InnerPanel() =>
         Textured("res://Assets/UI/Textures/Combat/TEX_Combat_22.png", 6, 6, 6, 6, Colors.White, new Color("111110"), new Color("50483d"));
 
+    /// <summary>The frame of the game's large pop-up windows (the Mastery Guild, the combat areas menu).</summary>
+    public StyleBox ModalPanel() =>
+        Textured("res://Assets/UI/Textures/Combat/TEX_Combat_21.png", 16, 14, 16, 26, Colors.White, new Color("1d1916"), new Color("524943"));
+
+    /// <summary>A column inside such a window. Its top margin leaves room for the paper tag that names it.</summary>
+    public StyleBox ColumnPanel() =>
+        Textured("res://Assets/UI/Textures/Combat/TEX_Combat_22.png", 10, 22, 10, 10, Colors.White, new Color("111110"), new Color("50483d"));
+
+    /// <summary>The torn paper strip the game writes its titles on.</summary>
+    public StyleBox Paper(float sideMargin = 16) =>
+        Textured("res://Assets/UI/Textures/Crafting/TEX_Crafting_0.png", sideMargin, 5, sideMargin, 6, Colors.White, new Color("e2dbcd"), new Color("8a8170"));
+
+    /// <summary>A title on paper: dark bold text, like "Task Categories" over a column.</summary>
+    public PanelContainer PaperTag(string text, int size = 14, float minWidth = 150)
+    {
+        var tag = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(Px(minWidth), 0) };
+        tag.AddThemeStyleboxOverride("panel", Paper());
+        Label label = Text(text, new Color("111110"), size, Bold);
+        label.HorizontalAlignment = HorizontalAlignment.Center;
+        tag.AddChild(label);
+        return tag;
+    }
+
+    /// <summary>
+    /// A titled column: the paper tag sits on the panel's top edge. Put the content into
+    /// <paramref name="body"/>.
+    /// </summary>
+    public Control Column(string title, out VBoxContainer body, float minWidth = 0)
+    {
+        var column = new VBoxContainer { CustomMinimumSize = new Vector2(Px(minWidth), 0), MouseFilter = Control.MouseFilterEnum.Pass };
+        column.AddThemeConstantOverride("separation", -Px(14));   // the tag overlaps the panel
+        var centre = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore, ZIndex = 1 };
+        centre.AddChild(PaperTag(title));
+        column.AddChild(centre);
+        var panel = new PanelContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Pass };
+        panel.AddThemeStyleboxOverride("panel", ColumnPanel());
+        body = Spaced(new VBoxContainer(), 6);
+        panel.AddChild(body);
+        column.AddChild(panel);
+        return column;
+    }
+
+    /// <summary>A heading inside a column: a short grey title between two thin lines.</summary>
+    public Control Section(string title)
+    {
+        var row = Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 8);
+        row.AddChild(new HSeparator { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter, MouseFilter = Control.MouseFilterEnum.Ignore });
+        row.AddChild(Text(title, TextGrey));
+        row.AddChild(new HSeparator { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter, MouseFilter = Control.MouseFilterEnum.Ignore });
+        return row;
+    }
+
+    /// <summary>
+    /// A button with one of the game's own looks: "TexturedButton8x" (default), "TexturedActionButtonGreen8x"
+    /// (the main action), "TexturedButtonCancel8x" (stop), "OutlineToggleButton" (on/off, rows).
+    /// </summary>
+    public Button GameButton(string text, string variation = "TexturedButton8x", int size = 14)
+    {
+        var button = new Button { Text = text, ThemeTypeVariation = variation, MouseDefaultCursorShape = Control.CursorShape.PointingHand };
+        button.AddThemeFontSizeOverride("font_size", Px(size));
+        return button;
+    }
+
     /// <summary>One line in a list of stats.</summary>
     public StyleBox StatLine() =>
         Textured("res://Assets/UI/Textures/Combat/TEX_Combat_StatLine_0.png", 6, 4, 8, 4, new Color(1, 1, 1, 0.7f), new Color(0, 0, 0, 0.35f), new Color(0, 0, 0, 0));

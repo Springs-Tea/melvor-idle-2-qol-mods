@@ -13,6 +13,7 @@ of them changes the save or makes the game easier.
 | [Kills in Combat](mods/KillsInCombat) | The number of times you have killed the current enemy, next to its name. |
 | [Dungeon Completions](mods/DungeonCompletions) | The number of times you have completed each dungeon, in the combat areas menu. |
 | [Recipe Rates](mods/RecipeRates) | XP per hour on every recipe of a skill's list, and in the XP tooltip the whole hour: XP, items made and used, sell value, and how long your materials last. |
+| [Combat Simulator](mods/CombatSim) | What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Pick a saved loadout or swap any item in to compare. |
 
 ## Installing
 
@@ -28,7 +29,7 @@ To remove a mod, delete its folder under `mods`.
 | Folder | Contents |
 | --- | --- |
 | `mods/<Mod>` | One project per mod, with the `README.txt` that ships in its zip. |
-| `mods/Shared` | `GameStyle.cs`: the game's look (textures, fonts, colours, small controls), compiled into every mod. |
+| `mods/Shared` | `GameStyle.cs`: the game's look (textures, fonts, colours, small controls), and `GameWindow.cs`: a draggable, resizable window in the style of the game's own pop-ups. Compiled into every mod. |
 | `third_party/MelvorModLoader` | The loader's source (MIT, by falorfrozen), kept here so it can be rebuilt after a game update. |
 | `tools` | Scripts for building, packaging and looking around the game while developing. |
 
