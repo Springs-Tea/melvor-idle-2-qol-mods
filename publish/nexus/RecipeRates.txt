@@ -1,0 +1,42 @@
+NAME
+Recipe Rates
+
+VERSION
+0.1.0
+
+FILE
+dist/RecipeRates-0.1.0.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+SUMMARY (the short line under the name)
+XP per hour on every recipe of a skill's list, and in the XP tooltip the whole hour: XP, items made and used, sell value, and how long your materials last.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Recipe Rates[/b][/size]
+Which recipe gives more XP per hour: the one that takes 60 seconds for 10 XP, or the one that takes 20 seconds for 3? This shows it before you make anything.
+
+[list]
+[*]In a skill's recipe list, every recipe shows its [b]XP per hour[/b] under its XP tag. The best one in the list is gold.
+[*]Hover the XP tag for [b]the whole hour[/b]: XP, the items made, the items used, what the products sell for, how long one takes, and how long the materials in your bank will last.
+[/list]
+Works for Smithing, Crafting, Fletching, Runecrafting, Beastcrafting, Cooking, Firemaking and Herblore.
+
+The numbers come from the game's own values, so every bonus you have (equipment, potions, mastery) is in them. Chances count as their long-run average: doubling, preservation, skipped steps, and failed attempts in Cooking. It is an estimate, not a promise.
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\RecipeRates\RecipeRates.dll[/font].
+[*]Start the game.
+[/list]
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\RecipeRates[/font]. Nothing in your save is changed.
+
+[size=4][b]Good to know[/b][/size]
+Tested on game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt.
+It uses the game's own textures, fonts and colours, so it looks like part of the game.
+Open source (MIT): [url=https://github.com/Springs-Tea/melvor-2-mods]https://github.com/Springs-Tea/melvor-2-mods[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.

@@ -1,0 +1,40 @@
+NAME
+Item Sources
+
+VERSION
+0.1.0
+
+FILE
+dist/ItemSources-0.1.0.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+SUMMARY (the short line under the name)
+Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Item Sources[/b][/size]
+The item panel in the bank says "Found in" and "Used in" with a few skill icons. Hover either row and this lists what is behind them.
+
+[list]
+[*][b]Found in[/b]: which enemy drops the item and where that enemy lives, which thieving target, hunting animal, chest, recipe, quest or shop purchase gives it, how many, and how likely.
+[*][b]Used in[/b]: every recipe, upgrade, shop purchase or animal that uses it, and how many.
+[/list]
+The chances are worked out from the game's own drop tables. The list is read from the game's data when a character is opened, so items and enemies a game update adds show up by themselves.
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\ItemSources\ItemSources.dll[/font].
+[*]Start the game.
+[/list]
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\ItemSources[/font]. Nothing in your save is changed.
+
+[size=4][b]Good to know[/b][/size]
+Tested on game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt.
+It uses the game's own textures, fonts and colours, so it looks like part of the game.
+Open source (MIT): [url=https://github.com/Springs-Tea/melvor-2-mods]https://github.com/Springs-Tea/melvor-2-mods[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
