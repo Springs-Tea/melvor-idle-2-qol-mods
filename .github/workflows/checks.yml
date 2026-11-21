@@ -1,0 +1,31 @@
+name: Repository checks
+
+# The mods compile against Melvor Idle 2's own DLLs, which are not (and must never be) in this repository,
+# so they cannot be built here. This guards the rules instead: no game files, complete mods, working links.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the repository
+        shell: pwsh
+        run: ./tools/check-repo.ps1
+      - name: The art is what the script draws
+        run: |
+          python3 tools/make-art.py
+          git diff --exit-code -- docs/img/art

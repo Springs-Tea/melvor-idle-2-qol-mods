@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: The loader does not start, or no mod loads at all
+    url: https://www.nexusmods.com/melvoridle2/mods/2
+    about: That is the Melvor Mod Loader, a separate project. Its page has the install steps and its own bug reports.
+  - name: Something that could harm a player
+    url: https://github.com/Springs-Tea/melvor-2-mods/security/advisories/new
+    about: Please report it privately instead of opening a public issue.

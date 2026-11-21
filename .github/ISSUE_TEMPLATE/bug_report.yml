@@ -1,0 +1,55 @@
+name: Something is wrong
+description: A mod shows a wrong number, looks broken, or does not load.
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: mod
+    attributes:
+      label: Which mod?
+      options:
+        - Combat Simulator
+        - Item Sources
+        - Recipe Rates
+        - Combat Goals
+        - Kills in Combat
+        - Dungeon Completions
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you saw, and what you expected to see. A screenshot helps a lot.
+      placeholder: |
+        I opened Herblore and the list shows 9,120 XP/h for the first potion,
+        but the game's own average after ten minutes was about 7,000.
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game version
+      description: Shown at the top of the screen in the game.
+      placeholder: 0.11.6-alpha.1
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Mod and loader version
+      description: 'Both are in MelvorModLoader.log, for example "Mod loaded: RecipeRates 0.1.0".'
+      placeholder: Recipe Rates 0.1.0, loader 0.1.3
+  - type: textarea
+    id: log
+    attributes:
+      label: MelvorModLoader.log
+      description: >
+        The file is in the game folder and is rewritten on every start, so copy it right after the problem
+        happened. It holds no personal data beyond your game folder's path; remove that if you prefer.
+      render: text
+  - type: textarea
+    id: others
+    attributes:
+      label: Other mods installed
+      description: Anything else in the game's mods folder.

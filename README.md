@@ -1,109 +1,188 @@
-# Melvor Idle 2 mods
+<h1 align="center">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: six quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+</h1>
 
-Six quality-of-life mods for **Melvor Idle 2** (Steam, Windows). Each one is a separate download: take
-the ones you want.
+<p align="center">
+  <img alt="Game version" src="https://img.shields.io/badge/Melvor%20Idle%202-0.11.6--alpha.1-8b5cf6">
+  <img alt="Loader" src="https://img.shields.io/badge/Melvor%20Mod%20Loader-0.1.3%2B-2baae1">
+  <img alt="Platform" src="https://img.shields.io/badge/Steam-Windows-41454c">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-cd964f"></a>
+</p>
 
-They are written in C# for the unofficial [Melvor Mod Loader](https://www.nexusmods.com/melvoridle2/mods/2),
-use the game's own textures, fonts and colours so they look like part of the game, and never touch your
-save. Tested on game version **0.11.6-alpha.1** with loader **0.1.3**. The game is in early access: an
-update can break a mod until it is rebuilt.
+<p align="center">
+  <img src="docs/img/combat-simulator-compare.png" alt="The Combat Simulator" width="880">
+</p>
 
-## The mods
+<h2 align="center"><img src="docs/img/art/h-the-mods.svg" alt="The mods" width="720"></h2>
 
-### Combat Simulator
+Take the ones you want. Each has a page of its own with pictures and details.
 
-What does an hour of this fight give me, what does it cost, and will I die? It does not re-create the
-game's combat formulas: it loads a copy of your character into a second, invisible game and runs the
-game's own combat on it, in the background. An hour of fighting takes a fraction of a second.
+<table>
+  <tr>
+    <td width="330"><a href="mods/CombatSim"><img src="docs/img/combat-simulator-best.png" alt="Combat Simulator"></a></td>
+    <td>
+      <h3><a href="mods/CombatSim">Combat Simulator</a></h3>
+      What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a
+      hidden copy of your character. Compare saved loadouts, swap any item in, find the best place to
+      train a skill, then start the fight with one click.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/ItemSources"><img src="docs/img/item-sources.png" alt="Item Sources"></a></td>
+    <td>
+      <h3><a href="mods/ItemSources">Item Sources</a></h3>
+      Hover "Found in" or "Used in" on an item: which enemy drops it and where it lives, how many and how
+      likely, and every recipe, chest, thieving target or shop purchase that gives or uses it.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/RecipeRates"><img src="docs/img/recipe-rates.png" alt="Recipe Rates"></a></td>
+    <td>
+      <h3><a href="mods/RecipeRates">Recipe Rates</a></h3>
+      XP per hour on every recipe of a skill's list, the best one in gold. In the XP tooltip the whole
+      hour: XP, items made and used, what the products sell for, and how long your materials last.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/CombatGoals"><img src="docs/img/combat-goals.png" alt="Combat Goals"></a></td>
+    <td>
+      <h3><a href="mods/CombatGoals">Combat Goals</a></h3>
+      Combat trains several skills at once; the game's footer shows a level goal for one. A small
+      draggable, resizable window with the XP per hour of each and the time left to a goal you set.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/KillsInCombat"><img src="docs/img/kills-in-combat.png" alt="Kills in Combat"></a></td>
+    <td>
+      <h3><a href="mods/KillsInCombat">Kills in Combat</a></h3>
+      The number of times you have killed the enemy you are fighting, next to its name.
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><i>same small tag,<br>on every dungeon</i></td>
+    <td>
+      <h3><a href="mods/DungeonCompletions">Dungeon Completions</a></h3>
+      The number of times you have completed each dungeon, in the combat areas menu.
+    </td>
+  </tr>
+</table>
 
-- Simulate an area, a dungeon or everything you have unlocked: kills, XP, gold, food, deaths, lowest health.
-- Fight with one of your saved loadouts, or click any equipment slot to try another item (every item of
-  the game that fits, with a search box) and see the difference.
-- **Best for**: pick the skill you want to train; every unlocked fight is tried in each attack stance of
-  your weapon and ranked.
-- A Fight button starts the selected fight in the game.
+<h2 align="center"><img src="docs/img/art/h-install.svg" alt="Install" width="720"></h2>
 
-![Combat Simulator](docs/img/combat-simulator.png)
+The mods run on the unofficial [Melvor Mod Loader](https://www.nexusmods.com/melvoridle2/mods/2). Everything
+is a plain zip that you extract into the game folder: no installer, nothing outside that folder.
 
-### Item Sources
+1. **Open the game folder**: Steam > right-click Melvor Idle 2 > Manage > Browse local files.
+2. **Install the loader**: extract its zip there. `override.cfg` ends up next to `Melvor2.exe`.
+3. **Add the mods you want**: extract each zip from [Releases](https://github.com/Springs-Tea/melvor-2-mods/releases) into the same folder.
+4. **Start the game** from Steam. A green line in the top left corner says how many mods were loaded.
 
-Hover "Found in" or "Used in" on an item in the bank: which enemy drops it and where that enemy lives,
-which thieving target, hunting animal, chest, recipe, quest or shop purchase gives it, how many and how
-likely; and every recipe, upgrade or purchase that uses it.
-
-![Item Sources](docs/img/item-sources.png)
-
-### Recipe Rates
-
-XP per hour on every recipe of a skill's list (the best one in gold), and in the XP tooltip the whole
-hour: XP, items made and used, what the products sell for, and how long your materials last. For
-Smithing, Crafting, Fletching, Runecrafting, Beastcrafting, Cooking, Firemaking and Herblore.
-
-![Recipe Rates](docs/img/recipe-rates.png)
-
-### Combat Goals
-
-The game's footer shows the time left to a level goal for one skill; combat trains several at once. A
-small draggable, resizable window with the XP per hour of every combat skill you are training and the
-time left to a level goal you set for each.
-
-![Combat Goals](docs/img/combat-goals.png)
-
-### Kills in Combat
-
-The number of times you have killed the enemy you are fighting, next to its name.
-
-![Kills in Combat](docs/img/kills-in-combat.png)
-
-### Dungeon Completions
-
-The number of times you have completed each dungeon, in the combat areas menu.
-
-## Installing
-
-1. Install the [Melvor Mod Loader](https://www.nexusmods.com/melvoridle2/mods/2): extract its zip into the
-   game folder (Steam > Melvor Idle 2 > Manage > Browse local files).
-2. Download the zips of the mods you want and extract each into the same game folder. A mod ends up as
-   `mods\<Mod>\<Mod>.dll`.
-3. Start the game. `MelvorModLoader.log` in the game folder lists the mods that were loaded.
-
-To remove a mod, delete its folder under `mods`. Settings a mod keeps (a window's place and size, your
-level goals) are in that folder too.
-
-## Building from source
-
-You need the game with the loader installed, and the .NET 10 SDK. The projects reference the game's
-DLLs where the game is installed; pass `-p:GameDir="..."` when that is not
-`D:\Steam\steamapps\common\Melvor Idle 2`.
-
-```powershell
-dotnet build mods\RecipeRates\RecipeRates.csproj -c Release   # builds into the game's mods folder; close the game first
-.\tools\package.ps1                                           # one zip per mod in dist\, the game may stay open
 ```
+Melvor Idle 2\
+├─ Melvor2.exe
+├─ override.cfg                                   the loader
+├─ data_MelvorModLoader_windows_x86_64\           the loader
+└─ mods\
+   ├─ CombatSim\CombatSim.dll
+   ├─ ItemSources\ItemSources.dll
+   └─ ...                                         one folder per mod
+```
+
+**To remove a mod**, delete its folder under `mods`. Its settings (a window's place and size, your level
+goals) are in that folder too, so nothing is left behind.
+
+<h2 align="center"><img src="docs/img/art/h-questions.svg" alt="Questions" width="720"></h2>
+
+<details>
+<summary><b>Is my save safe?</b></summary>
+
+Yes. No mod writes to the save, and none adds or removes anything in the game. The Combat Simulator works
+on a copy of the character that exists only in memory and is thrown away after every fight. The one button
+that acts on the game, "Fight", does what the game's own area menu does: it starts a fight.
+</details>
+
+<details>
+<summary><b>Do they make the game easier?</b></summary>
+
+They show information the game already has (drop tables, recipe values, statistics) or works out the same
+way (the simulator runs the game's own combat). They give no items, XP or bonuses.
+</details>
+
+<details>
+<summary><b>What happens after a game update?</b></summary>
+
+The game is in early access and the loader is unofficial, so an update can break a mod until it is rebuilt.
+A mod that cannot find what it needs stops itself and says so in `MelvorModLoader.log`; the game and the
+other mods keep running. If the game does not start at all, delete `override.cfg` to play without mods.
+</details>
+
+<details>
+<summary><b>Something is wrong. What do you need?</b></summary>
+
+Open an [issue](https://github.com/Springs-Tea/melvor-2-mods/issues) with the mod's name, the game version, and `MelvorModLoader.log` from the
+game folder (it is rewritten on every start).
+</details>
+
+<h2 align="center"><img src="docs/img/art/h-how-they-are-built.svg" alt="How they are built" width="720"></h2>
+
+Every mod is a small C# class library that runs inside the game, compiled against the game's own assembly.
+
+```mermaid
+flowchart TB
+    subgraph game["Melvor Idle 2"]
+        L["Melvor Mod Loader<br/>loads every DLL under mods"]
+    end
+    subgraph repo["This repository"]
+        S["mods/Shared<br/>GameStyle · GameWindow"]
+        M1["CombatSim"]
+        M2["ItemSources"]
+        M3["RecipeRates"]
+        M4["CombatGoals"]
+        M5["KillsInCombat"]
+        M6["DungeonCompletions"]
+    end
+    S --> M1 & M2 & M3 & M4 & M5 & M6
+    M1 & M2 & M3 & M4 & M5 & M6 -->|"one DLL each"| L
+```
+
+- **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own
+  textures, fonts and colours at runtime; nothing is copied into a mod. `GameWindow.cs` is a draggable,
+  resizable window in the style of the game's pop-ups.
+- **They read the game instead of re-creating it.** The simulator runs the game's combat; Item Sources reads
+  the game's drop tables; Recipe Rates uses the game's own values for a recipe, bonuses included.
 
 | Folder | Contents |
 | --- | --- |
-| `mods/<Mod>` | One project per mod, with the `README.txt` that ships in its zip. |
-| `mods/Shared` | `GameStyle.cs`: the game's look (textures, fonts, colours, small controls), and `GameWindow.cs`: a draggable, resizable window in the style of the game's own pop-ups. Compiled into every mod. |
-| `third_party/MelvorModLoader` | The loader's source (MIT, by falorfrozen), kept here so it can be rebuilt after a game update. |
-| `publish` | The page texts for Nexus Mods. |
+| `mods/<Mod>` | One project per mod: its code, a `README.md` for people and the `README.txt` that ships in the zip. |
+| `mods/Shared` | The game's look, compiled into every mod. |
+| `third_party/MelvorModLoader` | The loader's source (MIT, by falorfrozen), kept so it can be rebuilt after a game update. |
+| `publish` | The release checklist and the page texts for Nexus Mods. |
 | `tools` | Scripts for building, packaging and looking around the game while developing. |
+| `docs/img` | The pictures on these pages. |
 
-### While developing
+<h2 align="center"><img src="docs/img/art/h-building.svg" alt="Building from source" width="720"></h2>
 
-- `tools\dev-cycle.ps1 -Mod <Mod>[,<Mod>]` rebuilds in Debug, restarts the game through Steam and waits
-  until the character is open.
-- A Debug build of Combat Goals carries `Dev.cs`: it loads the only character by itself and writes theme
-  dumps, scene tree dumps and screenshots into its mod folder, on start and on request. Other mods have a
-  request file of their own in Debug builds (`sim.request`, `item.request`). Release builds contain none
-  of it.
-- `tools\ApiDump` lists the types and member signatures of the game's assembly that match a pattern:
-  what an editor's auto-completion shows, as text.
+You need the game with the loader installed, and the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+The projects reference the game's DLLs where the game is installed; pass `-p:GameDir="..."` when that is not
+`D:\Steam\steamapps\common\Melvor Idle 2`.
 
-No game files are in this repository, and none may be added.
+```powershell
+# one mod, straight into the game's mods folder (close the game first: the DLL is locked while it runs)
+dotnet build mods\RecipeRates\RecipeRates.csproj -c Release
 
-## License
+# every mod as a release zip in dist\ (the game may stay open)
+.\tools\package.ps1
+```
 
-[MIT](LICENSE). The loader in `third_party` is MIT too, by its own author.
+Want to change something or add a mod? See [CONTRIBUTING.md](CONTRIBUTING.md). What changed between
+releases is in the [changelog](CHANGELOG.md), and what the mods do and do not do on your computer is in
+[SECURITY.md](SECURITY.md).
 
-Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
+<h2 align="center"><img src="docs/img/art/h-credits.svg" alt="Credits and license" width="720"></h2>
+
+- [Melvor Mod Loader](https://github.com/falorfrozen-cmd/MelvorModLoader) by falorfrozen makes mods for this
+  game possible. Its wiki is where to start if you want to write one.
+- Melvor Idle 2 is made by Games by Malcs and published by Jagex. This project is unofficial and fan-made,
+  and is not affiliated with either. No game files are in this repository.
+
+The code is under the [MIT license](LICENSE).

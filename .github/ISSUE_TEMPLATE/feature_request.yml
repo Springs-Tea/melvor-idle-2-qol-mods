@@ -1,0 +1,37 @@
+name: An idea
+description: Something a mod could do better, or a new mod.
+labels: ["idea"]
+body:
+  - type: dropdown
+    id: mod
+    attributes:
+      label: For which mod?
+      options:
+        - A new mod
+        - Combat Simulator
+        - Item Sources
+        - Recipe Rates
+        - Combat Goals
+        - Kills in Combat
+        - Dungeon Completions
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do in the game?
+      description: The situation matters more than the solution. "I never know which enemy to train Ranged on" says more than "add a table".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: A sketch or a screenshot of how another game or Melvor Idle 1 mod does it is welcome.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: The mods only show and help
+      options:
+        - label: This does not need a mod to give items or XP, or to change the save.
+          required: true
