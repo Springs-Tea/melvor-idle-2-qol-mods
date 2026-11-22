@@ -478,7 +478,7 @@ sealed class Catalog
         new("thieving", "Thieving", null, "Stolen with Thieving"),
         new("quest", "Quest", null, "The reward of a quest"),
         new("upgrade", "Upgrade", null, "Made by upgrading another item"),
-        new("none", "No known source", null, "Nothing in the game's data gives this item"),
+        new("none", "No source", null, "Nothing in the game's data gives this item"),
     };
 
     // The game's own pictures for them, by their names in its Icons folder.

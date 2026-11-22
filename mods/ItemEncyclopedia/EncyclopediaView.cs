@@ -59,7 +59,7 @@ sealed class EncyclopediaView
     // requirement reads exactly as in the game's tooltips.
     const string ItemPanelScene = "res://Entities/Bank/item_info_panel.tscn";
     const int Rows = 16, GroupLines = 30;
-    const float FiltersWidth = 292, DetailsWidth = 440, Width = 1280, Height = 620;
+    const float FiltersWidth = 300, DetailsWidth = 440, Width = 1280, Height = 620;
 
     sealed class Row
     {

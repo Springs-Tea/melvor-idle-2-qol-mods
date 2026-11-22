@@ -77,7 +77,7 @@ its choices are ticked.
 | **Combat style** | Melee, Ranged or Magic: the fighter it is for. |
 | **Weapon** | The kind of weapon: Bow, Sword, Staff, Crossbow, Dagger and the rest. |
 | **Skill** | The skills as the game's own "Found in" and "Used in" icons have them, Combat, Shop and Quests among them. *Gives it*, *Uses it* and *Tools* say which side you mean; *Any* is all three. |
-| **Comes from** | Enemy drop, Skill, Shop, Chest, Thieving, Quest, Upgrade, or No known source. Under them, one area or dungeon: only what its enemies drop or it gives as its reward. |
+| **Comes from** | Enemy drop, Skill, Shop, Chest, Thieving, Quest, Upgrade, or No source (nothing in the game's data gives it). Under them, one area or dungeon: only what its enemies drop or it gives as its reward. |
 
 Inside a group, ticking two choices means either of them. Across groups, an item has to fit all of them.
 
