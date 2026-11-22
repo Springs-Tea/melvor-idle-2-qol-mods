@@ -7,13 +7,21 @@ dark panel colour, with the question the mod answers under it. Pack.png, for the
 mods, is the banner of the main README.
 
 Nexus writes the mod's name and its counters over the lower 40% of a header, so everything is drawn in the
-upper 60%. The drawing is done by a browser without a window (Edge or Chrome), found in the usual places.
+upper 60%. The drawing is done by a browser without a window (Edge or Chrome), found in the usual places. The
+picture is asked for through the browser's DevTools protocol: its --screenshot switch stopped writing files
+in newer versions (seen with Edge 158).
 """
+import base64
+import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 ART = os.path.join(ROOT, 'docs', 'img', 'art')
@@ -56,19 +64,95 @@ def page(name, file, line):
             + svg + text + '</body>')
 
 
+class DevTools:
+    """Just enough of a WebSocket client to send DevTools commands to one page and read the answers."""
+
+    def __init__(self, url):
+        host, port, path = re.match(r'ws://([^:/]+):(\d+)(/.*)', url).groups()
+        self.sock = socket.create_connection((host, int(port)), timeout=30)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((f'GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n'
+                           f'Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n').encode())
+        reply = b''
+        while b'\r\n\r\n' not in reply:
+            reply += self.sock.recv(4096)
+        if b' 101 ' not in reply.split(b'\r\n', 1)[0]:
+            raise RuntimeError('The browser refused the DevTools connection.')
+        self.next_id = 0
+
+    def _read(self, count):
+        data = b''
+        while len(data) < count:
+            chunk = self.sock.recv(count - len(data))
+            if not chunk:
+                raise RuntimeError('The browser closed the DevTools connection.')
+            data += chunk
+        return data
+
+    def _message(self):
+        payload = b''
+        while True:
+            first, second = self._read(2)
+            size = second & 0x7f
+            if size == 126:
+                size = int.from_bytes(self._read(2), 'big')
+            elif size == 127:
+                size = int.from_bytes(self._read(8), 'big')
+            payload += self._read(size)
+            if first & 0x80:
+                return json.loads(payload)
+
+    def call(self, method, **params):
+        self.next_id += 1
+        data = json.dumps({'id': self.next_id, 'method': method, 'params': params}).encode()
+        mask = os.urandom(4)
+        size = len(data)
+        head = bytes([0x81]) + (bytes([0x80 | size]) if size < 126 else bytes([0x80 | 126]) + size.to_bytes(2, 'big'))
+        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+        while True:
+            answer = self._message()
+            if answer.get('id') == self.next_id:
+                if 'error' in answer:
+                    raise RuntimeError(f'{method}: {answer["error"]}')
+                return answer.get('result', {})
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    draw = browser()
-    for name, (file, line) in HEADERS.items():
-        html = os.path.abspath(os.path.join(OUT, name + '.html'))
-        png = os.path.abspath(os.path.join(OUT, name + '.png'))
-        with open(html, 'w', encoding='utf-8') as f:
-            f.write(page(name, file, line))
-        subprocess.run([draw, '--headless', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1',
-                        f'--window-size={WIDTH},{HEIGHT}', f'--screenshot={png}', 'file:///' + html.replace('\\', '/')],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        os.remove(html)
-        print(name + '.png')
+    profile = tempfile.mkdtemp(prefix='nexus-headers-')
+    # A profile of its own: a running Edge or Chrome would otherwise take the command over and draw nothing.
+    process = subprocess.Popen([browser(), '--headless=new', '--remote-debugging-port=0', f'--user-data-dir={profile}',
+                                '--disable-gpu', '--hide-scrollbars', 'about:blank'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        port_file = os.path.join(profile, 'DevToolsActivePort')
+        for _ in range(100):
+            if os.path.isfile(port_file) and open(port_file).read().strip():
+                break
+            time.sleep(0.2)
+        else:
+            sys.exit('The browser did not open its DevTools port.')
+        port = open(port_file).read().split()[0]
+        pages = json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/list'))
+        tools = DevTools(next(p for p in pages if p['type'] == 'page')['webSocketDebuggerUrl'])
+        tools.call('Emulation.setDeviceMetricsOverride', width=WIDTH, height=HEIGHT, deviceScaleFactor=1, mobile=False)
+        for name, (file, line) in HEADERS.items():
+            html = os.path.abspath(os.path.join(OUT, name + '.html'))
+            png = os.path.abspath(os.path.join(OUT, name + '.png'))
+            with open(html, 'w', encoding='utf-8') as f:
+                f.write(page(name, file, line))
+            tools.call('Page.navigate', url='file:///' + html.replace('\\', '/'))
+            time.sleep(1.5)
+            shot = tools.call('Page.captureScreenshot', format='png',
+                              clip={'x': 0, 'y': 0, 'width': WIDTH, 'height': HEIGHT, 'scale': 1})
+            with open(png, 'wb') as f:
+                f.write(base64.b64decode(shot['data']))
+            os.remove(html)
+            print(name + '.png')
+    finally:
+        process.kill()
+        process.wait()
+        shutil.rmtree(profile, ignore_errors=True)
 
 
 if __name__ == '__main__':

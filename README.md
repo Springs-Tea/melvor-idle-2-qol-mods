@@ -64,6 +64,7 @@ Take the ones you want. Each has a page of its own with pictures and details.
       skill and where it comes from, down to one dungeon, and read everything about an item: its stats
       and requirements, how many you have, which enemy drops it and how likely, what it is made from and
       what it is used in. Click an ingredient to go on from there.
+      <br><a href="https://www.nexusmods.com/melvoridle2/mods/24">Also on Nexus Mods</a>
     </td>
   </tr>
   <tr>
