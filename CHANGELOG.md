@@ -42,6 +42,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   your character, and shows every fight with which setup is better and by how much, both numbers side by side,
   how many fights each one wins, and in Best for where each setup does best. Better or worse only when the 95%
   ranges say so; otherwise "could be luck".
+- **Thieving Overview**, a new mod: on the Thieving page, a round button opens one line per Thieving target of
+  every place you have found, with success, time per try, and XP, gold, rare items and food per hour, and Safe or
+  Risky, from the game's own numbers for your character. The best of each column is gold, a click on a column's
+  name sorts by it, Best for lists the targets that give an item, a locked target shows as ??? with what it needs,
+  and a click on a line opens that target's place without starting to steal. In View Possible Rewards each
+  reward's quantity tells its number per hour, and the card of a target that can knock you out gets a Risky tag.
 
 ## 0.5.0
 

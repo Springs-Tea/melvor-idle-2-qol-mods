@@ -1,0 +1,82 @@
+NAME
+Thieving Overview
+
+VERSION
+{version}
+
+FILE
+dist/ThievingOverview-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+docs/img/thieving-overview.png (main), thieving-overview-best-for.png
+
+SUMMARY (the short line under the name, at most 350 characters)
+Which target to steal from, and will it knock you out? On the Thieving page, a round button opens every target in one list: success, time per try, and XP, gold, rare items and food per hour, Safe or Risky, the best in gold. Best for an item, the whole hour in a tooltip, the number per hour of each reward in View Possible Rewards.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Thieving Overview[/b][/size]
+Thieving has many targets in many places, each with its own perception, time, damage and loot. To choose, you would open every place and every View Possible Rewards and work out the hour in your head. This window puts every target of every place you have found in one list, with what an hour of stealing there gives your character and whether a failure can knock you out.
+
+[size=4][b]Where it is[/b][/size]
+On the Thieving page, a round button with the Thieving icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Thieving.
+
+[size=4][b]What the window shows[/b][/size]
+One line per target, of the place the Thieving page shows or of every place, and per hour:
+[list]
+[*][b]Success[/b]: the game's own chance that one try succeeds, your stealth against the target's perception, with every bonus and distraction.
+[*][b]Time[/b]: one try, with the stun after a failure on average.
+[*][b]XP[/b]: Thieving XP.
+[*][b]Gold[/b]: coins plus what the items sell for.
+[*][b]Rare[/b]: how long until a rare item, on average.
+[*][b]Food[/b]: about how much of the food chosen for Thieving you eat.
+[*][b]Safe[/b] or [b]Risky[/b]: can one failure take you from the point where auto eat steps in to 0 HP, as the Combat Simulator's Safe column says for a fight.
+[/list]
+The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best targets on top. The target you are stealing from has a lit outline. A target you cannot steal from yet is greyed, with what it still needs; like the game's own Thieving cards, one the game shows as ??? is ??? here too, without its picture and without what it gives.
+Click a line to go to that target's place: the Thieving page opens it, as its own Select Location does. Nothing is started or stopped, no target is chosen, and the window stays open.
+
+[size=4][b]Best for an item[/b][/size]
+Choose an item, a key half, a ring, and see the targets that give it, the most per hour first.
+
+[size=4][b]In the tooltip of a line[/b][/size]
+The whole hour at that target: the tries and how many succeed, the XP, the coins, every common and rare item with how many an hour brings and what it sells for, the failures and their biggest hit, the food and about how long yours lasts, why it is Safe or Risky, and your own record there.
+
+[size=4][b]On the game's own screens[/b][/size]
+[list]
+[*]In [b]View Possible Rewards[/b], rest the pointer on the quantity of a reward, or of the coins, for how many of it that target gives per hour at your numbers. Nothing is written on the window itself.
+[*]While you steal from a target that can knock you out, its card on the Thieving page has a small [b]Risky[/b] tag after its name: its biggest hit, the one the HP bar marks, against your auto eat point.
+[/list]
+
+[size=4][b]What is counted[/b][/size]
+The numbers start from the game's own values for each target, the ones the Thieving page shows, so they move with your stealth, bonuses and distractions. Chances count as their long-run average: success, the stun and its avoidance, coins, the common and rare rewards, doubling (counted as doubling the items of a try). XP is counted for each successful try.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]It is an estimate, not a promise: chances average out over many tries, not over ten.
+[*]The game does not say how its hits are spread below the max hit, so Food counts every failure that hurts at the max hit; food that heals more than you lost and HP coming back by itself are not counted. Food is a guide, not an exact count.
+[*]A heist's XP and rewards come over its stages, and how many tries a whole heist takes is not a number the game gives: for a heist only success, time, food and Safe are shown.
+[*]With a fortune, a target's items are counted as its View Possible Rewards shows them, once you have opened it.
+[*]The chance to pickpocket the same area again is not counted.
+[*]Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold, choices and sort orders are kept in its own folder.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\ThievingOverview\ThievingOverview.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\ThievingOverview[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.
+It uses the game's own textures, fonts and colours, so it looks like part of the game. It shows what the game knows, and does one thing: a click on a line shows that target's place on the Thieving page. It never starts, stops or chooses a target, and gives no items, XP or bonuses.
+Open source (MIT), with the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/ThievingOverview]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/ThievingOverview[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
