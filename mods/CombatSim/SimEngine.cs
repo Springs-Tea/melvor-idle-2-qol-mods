@@ -10,6 +10,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using GamesByMalcs.Melvor2;
+using GamesByMalcs.Melvor2.Core;
 using GamesByMalcs.Melvor2.Components.CombatAreas;
 using GamesByMalcs.Melvor2.Components.Equipment;
 using GamesByMalcs.Melvor2.Components.Loadouts;
@@ -42,6 +43,7 @@ sealed class SimEngine
     const int Pile = 100_000, Stock = 1_000;
     // A character that dies within moments of every restart would otherwise spin through the whole fight.
     const int MaxRestarts = 5_000;
+    const int MaxDeathsWithoutFoodOrKill = 10;
     // The save the game writes on request must be this fresh to be taken as the snapshot.
     const double SaveMaxAgeSeconds = 10;
     // A run is stopped when the game has grown by this much since it began: copies are not being released.
@@ -83,6 +85,7 @@ sealed class SimEngine
     public SimEngine(Action<string> log) => _log = log;
 #if DEVTOOLS
     static WeakReference<Game>? s_lastSim;
+    MusicScan _musicScan = null!;
 #endif
 
     public static bool IsSupported => s_loadState != null;
@@ -120,6 +123,9 @@ sealed class SimEngine
         var cancel = _cancel = new CancellationTokenSource();
         var waiting = new ConcurrentQueue<SimTarget>(targets);
         workers = Math.Clamp(workers, 1, Math.Max(1, targets.Count));
+#if DEVTOOLS
+        _musicScan = new MusicScan(_log);
+#endif
         Task.Run(() =>
         {
             try
@@ -147,6 +153,7 @@ sealed class SimEngine
             finally
             {
 #if DEVTOOLS
+                _musicScan.Finish();
                 long before = GC.GetTotalMemory(false);
                 long ws = Process.GetCurrentProcess().WorkingSet64;
                 GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
@@ -180,6 +187,57 @@ sealed class SimEngine
         catch (TargetInvocationException e) when (e.InnerException != null) { ExceptionDispatchInfo.Capture(e.InnerException).Throw(); }
     }
 
+    // A copy's combat action tells the game's audio manager which playlist to play whenever its state changes:
+    // a fight that starts, a death, a restart. There is one audio manager, shared with the running game, so a
+    // simulated fight changed the music the player hears, and the news of the new track reached the game's
+    // music button from a background thread: with the hundreds of deaths of a long scan, a crash. The action
+    // puts that handler on its own event when a save is loaded, and the handler does nothing else, so taking
+    // it off again is all it takes. The event's list is private to the action; it is removed through the
+    // event itself, as in Unhook.
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = nameof(CombatActionComponent.StateChanged))]
+    static extern ref EventHandler<ValueChangedEventArgs<CombatActionState>>? StateChangedOf(CombatActionComponent action);
+
+    bool RemoveMusicHandler(CombatActionComponent action)
+    {
+        Delegate[] handlers = StateChangedOf(action)?.GetInvocationList() ?? [];
+#if DEVTOOLS
+        _musicScan.LogSubscribers(handlers, action);
+#endif
+        bool removed = false;
+        foreach (var handler in handlers)
+        {
+            if (ReferenceEquals(handler.Target, action) && handler.Method.DeclaringType == typeof(CombatActionComponent)
+                && handler.Method.Name == "StateChangedHandler")
+            {
+                action.StateChanged -= (EventHandler<ValueChangedEventArgs<CombatActionState>>)handler;
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
+    int _loggedMusic;
+
+    void CutMusic(CombatActionComponent action)
+    {
+        string reason;
+        try
+        {
+            if (RemoveMusicHandler(action))
+            {
+#if DEVTOOLS
+                _musicScan.CountCut();
+#endif
+                return;
+            }
+            reason = "its music handler was not found";
+        }
+        catch (Exception e) { reason = e.Message; }
+        // Once per game session: the fights are still right, but they reach the game's music as they did before.
+        if (Interlocked.Exchange(ref _loggedMusic, 1) == 0)
+            _log($"A copy could not be cut off from the game's music (the game was updated?): {reason}. Simulated fights may change the music, and a very long scan with many deaths may be unsafe.");
+    }
+
     SimResult RunOne(byte[] save, SimTarget target, SimOptions options, CancellationToken cancel)
     {
         var result = new SimResult { Target = target, SetupKey = options.SetupKey, SetupLabel = options.SetupLabel };
@@ -189,6 +247,9 @@ sealed class SimEngine
         {
             // A Game cannot take a save twice, so every fight gets a copy of its own (about a second).
             sim = new Game();
+#if DEVTOOLS
+            _musicScan.CountCopy();
+#endif
             sim.LoadForSave();
             using (var stream = new MemoryStream(save)) LoadState(stream, sim);
             Fight(sim, target, options, result, cancel);
@@ -217,12 +278,16 @@ sealed class SimEngine
         return result;
     }
 
-    static void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, CancellationToken cancel)
+    void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, CancellationToken cancel)
     {
         if (!sim.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? ce) || ce is not CombatEntity combat ||
             !sim.Entities.TryGetObjectById("MelvorBase:Bank", out GameEntity? be) || be is not BankEntity bank)
         { result.Failed = true; result.Note = "The copy has no combat or bank."; return; }
 
+        // Development: a build with MUSIC_BASELINE leaves the handler on, to measure what it did (MusicScan).
+#if !(DEVTOOLS && MUSIC_BASELINE)
+        CutMusic(combat.Action);
+#endif
         BaseCombatArea? area = combat.Areas.ActiveAreas.Keys.FirstOrDefault(a => a.Id == target.AreaId);
         Enemy? enemy = target.EnemyId == null ? null : (area as CombatArea)?.Enemies.FirstOrDefault(x => x.Id == target.EnemyId);
         if (area == null || (target.EnemyId != null && enemy == null) || (target.EnemyId == null && area is not Dungeon))
@@ -257,14 +322,23 @@ sealed class SimEngine
         static double Price(Item item) => item.SellsFor is { Currency.Id: Gold } price ? price.Quantity : 0;
         static string ItemName(Item item) => item.DisplayName.GetPluralText(2);
 
-        combat.Enemy.Killed += (_, _) => result.Kills++;
+        int deathsWithoutFoodOrKill = 0;
+        combat.Enemy.Killed += (_, _) => { result.Kills++; deathsWithoutFoodOrKill = 0; };
         combat.Areas.DungeonCompleted += (_, _) => result.DungeonRuns++;
         combat.Action.PlayerDied += (_, _) =>
         {
             result.Deaths++;
+            if (!options.UnlimitedSupplies && eaten != null && result.FoodEaten > 0 && bank.Inventory.GetQuantity(eaten) == 0)
+                deathsWithoutFoodOrKill++;
+            else deathsWithoutFoodOrKill = 0;
             if (result.FirstDeathSeconds < 0) result.FirstDeathSeconds = ticks / (double)TicksPerSecond;
         };
-        combat.Food.FoodEaten += (_, e) => { result.FoodEaten += e.Quantity; result.Healed += e.Healing; };
+        combat.Food.FoodEaten += (_, e) =>
+        {
+            result.FoodEaten += e.Quantity;
+            result.Healed += e.Healing;
+            deathsWithoutFoodOrKill = 0;
+        };
         combat.Player.Health.CurrentChanged += (_, e) =>
         {
             if (e.NewValue < result.LowestHp) result.LowestHp = e.NewValue;
@@ -364,6 +438,13 @@ sealed class SimEngine
                                                                 && sim.Data.GetDataRegistryOutput<Item>().TryGetObjectById(u.Id, out Item? item)
                                                                 && bank.Inventory.GetQuantity(item) == 0 && combat.Equipment.GetEquippedQuantity(item) == 0);
                 notes.Add(empty != null ? $"Ran out of {empty.Name} after {Clock(ticks)}." : $"The fight stopped after {Clock(ticks)}.");
+                result.Note = string.Join(" ", notes);
+                break;
+            }
+            if (deathsWithoutFoodOrKill >= MaxDeathsWithoutFoodOrKill)
+            {
+                // From the bank, with the food gone: nothing but dying is left, and its rates would say nothing.
+                notes.Add($"Stopped at {Clock(ticks)} after {deathsWithoutFoodOrKill} deaths without food or a kill.");
                 result.Note = string.Join(" ", notes);
                 break;
             }

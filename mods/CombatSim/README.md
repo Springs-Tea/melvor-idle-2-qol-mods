@@ -144,8 +144,9 @@ start. Tick fewer areas to keep it short.
   fight that is kept supplied: use it to compare places, equipment and spells.
 - **From bank** uses what you own right now. Use it with a long duration to see how far your supplies get
   you: the note on the result says what ran out and when. Without arrows or runes the fight ends there.
-  Without food it goes on, and the deaths that follow are in the numbers; "Your food lasts" in the details
-  says how many kills the food was enough for.
+  After the food runs out, the fight continues until the time is up or you die ten times in a row without a
+  kill. If it ends early, the note says why and the rates cover the time fought. "Your food lasts" in the
+  details says how many kills the food was enough for.
 
 Either way, "Used" in the details tells you what an hour costs.
 
@@ -174,8 +175,8 @@ changes your equipment: if you simulated other items, you still have to put them
   the stance.
 - **Is this weapon worth buying?** Simulate your area, click the weapon slot, pick the weapon (you do not
   have to own it), simulate again, read "Compared with".
-- **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" note, means
-  yes. Low HP tells you how close it was.
+- **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
+  at" note, means yes. Low HP tells you how close it was.
 - **Which fight makes my food last longest?** Click Food/kill: the top line eats the least for each kill.
   "Your food lasts" in its details says how many kills the food in your bank is enough for.
 - **Which spell?** Simulate once per spell and compare.
@@ -226,6 +227,7 @@ Everything is in `mods\CombatSim`:
 | A fight is missing from the table after Cancel | A fight that was cut short is dropped; the finished ones are kept. |
 | "... could not be equipped (requirements not met?)" | The copy follows the game's rules: you do not meet that item's requirements. |
 | "Ran out of ... after ..." | From bank: that supply was used up. Without arrows or runes the fight ended there; without food it went on. |
+| "Stopped at ... after 10 deaths without food or a kill" | From bank: the food was gone and you died ten times in a row without killing anything. The fight ended there; the numbers are of the time until then. |
 | "The fight could not be started" | The game refused to start it for the copy, usually an unmet requirement of the area. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |

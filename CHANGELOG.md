@@ -4,6 +4,11 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: a long scan with many deaths no longer crashes the game. A simulated fight reached
+  into the running game's music each time it started or the copy died; a From bank scan of several hours
+  could close the game that way once the food was gone. Simulated fights now leave the music alone (they
+  could also change the track you were hearing), and a From bank fight ends once you have died ten times in
+  a row without food or a kill, with a note that says so.
 - **Combat Simulator**: a Food/kill column, for when food is short: the fight with the smallest number makes
   your food last longest, and the first click on the column puts it on top. Details add food and healing per
   kill and how many kills the food in your bank is enough for, and "Compared with" says how food per kill

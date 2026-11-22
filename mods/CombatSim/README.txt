@@ -32,7 +32,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
 Good to know
   - "Unlimited" supplies hand food, ammo, runes and prayer points back as they are used. "From
     bank" uses what you have and says what ran out, and when. Without ammo or runes the fight
-    ends there; without food it goes on.
+    ends there. After the food runs out, ten deaths in a row without a kill end the fight. The
+    note says why it stopped and the rates cover the time fought.
   - Farming and Ranching are paused in the copy, so their items do not show up as supplies.
   - Fights are random: two runs of the same fight differ a little. Longer fights are steadier.
   - An item whose requirements you do not meet cannot be equipped in the copy either; the
