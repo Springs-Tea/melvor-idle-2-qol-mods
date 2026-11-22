@@ -33,6 +33,11 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 - **Combat Simulator**: a two-handed weapon fills both hands on the left, as on the game's equipment screen, and a
   result says when the copy wore something other than the slots show. Picking the loadout's own item no longer
   counts as a change.
+- **Fishing Rates**, a new mod: on the Fishing page, a round button opens one line per fishing spot, with the
+  pictures of its fish, the time of a catch, and catches, Fishing XP, gold and bait per hour, from the game's own
+  numbers for your character. The best of each column is gold, a click on a column's name sorts by it, the spot the
+  page shows is lit, a locked spot is greyed with the level it needs, and a click on a line opens that spot on the
+  Fishing page without starting to fish. A line's tooltip has the whole hour.
 
 ## 0.5.0
 

@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: ten quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: eleven quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -74,6 +74,15 @@ Take the ones you want. Each has a page of its own with pictures and details.
       XP per hour on every recipe of a skill's list, the best one in gold. In the XP tooltip the whole
       hour: XP, items made and used, what the products sell for, and how long your materials last.
       <br><a href="https://www.nexusmods.com/melvoridle2/mods/19">Also on Nexus Mods</a>
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/FishingRates"><img src="docs/img/fishing-rates.png" alt="Fishing Rates"></a></td>
+    <td>
+      <h3><a href="mods/FishingRates">Fishing Rates</a></h3>
+      Every fishing spot side by side, from a round button on the Fishing page: its fish, the time of a
+      catch, and catches, Fishing XP, gold and bait per hour, the best of each column in gold. Hover a
+      line for the whole hour there; click it to go to that spot on the page.
     </td>
   </tr>
   <tr>
@@ -222,9 +231,10 @@ flowchart TB
         M8["AstrologyOverview"]
         M9["AwaySummary"]
         M10["SkillBonuses"]
+        M11["FishingRates"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

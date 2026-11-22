@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Nothing to say here: what a mod is made of is in ..\Directory.Build.props, and this file's name is the
+       name of the mod, of its DLL and of its namespace. -->
+</Project>

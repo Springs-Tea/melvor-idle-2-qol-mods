@@ -40,6 +40,7 @@ HEADERS = {
     'ItemSources': ('h-item-sources.svg', 'Where does this drop, and what is it for?'),
     'ItemEncyclopedia': ('h-item-encyclopedia.svg', 'What is this item, what is it good for, and where do I get it?'),
     'RecipeRates': ('h-recipe-rates.svg', 'Which recipe gives more XP per hour?'),
+    'FishingRates': ('h-fishing-rates.svg', 'Where do I fish for the most XP, fish or gold per hour?'),
     'SkillBonuses': ('h-skill-bonuses.svg', 'Why is my Woodcutting this fast?'),
     'AstrologyOverview': ('h-astrology-overview.svg', 'Which constellation is closest to its next unlock?'),
     'AwaySummary': ('h-away-summary.svg', 'What changed while I was away?'),

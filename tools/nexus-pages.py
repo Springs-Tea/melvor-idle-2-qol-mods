@@ -24,8 +24,8 @@ REPO = 'https://github.com/Springs-Tea/melvor-idle-2-qol-mods'
 PAGE = 'https://www.nexusmods.com/melvoridle2/mods/'
 # The number of each mod's page on Nexus. None is a mod that has no page there yet: until its number is
 # written here, links to it lead to its guide on GitHub.
-PAGES = {'CombatSim': 17, 'ItemSources': 18, 'ItemEncyclopedia': 24, 'RecipeRates': 19, 'SkillBonuses': 35,
-         'AstrologyOverview': 36, 'AwaySummary': 37, 'CombatGoals': 20, 'KillsInCombat': 21,
+PAGES = {'CombatSim': 17, 'ItemSources': 18, 'ItemEncyclopedia': 24, 'RecipeRates': 19, 'FishingRates': None,
+         'SkillBonuses': 35, 'AstrologyOverview': 36, 'AwaySummary': 37, 'CombatGoals': 20, 'KillsInCombat': 21,
          'DungeonCompletions': 22, 'Pack': 23}
 MODS = [mod for mod in PAGES if mod != 'Pack']
 PAPER, GOLD, GREY = '#e9dfc1', '#edbf59', '#b5b5b5'   # the game's paper, gold and secondary text
@@ -202,11 +202,11 @@ def convert(folder, images, others):
     out = body(readme(folder), folder, images)
 
     out.extend(heading('The rest of the set'))
-    out.append('Ten mods made together; each works on its own.')
+    out.append('Eleven mods made together; each works on its own.')
     out.append('[list]')
     out.extend(f'[*][url={address(mod)}][b]{name}[/b][/url]: {line}' for mod, (name, line) in others.items() if mod != folder)
     out.append('[/list]')
-    out.append(f'All ten in one zip: [url={PAGE}{PAGES["Pack"]}]Quality of Life Mods (all in one)[/url]')
+    out.append(f'All eleven in one zip: [url={PAGE}{PAGES["Pack"]}]Quality of Life Mods (all in one)[/url]')
     out.append('')
 
     out.extend(heading('About'))
