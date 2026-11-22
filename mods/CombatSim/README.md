@@ -333,8 +333,47 @@ To hide the tags, untick **Show on enemy cards in the combat areas menu** at the
 
 The red button under the details starts the selected fight in the game, the way the game's own area menu
 does, and closes the window. The small text above it says exactly what else it will do: switch to the stance
-of that result, and select the spell when the result was simulated with what you are wearing. It never
-changes your equipment: if you simulated other items, you still have to put them on.
+of that result, and select the spell when the result was simulated with what you are wearing.
+
+**Wear this setup first**, the tick box above the button, is off until you tick it, and stays as you leave
+it. Unticked, Fight never changes your equipment: if you simulated other items, you still have to put them on.
+Ticked, Fight first puts on what the selected result was simulated with, through the game's own actions, and
+then starts the fight:
+
+| The simulated setup | What Fight does first |
+| --- | --- |
+| Another saved loadout | Changes to it, as the game's own loadout buttons do. The loadout comes with what the game keeps in it: its food, prayers, attack stance and spells. |
+| An item you swapped in | Puts it on from your bank, as the game's equipment screen does; what it replaces goes back to the bank. Arrows and other ammunition: as many as your bank holds, never more; the same arrows already in their slot are left as they are. |
+| A spell you chose | Selects it. |
+| An item that is not in your bank | Skips it: that slot stays exactly as it is. So does a slot whose item you cannot wear yet or wear in another slot, and one whose old piece your bank has no room for. |
+| A slot you emptied | Nothing: what you wear there stays on. Fight only puts on pieces from your bank; it never just takes one off. |
+
+With the box ticked, the small text above the button names every step before you press it, for example
+*Wears Loadout 2, puts on Adamant Sword and 1,250 Bronze Arrows in place of Iron Sword, skips Gold Ring (not
+in your bank), switches to the Stab stance, if your weapon has it, then fights Scarecrow.* When nothing goes
+on, it says why first, for example *Puts nothing on: skips Gold Ring (not in your bank).* Fight never does
+more than that text says:
+
+- If your equipment or bank changed after the text was written (an item sold, a slot changed by hand), Fight
+  puts nothing on and starts no fight. The text is written again: read it, then press Fight again.
+- After a change of loadout, Fight first makes sure the game has put on what that loadout keeps. Before each
+  item, it asks the game again: an item that can no longer go on as the text said stays off, and the others
+  go on.
+- When everything went on as the text said, the window closes as before. When a slot stayed as it was, or
+  something did not go as the text said, the window stays open and a gold line says what really happened,
+  for example *Fighting Scarecrow. Wore Loadout 2, put on Adamant Sword in place of Iron Sword. Gold Ring did
+  not go on: not in your bank.*
+- If the game does not do a step the way it should, Fight stops there and does not start the fight, so you
+  can look at your equipment first.
+
+![Wear this setup first, ticked: the text above Fight names every step](../../docs/img/combat-simulator-wear.png)
+
+Nothing is ever bought, made or given, and nothing is put back after the fight: the game keeps the change as
+when you put an item on by hand. What your bank has no room for stays on you: if it cannot take back what
+another loadout takes off, Fight does not change the loadout and puts nothing on. The box does not choose
+food itself: another loadout comes with the food the game keeps for it, and the simulation had that food too.
+When the box puts nothing on for the selected fight, it looks greyed and says why when you point at it, and
+Fight does what it does unticked. It can always be ticked and unticked.
 
 ## Questions it answers
 
@@ -404,6 +443,11 @@ Everything is in `mods\CombatSim`:
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |
 | No tag on an enemy card | That enemy has no scan yet (scans made before the tags existed do not count), its fight failed, it belongs to a dungeon, or the tags are switched off at the bottom of History. If no card ever gets one, look for `[CombatSim] The tags on the enemy cards are switched off` in `MelvorModLoader.log`: a game update changed the menu; the simulator itself keeps working. |
 | "Other setup" right after a scan, with nothing changed | Report it with the log: your setup was read differently from the scan's. |
+| "Skips Gold Ring (not in your bank)" above Fight, or "Gold Ring did not go on" after it | Wear this setup first only puts on what is in your bank. The other pieces go on, the fight starts with them, and the window stays open to say what stayed. |
+| "Your bank has no room for ..." above Fight | That piece would have to go back to your bank, and the game says it does not fit there. Make room in your bank, then open the simulator again. |
+| "Your equipment or bank changed after the words above Fight were written" | Something changed between the text and your click. Nothing was put on and no fight was started: read the new text, then press Fight again. |
+| "Wear this setup first" looks greyed | It puts nothing on for this fight; put the pointer on it for why. An earlier scan is on show; there is nothing to put on (you wear the setup already, or every changed item is skipped); that loadout is no longer there; your bank has no room for what the change of loadout takes off; Fight could not work out what to put on (`MelvorModLoader.log` says why); or a game update changed how equipment is put on (then `MelvorModLoader.log` has a line `Wear this setup first is switched off`). Fight then does what it does unticked. |
+| "The fight was not started" after Fight, with Wear this setup first ticked | The game did not do a step the way it should: it had not finished changing the loadout, or it put on or took off something else. Fight stopped there; the gold line says what went on before. Look at your equipment, and report it with `MelvorModLoader.log`, which has the count of each piece before and after. |
 
 ## Install
 
@@ -415,4 +459,5 @@ Everything is in `mods\CombatSim`:
 4. Start the game. `MelvorModLoader.log` in the game folder has a line `Mod loaded: CombatSim`.
 
 To update, extract the new zip over the old one. To remove the mod, delete `mods\CombatSim`. Its settings and earlier scans are in that folder too.
-Your save is never changed.
+The mod never writes your save. Only Fight with "Wear this setup first" ticked changes your equipment, through
+the game's own actions, and the game saves that as it saves any change you make.

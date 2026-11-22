@@ -27,7 +27,7 @@ namespace CombatSim;
 /// of each fight gives (kills, XP, gold, loot), uses (food, ammo, runes) and risks (deaths, lowest health).
 /// Nothing the copy does is saved. A round button on the right edge of the screen opens it.
 /// </summary>
-public class CombatSimMod : IMod, ISimLookup
+public partial class CombatSimMod : IMod, ISimLookup
 {
     const string WindowTitle = "Combat Simulator";
     const string StatusPrefix = "Simulator · ";
@@ -48,6 +48,8 @@ public class CombatSimMod : IMod, ISimLookup
         public int Duration { get; set; } = 1;
         public bool Unlimited { get; set; } = true;
         public bool ShowEnemyCards { get; set; } = true;
+        /// <summary>"Wear this setup first" above the Fight button: off until the player ticks it.</summary>
+        public bool WearSetupFirst { get; set; }
         public bool BestMode { get; set; }
         public string TrainSkill { get; set; } = "";
         /// <summary>The list's columns by key, left to right; null is the default list (SimColumns.Default).</summary>
@@ -92,6 +94,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.Duration = _settings.Duration;
         _state.Unlimited = _settings.Unlimited;
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
+        _state.WearSetup = _settings.WearSetupFirst;
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
         _state.Columns = SimColumns.Read(_settings.Columns);
@@ -120,6 +123,7 @@ public class CombatSimMod : IMod, ISimLookup
             Pump();
 #if DEVTOOLS
             DevRequests();
+            DevWearRequests();
 #endif
         }
         catch (Exception e)
@@ -151,7 +155,8 @@ public class CombatSimMod : IMod, ISimLookup
         _state.Running = false;
         _state.Current = "";
         _state.Overrides.Clear();
-        _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = "";
+        _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = _state.FightReport = "";
+        _wearShown = null;   // FightSetup.cs: the words on show were for the character before
         _history.Close();
         _historyRead = false;
         _run = null;
@@ -379,6 +384,7 @@ public class CombatSimMod : IMod, ISimLookup
 
     void Close()
     {
+        _state.FightReport = "";   // what the last Fight put on was read; next time the words say what Fight will do
         if (_window is { IsAlive: true }) _window.Visible = false;
         SyncStripButton();
     }
@@ -554,6 +560,7 @@ public class CombatSimMod : IMod, ISimLookup
         _settings.Duration = _state.Duration;
         _settings.Unlimited = _state.Unlimited;
         _settings.ShowEnemyCards = _state.ShowEnemyCards;
+        _settings.WearSetupFirst = _state.WearSetup;
         _settings.BestMode = _state.BestMode;
         _settings.TrainSkill = _state.TrainSkillId;
         _settings.Columns = SimColumns.Write(_state.Columns);
@@ -602,15 +609,22 @@ public class CombatSimMod : IMod, ISimLookup
     }
 
     // The real thing: start the selected fight in the game, the way its own area menu does. Equipment is
-    // left as it is; the stance the result was simulated with is selected when the weapon has it.
+    // left as it is unless "Wear this setup first" is ticked (FightSetup.cs); the stance the result was
+    // simulated with is selected when the weapon has it.
     void Fight(SimTarget target)
     {
         if (_combat == null) return;
+        // What the box put on first, when it was ticked and had something to do; null otherwise.
+        WearOutcome? wore = null;
         try
         {
             var (area, active) = _combat.Areas.ActiveAreas.FirstOrDefault(a => a.Key.Id == target.AreaId);
             // An earlier scan may be of another character with the same name: only what this one has unlocked.
             if (area == null || active is not { UnlockRequirements.AreMet: true }) { _state.Message = "That area is not available."; _view?.Refresh(); return; }
+
+            wore = WearForFight(target, area);
+            // Something went wrong on the way: the player reads what happened before any fight.
+            if (wore is { Fight: false }) { ShowWearReport(target, wore); return; }
 
             if (target.StanceId != null)
             {
@@ -638,12 +652,14 @@ public class CombatSimMod : IMod, ISimLookup
 
             _state.Message = "";
             _ctx.Log($"Fight started from the simulator: {target.Name}{(target.StanceName != "" ? " (" + target.StanceName + ")" : "")}.");
-            Close();   // out of the way: the fight is on
+            if (wore is { Read: true }) ShowWearReport(target, wore);   // the window stays, saying what did not go as said
+            else Close();   // out of the way: the fight is on
         }
         catch (Exception e)
         {
             _state.Message = "The fight could not be started.";
             _ctx.Log("Could not start the fight: " + e);
+            if (wore != null) ShowWearReport(target, wore);   // what went on; the status line says the fight did not start
             _view?.Refresh();
         }
     }
@@ -1006,6 +1022,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.TrainSkillId = _settings.TrainSkill;
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.Columns = SimColumns.Read(_settings.Columns);
+        _state.WearSetup = _settings.WearSetupFirst;
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         if (_window is { IsAlive: true } window)
         {

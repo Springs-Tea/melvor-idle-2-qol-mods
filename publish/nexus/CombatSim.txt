@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-simulator.png (main), combat-simulator-best.png, combat-simulator-compare.png, combat-simulator-areas.png, combat-simulator-spell.png, combat-simulator-history.png, combat-simulator-picker.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Choose the numbers the list shows, compare equipment and spells, find where to train, look at earlier scans again, and see Safe or Risky on each enemy card of the combat areas menu.
+What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Choose the numbers the list shows, compare equipment and spells, find where to train, look at earlier scans again, see Safe or Risky on the game's enemy cards, and let Fight put on the simulated setup from your bank.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -54,12 +54,22 @@ Not "what does this area give" but "where should I go". Choose the skill you wan
 [size=4][b]History and Fight[/b][/size]
 The last ten scans of a character are kept, also after the game was closed: look at one again without simulating anything. The red [b]Fight[/b] button starts the selected fight in the game.
 
+[b]Wear this setup first[/b], the tick box above the Fight button, is off until you tick it. Ticked, Fight first puts on what the result was simulated with, through the game's own actions, then starts the fight:
+[list]
+[*]Another saved loadout: it changes to it, as the game's loadout buttons do, with the food, prayers, attack stance and spells the game keeps in it.
+[*]An item you swapped in: it puts it on from your bank, and what it replaces goes back to the bank. Ammunition: as many as your bank holds, never more.
+[*]A spell you chose: it selects it.
+[*]An item that is not in your bank, that you cannot wear yet, or whose old piece your bank has no room for: it is skipped, and that slot stays exactly as it is.
+[*]A slot you emptied: what you wear there stays on. Fight never just takes a piece off.
+[/list]
+The text above the button names every step before you press it, or why nothing goes on, and Fight never does more than it says. If your equipment or bank changed since the text was written, nothing is put on and no fight starts. When everything went on, the window closes; when a slot stayed as it was or a piece could not go on as the text said, the window stays open and says what really happened. When the game does not do a step as it should, Fight stops there and starts no fight. Nothing is bought, made or put back. When the box puts nothing on for a fight, it looks greyed: point at it for why.
+
 [size=4][b]Good to know[/b][/size]
 [list]
 [*]Fights are random: two runs of the same fight differ by a few percent. Longer fights are steadier.
 [*]An item whose requirements you do not meet cannot be equipped by the copy either; the result says so.
 [*]Up to four fights are simulated side by side. If the game stutters during a scan, set "Workers" in mods\CombatSim\settings.json to 1 or 2.
-[*]The Fight button never changes your equipment.
+[*]The Fight button changes your equipment only with [b]Wear this setup first[/b] ticked.
 [/list]
 
 [size=4][b]Install[/b][/size]
@@ -71,7 +81,7 @@ The last ten scans of a character are kept, also after the game was closed: look
 To update, extract the new zip over the old one.
 
 [size=4][b]Uninstall[/b][/size]
-Delete the folder [font=Courier New]mods\CombatSim[/font]. Its settings and earlier scans are in that folder. Nothing in your save is changed.
+Delete the folder [font=Courier New]mods\CombatSim[/font]. Its settings and earlier scans are in that folder. The mod never writes your save: only Fight with Wear this setup first ticked changes your equipment, through the game's own actions.
 
 [size=4][b]About[/b][/size]
 Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.

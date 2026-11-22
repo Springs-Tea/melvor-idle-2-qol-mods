@@ -21,6 +21,11 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   Simulator: its name on the paper title, a button beside the red X that folds it down to its title (remembered),
   and the X to close it where the eye was. The time period box, with the footer's clock, sits just under the title
   bar.
+- **Combat Simulator**: a "Wear this setup first" box above Fight, off until you tick it. Ticked, Fight first
+  changes to the loadout you simulated and puts on the items you swapped in, from your bank, through the
+  game's own actions; an item that is not in your bank, or whose old piece your bank has no room for, is skipped
+  and its slot stays as it is. The text above the button names every step, and Fight never does more than it
+  says.
 
 ## 0.5.0
 

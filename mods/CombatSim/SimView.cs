@@ -163,6 +163,10 @@ sealed class SimState
     /// <summary>The loadout the character has on, as of the last time the window was opened.</summary>
     public string WornLoadoutId = "";
 
+    /// <summary>"Wear this setup first" above the Fight button (FightSetup.cs): off until the player ticks it.</summary>
+    public bool WearSetup;
+    /// <summary>What the last Fight with that box ticked really put on, for the fight and setup of FightReportKey.</summary>
+    public string FightReport = "", FightReportKey = "";
 }
 
 /// <summary>Pictures, names and choices from the running game, looked up on the game's thread.</summary>
@@ -174,6 +178,8 @@ interface ISimLookup
     (string Name, Texture2D? Icon) Skill(string id);
     /// <summary>Every item of the game that fits the slot.</summary>
     List<GearChoice> ChoicesFor(GearSlot slot);
+    /// <summary>What Fight would put on first with "Wear this setup first" ticked (FightSetup.cs).</summary>
+    WearForecast ForecastWear(SimTarget target);
 }
 
 /// <summary>
@@ -1059,6 +1065,7 @@ sealed partial class SimView
         body.AddChild(scroll);
 
         // Below the list, always in sight: go and fight what is selected.
+        body.AddChild(BuildWearBox(width - 30));
         _fightNote = Wrapped("", width - 30, GameStyle.TextGrey, 11);
         _fightNote.HorizontalAlignment = HorizontalAlignment.Center;
         body.AddChild(_fightNote);
@@ -1105,6 +1112,7 @@ sealed partial class SimView
             }.Where(t => t != ""));
             _fightNote.Visible = _fightNote.Text != "";
         }
+        FillWear();
         if (signature == _detailsSignature) return;
         _detailsSignature = signature;
         foreach (Node old in _details.GetChildren()) old.QueueFree();

@@ -55,7 +55,22 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     to open its scan in the simulator. Opening the menu never simulates anything. Untick the
     box at the bottom of History to hide the tags.
   - Fight: the red button under the details starts the selected fight in the game (and
-    switches to the stance and the spell of that result). Your equipment is left as it is.
+    switches to the stance and the spell of that result). Your equipment is left as it is,
+    unless you tick "Wear this setup first" above the button. It is off until you tick it.
+    Ticked, Fight first puts on what the result was simulated with, through the game's own
+    actions: it changes to that loadout (which comes with the food, prayers, attack stance
+    and spells the game keeps in it), puts on each item you swapped in from your bank (what
+    it replaces goes back to the bank; ammunition: as many as the bank holds) and selects
+    the spell. An item that is not in your bank, that you cannot wear yet, or whose old
+    piece your bank has no room for is skipped, and its slot stays as it is. A slot you
+    emptied keeps what you wear there: Fight never just takes a piece off. The text above
+    the button names every step first, or why nothing goes on, and Fight never does more
+    than it says. If something changed since the text was written, nothing is put on and no
+    fight starts. When everything went on, the window closes; when a slot stayed as it was
+    or a piece could not go on as the text said, the window stays open and says what really
+    happened. If the game does not do a step as it should, Fight stops there and starts no
+    fight. Nothing is bought, made or put back. When the box puts nothing on for a fight it
+    looks greyed; point at it for why.
 
 Good to know
   - "Unlimited" supplies hand food, ammo, runes and prayer points back as they are used. "From
@@ -76,6 +91,7 @@ INSTALL
 UNINSTALL
   Delete the folder mods\CombatSim
 
-Nothing in your save is changed. Settings are kept in mods\CombatSim\settings.json, earlier
-scans in mods\CombatSim\history
+The mod never writes your save: only Fight with "Wear this setup first" ticked changes your
+equipment, through the game's own actions. Settings are kept in mods\CombatSim\settings.json,
+earlier scans in mods\CombatSim\history
 Unofficial, fan-made. Not affiliated with Games by Malcs or Jagex.
