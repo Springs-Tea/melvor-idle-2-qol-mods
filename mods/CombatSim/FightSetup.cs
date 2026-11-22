@@ -49,8 +49,10 @@ public partial class CombatSimMod
 
     enum WearKind { Already, On, Skip, Keep }
 
-    /// <summary>A piece in a slot, with its count; Many for what is worn in numbers (arrows).</summary>
-    readonly record struct Held(Item Item, int Quantity, bool Many)
+    /// <summary>A piece in a slot, with its count; Many for what is worn in numbers (arrows). From: the slot whose piece
+    /// this slot holds too (the Weapon, for the second hand of a two-handed weapon), by SimGear's rule; null for a piece
+    /// of its own.</summary>
+    readonly record struct Held(Item Item, int Quantity, bool Many, string? From = null)
     {
         public string Words => Many ? $"{Quantity:N0} {Item.DisplayName.GetPluralText(Quantity)}" : Item.DisplayName.GetPluralText(1);
     }
@@ -70,7 +72,8 @@ public partial class CombatSimMod
         public Held? There;
         /// <summary>Skip: why, in words.</summary>
         public string Why = "";
-        /// <summary>On: what goes back to the bank for it, from this slot and from the slots the game clears for it (a shield).</summary>
+        /// <summary>On: what goes back to the bank for it, from this slot and from the slots the game clears for it (a shield);
+        /// each piece once, as it is counted (Own).</summary>
         public readonly List<Held> Off = new();
 
         public string Name => Item == null ? "an item" : Kind == WearKind.On ? new Held(Item, Quantity, Many).Words
@@ -171,6 +174,7 @@ public partial class CombatSimMod
             if (_wearOff != "") return OffForecast();
         }
         WearPlan? plan = PlanWear(target);
+        if (GearUnread()) return OffForecast();
         if (plan == null) return new WearForecast("", "Open the simulator again once your character is loaded.");
         if (plan.Problem != "") return new WearForecast(plan.Problem + ", so Fight puts nothing on.", plan.Problem + ".");
 #if DEVTOOLS
@@ -240,7 +244,10 @@ public partial class CombatSimMod
             worn = new Dictionary<string, Held>(plan.Stored);
             // Whether the game keeps a loadout's pieces in the bank cannot be told from its names. If it does, the change
             // sends the pieces worn now that the loadout does not have back to the bank: so their room is asked for too.
-            back.AddRange(now.Where(w => !worn.TryGetValue(w.Key, out Held stored) || stored.Item.Id != w.Value.Item.Id).Select(w => w.Value).DistinctBy(h => h.Item.Id));
+            // Each from its own slot (From null): the game lists the Offhand first, and a two-handed weapon's -1 there is
+            // not a piece of its own.
+            back.AddRange(now.Where(w => w.Value.From == null && (!worn.TryGetValue(w.Key, out Held stored) || stored.Item.Id != w.Value.Item.Id))
+                .Select(w => w.Value).DistinctBy(h => h.Item.Id));
             if (back.Count > 0 && Room(back) != TransactionResult.Success)
             {
                 plan.Problem = $"Your bank has no room for what {plan.LoadoutName} takes off ({List(back.Select(h => h.Words))})";
@@ -327,9 +334,10 @@ public partial class CombatSimMod
         {
             // Before a change of loadout the game can only say where an item goes among what is worn now. So what comes
             // off is only what can be known: what that loadout keeps in this slot, and in the slots the item fills too
-            // (its own data: a two-handed weapon fills the shield's). If the game wants more at the click, it stays off.
+            // (its own data, SimGear.FillsToo: a two-handed weapon fills the shield's). If the game wants more at the
+            // click, it stays off.
             if (wearable.Type?.Id != slot.FitsType?.Id) return step.Skip("it does not go in that slot");
-            cleared = (wearable.OccupiesSlots ?? Enumerable.Empty<EquipmentSlot>()).Select(s => s.Id).Prepend(slot.Id);
+            cleared = SimGear.FillsToo(item, slot.Id).Prepend(slot.Id);
         }
         else
         {
@@ -340,7 +348,11 @@ public partial class CombatSimMod
                 .Select(s => s.Slot?.Id).OfType<string>().Prepend(slot.Id);
         }
         foreach (string id in cleared)
-            if (worn.TryGetValue(id, out Held off) && step.Off.All(o => o.Item.Id != off.Item.Id)) step.Off.Add(off);
+        {
+            if (!worn.TryGetValue(id, out Held held)) continue;
+            Held off = Own(held, worn);
+            if (step.Off.All(o => o.Item.Id != off.Item.Id)) step.Off.Add(off);
+        }
         // A piece put on for this setup by a step before stays on: this one is skipped instead.
         var undone = step.Off.Where(o => placed.Contains(o.Item.Id)).ToList();
         if (undone.Count > 0)
@@ -354,6 +366,10 @@ public partial class CombatSimMod
         step.Kind = WearKind.On;
         return step;
     }
+
+    // The piece of a slot as it is counted: for the second hand of a two-handed weapon, which the game keeps with a
+    // quantity of -1, the weapon's own entry in the slot it is worn in (From), so it goes back to the bank once, as one.
+    static Held Own(Held held, Dictionary<string, Held> worn) => held.From != null && worn.TryGetValue(held.From, out Held own) ? own : held;
 
     // What the steps after this one find: the slots as they will be, the bank without what went on and with what came
     // back.
@@ -369,20 +385,17 @@ public partial class CombatSimMod
         }
         var held = new Held(item, step.Quantity, step.Many);
         worn[step.Slot.Id] = held;
-        if (item.Capabilities.TryGet(out EquipmentCapability? wearable))
-            foreach (EquipmentSlot other in wearable.OccupiesSlots ?? Enumerable.Empty<EquipmentSlot>()) worn[other.Id] = held;
+        // The slots it fills too (SimGear.FillsToo: a two-handed weapon's Offhand) hold the same piece.
+        foreach (string other in SimGear.FillsToo(item, step.Slot.Id)) worn[other] = held with { From = step.Slot.Id };
     }
 
     // A slot simulated empty. Only pieces from the bank go on, so what is worn there stays on. The second hand slot of a
-    // two-handed weapon holds the weapon of the other slot: it is that slot's piece, never one of its own here. The game
-    // says so by the slots the weapon fills (OccupiesSlots), or by the same piece sitting in a slot of its own kind too.
+    // two-handed weapon holds the weapon of the other slot (From, by SimGear's rule): it is that slot's piece, never one
+    // of its own here.
     static WearStep Stays(EquipmentSlot slot, Dictionary<string, Held> worn)
     {
         var step = new WearStep(slot, "") { Kind = WearKind.Already };
-        if (!worn.TryGetValue(slot.Id, out Held there)) return step;
-        if (there.Item.Capabilities.TryGet(out EquipmentCapability? wearable) && (wearable.OccupiesSlots?.Any(s => s.Id == slot.Id) == true ||
-            (wearable.Type?.Id != slot.FitsType?.Id && worn.Any(w => w.Key != slot.Id && w.Value.Item.Id == there.Item.Id))))
-            return step;
+        if (!worn.TryGetValue(slot.Id, out Held there) || there.From != null) return step;
         step.There = there;
         step.Kind = WearKind.Keep;
         return step;
@@ -454,10 +467,20 @@ public partial class CombatSimMod
 
     Dictionary<string, Held> WornNow()
     {
-        var worn = new Dictionary<string, Held>();
+        var found = new List<(Slotted Slot, bool Many)>();
         foreach (EquipmentSlot slot in _game!.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects())
             if (_combat!.Equipment.TryGetActiveSlot(slot, out IActiveEquipmentSlot? active) && active?.Equipped is { Item: { } item } equipped)
-                worn[slot.Id] = new Held(item, active.Quantity, equipped.Equipment?.CanEquipQuantity == true);
+                found.Add((new Slotted(slot, item, active.Quantity, SimGear.IsFilled(active, _ctx.Log)), equipped.Equipment?.CanEquipQuantity == true));
+        return Pieces(found);
+    }
+
+    // The pieces by slot, each second hand of a two-handed weapon with the slot it is worn in (SimGear.FilledFrom, the
+    // rule of the slots on the left).
+    Dictionary<string, Held> Pieces(List<(Slotted Slot, bool Many)> found)
+    {
+        Dictionary<string, string> from = SimGear.FilledFrom(found.Select(f => f.Slot).ToList(), _ctx.Log);
+        var worn = new Dictionary<string, Held>();
+        foreach (var (slot, many) in found) worn[slot.Slot.Id] = new Held(slot.Item, slot.Quantity, many, from.GetValueOrDefault(slot.Slot.Id));
         return worn;
     }
 
@@ -466,15 +489,16 @@ public partial class CombatSimMod
     // said so in the log then, and offers no other loadout.
     Dictionary<string, Held> WornIn(LoadoutSlot loadout)
     {
-        var worn = new Dictionary<string, Held>();
+        var found = new List<(Slotted Slot, bool Many)>();
         try
         {
             if (SavedLoadouts(_combat!.Equipment).TryGetValue(loadout, out EquipmentLoadout? saved))
                 foreach (var (slot, stored) in saved.Slots)
-                    if (stored.Equipped is { Item: { } item } equipped) worn[slot.Id] = new Held(item, stored.Quantity, equipped.Equipment?.CanEquipQuantity == true);
+                    if (stored.Equipped is { Item: { } item } equipped)
+                        found.Add((new Slotted(slot, item, stored.Quantity, SimGear.IsFilled(stored, _ctx.Log)), equipped.Equipment?.CanEquipQuantity == true));
         }
         catch (MissingMethodException) { }
-        return worn;
+        return Pieces(found);
     }
 
     // ---- the click -------------------------------------------------------------------------------------------
@@ -528,6 +552,7 @@ public partial class CombatSimMod
         // The words the player read are the promise. If what they were made from changed since (an item sold, a slot
         // changed by hand), nothing is done and the words are written again.
         WearPlan? now = PlanWear(target);
+        if (GearUnread()) return Outcome(run, "Nothing was changed: this game version puts on equipment differently, so Wear this setup first is off for now", fight: false);
         if (now == null || !SamePlan(shown, now))
             return Outcome(run, "Your equipment or bank changed after the words above Fight were written, so nothing was put on. " +
                                "Read them again, then press Fight", fight: false);
@@ -694,25 +719,17 @@ public partial class CombatSimMod
         return kept;
     }
 
-    /// <summary>One slot of a set of equipment, for the counts: its piece, the quantity the game keeps there, and whether
-    /// the game marks the slot as holding another slot's piece (IsOccupied).</summary>
-    readonly record struct Slotted(EquipmentSlot Slot, Item Item, int Quantity, bool Marked);
-
     // The slots of a set of equipment whose piece is counted: all but the second hand of a two-handed weapon, which holds
-    // the weapon of the other hand (with a quantity of -1, in a saved loadout as in the slots worn). The rule of
-    // SimGear.Link (issue #46): a slot holds another slot's piece when another slot of the set holds the same item and
-    // the game marks this one as occupied, or that item fills this slot too (EquipmentCapability.OccupiesSlots). One
-    // slot of each item always stays, and two of the same ring are two.
+    // the weapon of the other hand (with a quantity of -1, in a saved loadout as in the slots worn). The rule of the
+    // slots on the left, SimGear.FilledFrom (issue #46): a slot holds another slot's piece when another slot of the set
+    // holds the same item and the game marks this one as occupied, or that item fills this slot too
+    // (EquipmentCapability.OccupiesSlots). One slot of each item always stays, and two of the same ring are two. Slotted
+    // is SimGear.cs's, the slots on the left read the same.
     static List<Slotted> Owners(List<Slotted> set)
     {
-        var owners = new List<Slotted>(set);
-        foreach (Slotted slot in set)
-            if (owners.Any(o => o.Slot.Id != slot.Slot.Id && o.Item.Id == slot.Item.Id && (slot.Marked || Fills(o.Item, slot.Slot)))) owners.Remove(slot);
-        return owners;
+        Dictionary<string, string> filled = SimGear.FilledFrom(set);
+        return set.Where(s => !filled.ContainsKey(s.Slot.Id)).ToList();
     }
-
-    static bool Fills(Item item, EquipmentSlot slot) =>
-        item.Capabilities.TryGet(out EquipmentCapability? wearable) && wearable.OccupiesSlots?.Any(s => s.Id == slot.Id) == true;
 
     // Adds the pieces of these slots to the counts of the pieces in it, each as many as its slot holds (one, or a pile of
     // ammunition).
@@ -722,26 +739,15 @@ public partial class CombatSimMod
             if (counts.ContainsKey(slot.Item.Id)) counts[slot.Item.Id] += Math.Max(1, slot.Quantity);
     }
 
-    // A saved loadout's slots that hold a piece, as the game stored them.
+    // A saved loadout's slots that hold a piece, as the game stored them, with the game's mark of a second hand
+    // (SimGear.IsFilled).
     static List<Slotted> Read(EquipmentLoadout saved)
     {
         var set = new List<Slotted>();
         foreach (var (slot, stored) in saved.Slots)
-            if (stored.Equipped?.Item is { } item) set.Add(new Slotted(slot, item, stored.Quantity, Marked(stored)));
+            if (stored.Equipped?.Item is { } item) set.Add(new Slotted(slot, item, stored.Quantity, SimGear.IsFilled(stored)));
         return set;
     }
-
-    // Whether the game marks a saved loadout's slot as holding another slot's piece. False when this game version has
-    // no such mark: the items' OccupiesSlots still say which slots a two-handed weapon fills.
-    static bool Marked(EquipmentSlotLoadout slot)
-    {
-        try { return Occupied(slot); }
-        catch (Exception e) when (e is MissingMemberException or TypeLoadException) { return false; }
-    }
-
-    // Its own method, never inlined: a game member that is gone fails when this is called, inside the try above.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    static bool Occupied(EquipmentSlotLoadout slot) => slot.IsOccupied;
 
     // "" when no piece was created or lost; else the pieces whose count changed, in words ("Iron Sword: 1, was 2").
     string Lost(List<Item> pieces, (Dictionary<string, int> Worn, Dictionary<string, int>? Kept) before, (Dictionary<string, int> Worn, Dictionary<string, int>? Kept) after)
@@ -798,6 +804,16 @@ public partial class CombatSimMod
 
     void SwitchWearOff(Exception e) =>
         WearOff("This game version puts on equipment differently: for now Fight starts with what you are wearing.", " (the game was updated?): " + e.Message);
+
+    // The plan reads the second hand of a two-handed weapon as the slots on the left do (SimGear). Without the game's data
+    // for it, the counts that guard the click would count such a weapon twice in a saved loadout: the box is off then.
+    bool GearUnread()
+    {
+        if (!SimGear.Off) return false;
+        WearOff("This game version puts on equipment differently: for now Fight starts with what you are wearing.",
+            ": two-handed weapons cannot be read in this game version.");
+        return true;
+    }
 
     // One line in the log, and the box puts nothing on for the rest of the session; Fight goes on working as unticked.
     void WearOff(string why, string line)
@@ -902,7 +918,7 @@ public partial class CombatSimMod
         var set = new List<Slotted>();
         foreach (EquipmentSlot slot in _game!.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects())
             if (_combat!.Equipment.TryGetActiveSlot(slot, out IActiveEquipmentSlot? active) && active?.Equipped?.Item is { } item)
-                set.Add(new Slotted(slot, item, active.Quantity, active.IsOccupied));
+                set.Add(new Slotted(slot, item, active.Quantity, SimGear.IsFilled(active)));
         return set;
     }
 
@@ -910,11 +926,11 @@ public partial class CombatSimMod
     // the OccupiesSlots of the one in MelvorBase:Weapon)".
     static string DevNotCounted(List<Slotted> set)
     {
-        var owners = Owners(set);
-        var left = set.Where(s => !owners.Contains(s)).Select(s =>
+        Dictionary<string, string> filled = SimGear.FilledFrom(set);
+        var left = set.Where(s => filled.ContainsKey(s.Slot.Id)).Select(s =>
         {
-            Slotted owner = owners.First(o => o.Item.Id == s.Item.Id);
-            var why = new[] { s.Marked ? "IsOccupied" : null, Fills(owner.Item, s.Slot) ? "in the OccupiesSlots of the one in " + owner.Slot.Id : null }.OfType<string>();
+            string owner = filled[s.Slot.Id];
+            var why = new[] { s.Marked ? "IsOccupied" : null, SimGear.FillsToo(s.Item, owner).Contains(s.Slot.Id) ? "in the OccupiesSlots of the one in " + owner : null }.OfType<string>();
             return $"{s.Slot.Id}={s.Item.Id} x{s.Quantity} ({string.Join(", ", why)})";
         }).ToList();
         return left.Count == 0 ? "none" : string.Join(", ", left);

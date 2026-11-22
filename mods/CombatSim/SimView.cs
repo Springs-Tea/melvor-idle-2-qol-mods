@@ -6,9 +6,17 @@ using MelvorMods.Shared;
 
 namespace CombatSim;
 
-/// <summary>One equipment slot as the simulator will fight with it.</summary>
+/// <summary>One equipment slot as the simulator will fight with it. Changed: it has a change of its own (SimState.Overrides).</summary>
 sealed record GearSlot(string SlotId, string SlotName, int Column, int Row, string? ItemId, string ItemName, int Quantity,
-    Texture2D? Icon, Texture2D? EmptyIcon, bool Changed);
+    Texture2D? Icon, Texture2D? EmptyIcon, bool Changed)
+{
+    /// <summary>The id of the slot whose item fills this one too (the Weapon, for a two-handed weapon's Offhand); "" when the item is worn here.</summary>
+    public string FilledFrom { get; init; } = "";
+    /// <summary>That slot's name, for people.</summary>
+    public string FilledFromName { get; init; } = "";
+    /// <summary>The game's tint for the picture of such a slot (CombatSimMod.FilledLook); null when it is not known.</summary>
+    public Color? FilledTint { get; init; }
+}
 
 /// <summary>An item that fits a slot.</summary>
 sealed record GearChoice(string ItemId, string Name, Texture2D? Icon, int Owned, bool CanWear);
@@ -186,6 +194,8 @@ interface ISimLookup
     List<GearChoice> ChoicesFor(GearSlot slot);
     /// <summary>What Fight would put on first with "Wear this setup first" ticked (FightSetup.cs).</summary>
     WearForecast ForecastWear(SimTarget target);
+    /// <summary>A click in the slot's item picker: back to the loadout's item (null), nothing (""), or an item, by the game's rules.</summary>
+    void Pick(GearSlot slot, string? itemId);
 }
 
 /// <summary>
@@ -428,6 +438,8 @@ sealed partial class SimView
         _spellHolder.AddChild(row);
     }
 
+    internal static readonly Color EmptyTint = new(1, 1, 1, 0.22f);
+
     Control BuildSlot(GearSlot slot, int size)
     {
         var button = new Button
@@ -453,7 +465,10 @@ sealed partial class SimView
         TextureRect picture = _s.Picture(slot.Icon ?? slot.EmptyIcon, 34);
         picture.Size = new Vector2(inner, inner);
         picture.Position = new Vector2((size - inner) / 2, (size - inner) / 2);
-        if (slot.Icon == null) picture.Modulate = new Color(1, 1, 1, 0.22f);
+        if (slot.Icon == null) picture.Modulate = EmptyTint;
+        // Filled by another slot's item (a two-handed weapon's Offhand): its picture, tinted as the game's equipment
+        // screen tints it, or dimmed as an empty slot when the game's tint is not known.
+        else if (slot.FilledFrom != "") picture.Modulate = slot.FilledTint ?? EmptyTint;
         button.AddChild(picture);
         if (slot.Quantity > 1)
         {
@@ -796,6 +811,9 @@ sealed partial class SimView
         Button ownedOnly = Toggle("Only items I own", null, "Hide items that are neither in your bank nor equipped");
         ownedOnly.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
         column.AddChild(ownedOnly);
+        // Another slot's item fills this one (a two-handed weapon): what is picked here takes it off (SimGear.Put).
+        if (slot.FilledFrom != "")
+            column.AddChild(Wrapped($"{slot.ItemName} in the {slot.FilledFromName} slot needs this slot too. Picking an item here takes it off.", width - 30, GameStyle.TextGrey, 12));
 
         var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         var list = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 2);
@@ -808,8 +826,7 @@ sealed partial class SimView
 
         void Choose(string? itemId)
         {
-            if (itemId == null) _state.Overrides.Remove(slot.SlotId);   // back to the loadout's own
-            else _state.Overrides[slot.SlotId] = itemId;
+            _lookup.Pick(slot, itemId);   // back to the loadout's own (null), nothing (""), an item: by the game's rules
             ShowCurrent();
             ClosePicker();
             _gearChanged();
@@ -819,7 +836,8 @@ sealed partial class SimView
 
         var rows = new List<(Button Row, string Name, bool Owned)>();
         if (slot.Changed) list.AddChild(PickerRow("Back to the loadout's item", null, "", GameStyle.TextGold, () => Choose(null)));
-        if (slot.ItemId != null) list.AddChild(PickerRow("Nothing (leave it empty)", null, "", GameStyle.TextGrey, () => Choose("")));
+        // A slot that another slot's item fills is emptied through that slot (SimGear.TakeOff).
+        if (slot.ItemId != null && slot.FilledFrom == "") list.AddChild(PickerRow("Nothing (leave it empty)", null, "", GameStyle.TextGrey, () => Choose("")));
         // What you own first, then the rest of the game, each by name.
         foreach (GearChoice choice in _lookup.ChoicesFor(slot).OrderByDescending(c => c.Owned > 0).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
         {

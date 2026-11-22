@@ -32,7 +32,9 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     fight had more time to get low.
   - Equipment: pick one of your saved loadouts, and click any slot to try another item: every
     item of the game that fits, with a search box, whether you own it or not. When the weapon
-    casts spells, choose which one to fight with.
+    casts spells, choose which one to fight with. A two-handed weapon fills both hands, as on
+    the game's equipment screen: an item picked for the Offhand takes it off, and taking it
+    off empties both hands.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.
@@ -103,7 +105,7 @@ Good to know
     your slayer task. The ranges say how far luck could have moved the numbers; longer
     fights narrow them.
   - An item whose requirements you do not meet cannot be equipped in the copy either; the
-    result says so.
+    result says so. It also says so when the copy wears something other than the slots show.
   - Up to four fights run side by side. If the game stutters during a scan, set "Workers" in
     settings.json to 1 or 2 (0 lets the mod choose).
 

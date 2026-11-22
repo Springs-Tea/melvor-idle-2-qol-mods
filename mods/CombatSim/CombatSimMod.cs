@@ -231,6 +231,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     {
         _state.Loadouts.Clear();
         _state.Gear.Clear();
+        _gearLoadout = _gearWorn = null;   // CombatSimGear.cs: made again by ReadGear, for this character
         if (_combat == null || _game == null) return;
         string? worn = _combat.Loadouts.CurrentLoadout?.Data.Id;
         _state.WornLoadoutId = worn ?? "";
@@ -266,29 +267,9 @@ public partial class CombatSimMod : IMod, ISimLookup
             }
         }
 
-        var items = _game.Data.GetDataRegistryOutput<Item>();
-        WeaponType? weapon = null;
-        WeaponCapability? wielded = null;
-        foreach (EquipmentSlot slot in _game.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects())
-        {
-            if (!_combat.Equipment.TryGetActiveSlot(slot, out IActiveEquipmentSlot? active) || active == null) continue;
-            Item? item = active.Equipped?.Item;
-            int quantity = active.Quantity;
-            if (saved != null)
-            {
-                item = null; quantity = 0;
-                if (saved.Slots.TryGetValue(slot, out EquipmentSlotLoadout? stored)) { item = stored.Equipped?.Item; quantity = stored.Quantity; }
-            }
-            bool changed = _state.Overrides.TryGetValue(slot.Id, out string? other);
-            if (changed)
-            {
-                item = other != "" && items.TryGetObjectById(other!, out Item? swapped) ? swapped : null;
-                quantity = 0;
-            }
-            _state.Gear.Add(new GearSlot(slot.Id, slot.DisplayName.Text, active.GridPosition.X, active.GridPosition.Y,
-                item?.Id, item?.DisplayName.GetPluralText(1) ?? "", quantity, item?.Icon, slot.FitsType?.Icon, changed));
-            if (item != null && item.Capabilities.TryGet(out WeaponCapability? held)) { weapon = held.Type; wielded = held; }
-        }
+        // Slot by slot, with a two-handed weapon in both hands as the game has it (CombatSimGear.cs).
+        WeaponCapability? wielded = ReadGear(saved);
+        WeaponType? weapon = wielded?.Type;
 
         // The game keeps a food choice per loadout; only the worn one's can be read.
         var food = _combat.Food.SelectedFood;
@@ -589,6 +570,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         SureSizes = SimState.SureSizes.Where(size => size > 0).Select(size => size / 100).ToArray(),
         MostHours = SimState.Durations[^1].Hours,
         Watch = _view?.WatchedRates() ?? new List<SimRate>(),
+        Shown = ShownGear(),
     };
 
     void Simulate()
@@ -598,6 +580,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         // First back to the current results: the XP column of an earlier scan may be of another skill (RunOptions).
         _state.Viewing = null;
         var options = RunOptions();
+#if DEVTOOLS
+        DevSimulateOptions(options);
+#endif
         _state.Message = "";
         if (!_engine.Start(_game, targets, options, _state.Workers, out string error)) { _state.Message = error; _ctx.Log(error); }
         else
@@ -997,6 +982,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
     //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
     //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
+    //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
+    //                 game's own equipment screen (CombatSimGear.DevGearCommand)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1027,7 +1014,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("shot=", StringComparison.Ordinal)) DevShot(command[5..]);
                 else if (command.StartsWith("sure=", StringComparison.Ordinal)) DevSure(command[5..]);
                 else if (command.StartsWith("twice=", StringComparison.Ordinal)) DevTwice(command[6..].Trim());
-                else return false;
+                else if (!DevGearCommand(command)) return false;   // pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
                 break;
         }
         return true;

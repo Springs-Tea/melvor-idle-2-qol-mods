@@ -30,6 +30,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   "Compared with" says better or worse only when the two ranges do not overlap, and "could be luck" when they
   do; a skill one setup never trains is a real 0. **Go on until** beside "Each fight lasts" keeps a fight going
   until its numbers are known to ± 1% to ± 10%, 12 hours at most.
+- **Combat Simulator**: a two-handed weapon fills both hands on the left, as on the game's equipment screen, and a
+  result says when the copy wore something other than the slots show. Picking the loadout's own item no longer
+  counts as a change.
 
 ## 0.5.0
 

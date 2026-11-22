@@ -123,12 +123,14 @@ sealed class SimEngine
         var cancel = _cancel = new CancellationTokenSource();
         var waiting = new ConcurrentQueue<SimTarget>(targets);
         workers = Math.Clamp(workers, 1, Math.Max(1, targets.Count));
+        Volatile.Write(ref _shownLogged, 0);
 #if DEVTOOLS
         _musicScan = new MusicScan(_log);
         _devTwins.Clear();
         _devReal = new WeakReference<Game>(real);
         // Two scans of the same setup start from the same snapshot only when nothing changed in between.
         _log($"Dev: snapshot {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(save), 0, 8)}, {save.Length:N0} bytes");
+        Volatile.Write(ref _devGearLogged, 0);
 #endif
         Task.Run(() =>
         {
@@ -335,6 +337,12 @@ sealed class SimEngine
         StopPassiveSkills(sim);
         var notes = new List<string>();
         Wear(sim, combat, bank, options, notes);
+        // An item that could not go on has its note already, and what follows from it is not said twice.
+        if (notes.Count == 0 && options.Shown != null && NotAsShown(sim, combat, options.Shown) is { } differs)
+        {
+            notes.Add(differs.Note);
+            if (Interlocked.Exchange(ref _shownLogged, 1) == 0) _log($"{target.Name}: {differs.Log}");
+        }
         if (target.StanceId != null) Stand(combat, target, notes);
         Cast(combat, bank, options, notes);
         // "Never runs out" has to hold from the first bite: food that is selected but down to a handful.
@@ -449,6 +457,9 @@ sealed class SimEngine
 
         if (!Begin()) { result.Failed = true; result.Note = "The fight could not be started (requirements not met?)."; return; }
         if (notes.Count > 0) result.Note = string.Join(" ", notes);
+#if DEVTOOLS
+        string devGear = DevGear(sim, combat, options, result, null);
+#endif
 
         long total = (long)(options.Hours * 3600 * TicksPerSecond);
         // Simulated longer, the fight may go on to the longest duration, until its ranges are small enough (SimParts).
@@ -460,6 +471,9 @@ sealed class SimEngine
         {
             sim.PropagateTick();
             if (ticks % CheckEvery != 0) continue;
+#if DEVTOOLS
+            if (ticks == CheckEvery) DevGear(sim, combat, options, result, devGear);
+#endif
             if (options.UnlimitedSupplies) Refill();
             card?.Sample();
             if (cancel.IsCancellationRequested) break;
@@ -563,6 +577,8 @@ sealed class SimEngine
 
     // Puts the chosen loadout on, then the single items that were swapped in. An item the character does
     // not own is handed to the copy first; the game's own equip call still decides whether it can be worn.
+    // They go on in the order the left of the window works them out in (SimGear.Steps), so the copy ends with
+    // what the slots there show: a two-handed weapon in both hands, a shield in place of one.
     static void Wear(Game sim, CombatEntity combat, BankEntity bank, SimOptions options, List<string> notes)
     {
         if (options.LoadoutId != null && combat.Loadouts.CurrentLoadout?.Data.Id != options.LoadoutId)
@@ -572,27 +588,106 @@ sealed class SimEngine
             else combat.Loadouts.SwapToLoadout(loadout);
         }
         if (options.Overrides.Count == 0) return;
-        var slots = sim.Data.GetDataRegistryOutput<EquipmentSlot>();
+        var slots = sim.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects().ToList();
         var items = sim.Data.GetDataRegistryOutput<Item>();
-        foreach (var (slotId, itemId) in options.Overrides)
+
+        void PutOn(EquipmentSlot slot, string itemId)
         {
-            if (!slots.TryGetObjectById(slotId, out EquipmentSlot? slot)) continue;
-            if (itemId == "") { combat.ItemEquipping.UnequipSlot(slot); continue; }
-            if (!items.TryGetObjectById(itemId, out Item? item) || !item.Capabilities.TryGet(out EquipmentCapability? wearable)) continue;
+            if (!items.TryGetObjectById(itemId, out Item? item) || !item.Capabilities.TryGet(out EquipmentCapability? wearable)) return;
             // One of anything is handed to the copy, owned or not: that is what trying an item means. Things
             // worn in numbers (arrows) are a supply: a pile when supplies are unlimited, what you own otherwise.
             int quantity = 1;
             if (wearable.CanEquipQuantity)
             {
                 quantity = options.UnlimitedSupplies ? Pile : bank.Inventory.GetQuantity(item);
-                if (quantity == 0) { notes.Add($"You have no {item.DisplayName.GetPluralText(2)} in the bank to equip."); continue; }
+                if (quantity == 0) { notes.Add($"You have no {item.DisplayName.GetPluralText(2)} in the bank to equip."); return; }
             }
             TopUp(bank, item, quantity);
             combat.ItemEquipping.EquipItem(item, quantity, slot);
             if (!combat.Equipment.IsItemEquipped(item))
                 notes.Add($"{item.DisplayName.GetPluralText(1)} could not be equipped (requirements not met?).");
         }
+
+#if DEVTOOLS
+        // Development (raw=): the one change goes on as the game takes it by itself, the way it went before issue #46.
+        if (options.DevRaw)
+        {
+            foreach (var (slot, itemId) in SimGear.Steps(slots, options.Overrides, _ => false))
+                if (itemId == "") combat.ItemEquipping.UnequipSlot(slot);
+                else PutOn(slot, itemId);
+            return;
+        }
+#endif
+        // What the loadout put on, read as the left side reads it (SimGear.Live).
+        GearSet before = SimGear.Live(combat.Equipment, slots, null);
+        foreach (var (slot, itemId) in SimGear.Steps(slots, options.Overrides, s => before[s.Id] is { FilledFrom: not null }))
+        {
+            if (itemId != "") PutOn(slot, itemId);
+            // Only a slot that holds an item of its own is emptied: one that another slot's item fills (a two-handed
+            // weapon's Offhand) keeps it, as on the left, and an empty one is left alone.
+            else if (before[slot.Id] is { FilledFrom: null }) combat.ItemEquipping.UnequipSlot(slot);
+        }
     }
+
+    // Once a run: the first fight whose copy is not what the slots on the left show, in the log.
+    int _shownLogged;
+
+    // The copy against the slots on the left (issue #46). Wear takes the changes in the order the left side works them out
+    // in, but the game's own equip call decides: where it took off more, or left on what the left side took off, the
+    // result says so in one line. What fights is counted, not where: an item in two slots of its own is two (the same
+    // ring in both ring slots), a two-handed weapon is one (SimGear's OwnItems), and two slots that traded their items
+    // fight the same. The copy's slots are read once a fight, the way the left side reads the character's (SimGear.Live).
+    // Null when both wear the same.
+    static (string Note, string Log)? NotAsShown(Game sim, CombatEntity combat, IReadOnlyDictionary<string, string> shown)
+    {
+        var active = sim.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects().Where(s => combat.Equipment.TryGetActiveSlot(s, out _)).ToList();
+        Dictionary<string, string> worn = SimGear.Live(combat.Equipment, active, null).OwnItems();
+        static Dictionary<string, int> Counted(IEnumerable<string> ids) => ids.GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
+        Dictionary<string, int> showing = Counted(shown.Values), wearing = Counted(worn.Values);
+        var differ = showing.Keys.Union(wearing.Keys).Where(id => showing.GetValueOrDefault(id) != wearing.GetValueOrDefault(id)).ToList();
+        if (differ.Count == 0) return null;
+
+        var items = sim.Data.GetDataRegistryOutput<Item>();
+        string Name(string id, int count = 1) => items.TryGetObjectById(id, out Item? item) ? item.DisplayName.GetPluralText(count) : id;
+        static string Joined(List<string> names) => names.Count == 1 ? names[0] : string.Join(", ", names[..^1]) + " and " + names[^1];
+        var without = differ.Where(id => wearing.GetValueOrDefault(id) == 0).Select(id => Name(id)).ToList();
+        var with = differ.Where(id => showing.GetValueOrDefault(id) == 0).Select(id => Name(id)).ToList();
+        var parts = new List<string>();
+        if (without.Count > 0) parts.Add("without " + Joined(without));
+        if (with.Count > 0) parts.Add("with " + Joined(with));
+        // Worn, but not as often as shown: "with 1 Gold Ring instead of 2".
+        parts.AddRange(differ.Where(id => showing.GetValueOrDefault(id) > 0 && wearing.GetValueOrDefault(id) > 0)
+            .Select(id => $"with {wearing[id]} {Name(id, wearing[id])} instead of {showing[id]}"));
+        string Slots(IReadOnlyDictionary<string, string> set) => string.Join(", ", set.Select(s => $"{s.Key}={Name(s.Value)}"));
+        return ($"The copy did not wear what the slots on the left show: it fought {Joined(parts)}.",
+            "the copy did not wear what the slots on the left showed: " +
+            string.Join(", ", differ.Select(id => $"{Name(id)} shown {showing.GetValueOrDefault(id)}, worn {wearing.GetValueOrDefault(id)}")) +
+            $". The slots on the left, each item in its own slot: {Slots(shown)}. The copy's: {Slots(worn)}");
+    }
+
+#if DEVTOOLS
+    int _devGearLogged;
+
+    // Development (issue #46): what the copy wears when its fight starts, slot by slot, against the slots on the left of
+    // the window when Simulate was pressed (SimOptions.DevGear). Logged for the first fight of a run and for any fight
+    // whose copy differs; a second into the fight it is read again, in case the game changed it by then.
+    string DevGear(Game sim, CombatEntity combat, SimOptions options, SimResult result, string? atStart)
+    {
+        var slots = sim.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects().Where(s => combat.Equipment.TryGetActiveSlot(s, out _)).ToList();
+        string copy = SimGear.Describe(SimGear.Live(combat.Equipment, slots, null), slots);
+        if (atStart != null)
+        {
+            if (copy != atStart) _log($"Dev: gear of the copy for {result.Target.Name}, a second into the fight, CHANGED since its start: {copy}");
+            return copy;
+        }
+        bool same = copy == options.DevGear;
+        if (!same || Interlocked.Exchange(ref _devGearLogged, 1) == 0)
+            _log($"Dev: gear of the copy for {result.Target.Name} at the start of its fight, with the changes " +
+                 $"{(options.Overrides.Count == 0 ? "none" : string.Join(", ", options.Overrides.Select(o => o.Key + "=" + (o.Value == "" ? "nothing" : o.Value))))}: {copy}. " +
+                 $"The left side: {options.DevGear}. {(same ? "THE SAME." : "THEY DIFFER.")}{(result.Note != "" ? " Note: " + result.Note : "")}");
+        return copy;
+    }
+#endif
 
     // Selects one of the attack stances of the weapon that is worn (they decide which skills get the XP).
     static void Stand(CombatEntity combat, SimTarget target, List<string> notes)

@@ -266,6 +266,15 @@ brings the loadout's own items back. An item you do not own is handed to the cop
 would do; an item whose requirements you do not meet cannot be equipped by the copy either, and the result
 says so.
 
+**Two-handed weapons** fill both hands, as on the game's own equipment screen: the Offhand shows the weapon
+too, faded the way the game shows it. Picking a two-handed weapon takes off what is in the Offhand, picking
+an item for the Offhand takes the two-handed weapon off, and "Nothing" in the Weapon slot empties both
+hands. A slot gets the gold frame, and counts as a change, when its own item comes off or another goes on:
+a shield in place of a two-handed weapon is two changes, the shield and the Weapon slot left empty. If the
+copy ever wears something other than the slots show, the result says so.
+
+<img src="../../docs/img/combat-simulator-two-handed.png" alt="An Adamant 2H Sword picked for the Weapon slot fills the Offhand too, faded as in the game" width="232">
+
 <p>
   <img src="../../docs/img/combat-simulator-picker.png" alt="The item picker" width="250">
   &nbsp;
@@ -514,6 +523,9 @@ Everything is in `mods\CombatSim`:
 | --- | --- |
 | A fight is missing from the table after Cancel | A fight that was cut short is dropped; the finished ones are kept. |
 | "... could not be equipped (requirements not met?)" | The copy follows the game's rules: you do not meet that item's requirements. |
+| "The copy did not wear what the slots on the left show: ..." | The game put the equipment on differently from the slots on the left, and the numbers are for what the copy wore: the line names what it fought without, or with. If your equipment changed while the window was open, open it again; otherwise report it with the log. |
+| The Offhand of a two-handed weapon is as faint as an empty slot | The game's look for it could not be read from its combat screen: `MelvorModLoader.log` has a line `[CombatSim] The game's tint for a slot that a two-handed weapon fills`, and a game update changed that screen. Once you have opened the game's own equipment screen, the simulator takes the look from there. |
+| A two-handed weapon fills only the Weapon slot | Look for `[CombatSim] Two-handed weapons cannot be read` in `MelvorModLoader.log`: a game update changed what the simulator reads. Every slot works on its own, as before, the result says so when the copy wears something else, and Wear this setup first is off. |
 | "Ran out of ... after ..." | From bank: that supply was used up. Without arrows or runes the fight ended there; without food it went on. |
 | "Stopped at ... after 10 deaths without food or a kill" | From bank: the food was gone and you died ten times in a row without killing anything. The fight ended there; the numbers are of the time until then. |
 | "The fight could not be started" | The game refused to start it for the copy, usually an unmet requirement of the area. |

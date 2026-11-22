@@ -46,6 +46,18 @@ sealed class SimOptions
     public double MostHours = 12;
     /// <summary>The rates the list shows, whose ranges a longer fight waits for.</summary>
     public List<SimRate> Watch = new();
+    /// <summary>
+    /// What the slots on the left show, slot id -> item id of each item in its own slot (a two-handed weapon once, in the
+    /// Weapon slot; a slot that is not in it is empty or filled by another slot's item): the copy must fight with it, and
+    /// the result says so when it does not (SimEngine.NotAsShown). Null: not checked.
+    /// </summary>
+    public Dictionary<string, string>? Shown;
+#if DEVTOOLS
+    /// <summary>Development: the slots on the left when Simulate was pressed (SimGear.Describe), for SimEngine.DevGear.</summary>
+    public string DevGear = "";
+    /// <summary>Development: the one change is put on as the game takes it by itself, as before issue #46 (raw=).</summary>
+    public bool DevRaw;
+#endif
 }
 
 /// <summary>An amount of something, by the game's id, with what one of it sells for (0 when unknown).</summary>

@@ -44,7 +44,7 @@ The button beside the red X folds the window down to its title so you can follow
 
 [size=4][b]What you can change[/b][/size]
 [list]
-[*][b]Equipment[/b]: pick one of your saved loadouts, or click any slot to try another item: every item of the game that fits, with a search box, whether you own it or not.
+[*][b]Equipment[/b]: pick one of your saved loadouts, or click any slot to try another item: every item of the game that fits, with a search box, whether you own it or not. A two-handed weapon fills both hands, as on the game's equipment screen; if the copy ever wears something other than the slots show, the result says so.
 [*][b]Spells[/b]: when the weapon casts spells, choose which one to fight with.
 [*][b]Supplies[/b]: Unlimited gives the rates of a fight that is kept supplied; From bank uses what you own and tells you what ran out, and when.
 [*][b]Go on until[/b]: each fight goes on after its time until every number in the table is known to the size you choose ("± 1% sure" to "± 10% sure"), 12 hours of fighting at most. A number that 12 hours cannot bring that far goes on until it is within the next larger size it can reach; one that cannot reach even ± 10%, like a few deaths or gold that hangs on a rare drop, does not hold it back. A smaller size never ends a fight sooner than a larger one. Not with supplies From bank.
