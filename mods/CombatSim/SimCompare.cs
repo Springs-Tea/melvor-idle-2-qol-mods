@@ -109,8 +109,11 @@ sealed partial class SimState
 
     // ---- the lines of the list ------------------------------------------------------------------------------
 
-    /// <summary>The list compares two setups: the box is ticked, or an earlier scan of two setups is on show.</summary>
-    public bool ShownComparing => Viewing?.Compare ?? Compare;
+    /// <summary>
+    /// The list compares two setups: the box is ticked, or an earlier scan of two setups is on show. Not while the items
+    /// tried for one fight are (SimUpgrades.cs): they are tried with the setup on the left.
+    /// </summary>
+    public bool ShownComparing => !ShowingUpgrades && (Viewing?.Compare ?? Compare);
     public string ShownLabelA => Viewing?.SetupLabel ?? A.Label;
     public string ShownLabelB => Viewing != null ? Viewing.SetupLabelB ?? "" : B.Label;
 

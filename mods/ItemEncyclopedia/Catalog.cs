@@ -388,7 +388,7 @@ sealed class Catalog
             if (!ByItem.TryGetValue(item, out Entry? entry)) continue;
             foreach (ItemRef r in known.Sources)
             {
-                entry.Sources.Add(KindOf(r));
+                entry.Sources.Add(ItemLines.KindOf(r));
                 if (r.Owner is Enemy enemy) entry.Places.UnionWith(Lines.PlacesOf(enemy));
                 else if (r.Owner is Dungeon dungeon) entry.Places.Add(dungeon);
             }
@@ -399,7 +399,9 @@ sealed class Catalog
             kinds.UnionWith(entry.Sources);
         }
         Sources.Clear();
-        foreach (Choice kind in SourceKinds) if (kinds.Contains(kind.Id)) Sources.Add(kind with { Icon = GameStyle.Icon(SourceIcons[kind.Id]) });
+        // The kinds and the game's pictures for them are shared with the Combat Simulator's Find upgrades (ItemLines.Kinds).
+        foreach (SourceKind kind in ItemLines.Kinds)
+            if (kinds.Contains(kind.Id)) Sources.Add(new Choice(kind.Id, kind.Name, GameStyle.Icon(kind.Icon), kind.Tip));
 
         Areas.Clear();
         _areaById.Clear();
@@ -468,41 +470,6 @@ sealed class Catalog
         if (!map.TryGetValue(owner, out List<(Item, ItemRef)>? list)) map[owner] = list = new List<(Item, ItemRef)>();
         list.Add((item, r));
     }
-
-    static readonly Choice[] SourceKinds =
-    {
-        new("combat", "Enemy drop", null, "Dropped by an enemy, or the reward of a dungeon"),
-        new("skill", "Skill", null, "Made, gathered, grown or caught with a skill"),
-        new("shop", "Shop", null, "Bought in the shop"),
-        new("chest", "Chest", null, "Found by opening another item"),
-        new("thieving", "Thieving", null, "Stolen with Thieving"),
-        new("quest", "Quest", null, "The reward of a quest"),
-        new("upgrade", "Upgrade", null, "Made by upgrading another item"),
-        new("none", "No source", null, "Nothing in the game's data gives this item"),
-    };
-
-    // The game's own pictures for them, by their names in its Icons folder.
-    static readonly Dictionary<string, string> SourceIcons = new()
-    {
-        ["combat"] = "Combat", ["skill"] = "SkillIcon", ["shop"] = "Shop", ["chest"] = "OpenChest256", ["thieving"] = "Thieving",
-        ["quest"] = "Quests", ["upgrade"] = "upgrade", ["none"] = "question",
-    };
-
-    // By the name of the class that holds the item, so a class that is gone after a game update only moves
-    // its items under "Skill" instead of stopping the mod.
-    static string KindOf(ItemRef r) => r.Owner switch
-    {
-        Enemy or Dungeon => "combat",
-        Item => r.Path.Contains("Upgrad", StringComparison.OrdinalIgnoreCase) ? "upgrade" : "chest",
-        _ => r.Owner.GetType().Name switch
-        {
-            "ShopPurchase" => "shop",
-            "ThievingRecipe" => "thieving",
-            "Quest" => "quest",
-            "ItemUpgrade" => "upgrade",
-            _ => "skill",
-        },
-    };
 
     // ---- the character's side ----------------------------------------------------------------------------------
 

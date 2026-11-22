@@ -148,7 +148,7 @@ sealed class SimEngine
                 {
                     while (!cancel.IsCancellationRequested && waiting.TryDequeue(out SimJob? job))
                     {
-                        Current = job.Target.Name;
+                        Current = job.Options.StatusName != "" ? job.Options.StatusName : job.Target.Name;
                         SimResult result = RunOne(save, job.Target, job.Options, cancel.Token);
                         if (cancel.IsCancellationRequested) break;   // a fight that was cut short is not a result
                         Finished.Enqueue(result);
@@ -266,13 +266,16 @@ sealed class SimEngine
 #endif
             sim.LoadForSave();
             using (var stream = new MemoryStream(save)) LoadState(stream, sim);
-            SimDice.Set(sim, result.Key, _log);
+            // The fight's own dice, or another fight's kept in step (Find upgrades: the setup as it is).
+            string diceKey = options.Dice ?? result.Key;
+            SimDice.Set(sim, diceKey, _log);
+            SimDice.InStep? step = options.Dice != null ? SimDice.Keep(sim, diceKey, _log) : null;
 #if DEVTOOLS
-            SimDice.DevCheck? dice = SimDice.DevBefore(sim, _devReal != null && _devReal.TryGetTarget(out Game? real) ? real : null, result.Key, _log);
+            SimDice.DevCheck? dice = SimDice.DevBefore(sim, _devReal != null && _devReal.TryGetTarget(out Game? real) ? real : null, diceKey, _log, result.Key);
 #endif
-            Fight(sim, target, options, result, cancel);
+            Fight(sim, target, options, result, step, cancel);
 #if DEVTOOLS
-            dice?.After();
+            dice?.After(step);
 #endif
         }
         catch (Exception e)
@@ -325,7 +328,7 @@ sealed class SimEngine
     }
 #endif
 
-    void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, CancellationToken cancel)
+    void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, SimDice.InStep? step, CancellationToken cancel)
     {
         if (!sim.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? ce) || ce is not CombatEntity combat ||
             !sim.Entities.TryGetObjectById("MelvorBase:Bank", out GameEntity? be) || be is not BankEntity bank)
@@ -351,6 +354,7 @@ sealed class SimEngine
             notes.Add(differs.Note);
             if (Interlocked.Exchange(ref _shownLogged, 1) == 0) _log($"{target.Name}: {differs.Log}");
         }
+        result.WearNote = string.Join(" ", notes);
         if (target.StanceId != null) Stand(combat, target, notes);
         Cast(combat, bank, options, notes);
         // "Never runs out" has to hold from the first bite: food that is selected but down to a handful.
@@ -371,6 +375,8 @@ sealed class SimEngine
         var walletDebt = new Dictionary<Currency, long>();
         bool refilling = false;
         long ticks = 0;
+        // The tick the dice in step count from (SimDice.InStep): the one after the last kill, or after a restart.
+        long stepFrom = 0;
         double ammoUsed = 0;
 
         void Add(Dictionary<string, Amount> into, string id, string name, double quantity, double sellsFor, bool isCurrency) =>
@@ -379,7 +385,7 @@ sealed class SimEngine
         static string ItemName(Item item) => item.DisplayName.GetPluralText(2);
 
         int deathsWithoutFoodOrKill = 0;
-        combat.Enemy.Killed += (_, _) => { result.Kills++; deathsWithoutFoodOrKill = 0; };
+        combat.Enemy.Killed += (_, _) => { result.Kills++; deathsWithoutFoodOrKill = 0; stepFrom = ticks + 1; };
         combat.Areas.DungeonCompleted += (_, _) => result.DungeonRuns++;
         combat.Action.PlayerDied += (_, _) =>
         {
@@ -477,6 +483,7 @@ sealed class SimEngine
         int deathsSeen = 0, restarts = 0;
         for (; ticks < limit; ticks++)
         {
+            step?.Roll(result.Kills, result.Deaths, ticks - stepFrom);
             sim.PropagateTick();
             if (ticks % CheckEvery != 0) continue;
 #if DEVTOOLS
@@ -520,6 +527,7 @@ sealed class SimEngine
                 break;
             }
             if (++restarts > MaxRestarts || !Begin()) { notes.Add($"Could not go on after dying at {Clock(ticks)}."); result.Note = string.Join(" ", notes); break; }
+            stepFrom = ticks + 1;
         }
 
         result.Hours = ticks / (3600.0 * TicksPerSecond);

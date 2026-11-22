@@ -21,6 +21,12 @@ namespace MelvorMods.Shared;
 sealed record ItemLine(string Group, string Name, Texture2D? Icon, string Quantity, double Chance, ItemRef Ref);
 
 /// <summary>
+/// A kind of place an item comes from, in the Item Encyclopedia's words for its "Comes from" filter: an id, the name, what
+/// it means, and the name of the game's picture for it in its Icons folder.
+/// </summary>
+sealed record SourceKind(string Id, string Name, string Tip, string Icon);
+
+/// <summary>
 /// Names what an <see cref="ItemIndex"/> found: the enemy and where it lives, the recipe and its skill, the
 /// chest. One per open character, used on the game's thread only; what it looks up in the running game (the
 /// areas, the skills' recipes) is looked up once, when the first line needs it.
@@ -49,6 +55,56 @@ sealed class ItemLines(Game game)
                 return new ItemLine(SkillOf(r.Owner), NameOf(r.Owner), (r.Owner as IDescribedObject)?.Icon, quantity, r.Chance, r);
         }
     }
+
+    /// <summary>
+    /// As many lines as Item Sources' tooltip lists, and as many of one heading: a long group (an item fifteen enemies
+    /// drop) must not push the others off. Item Sources and the Combat Simulator's Find upgrades read them here.
+    /// </summary>
+    public const int MaxLines = 24, MaxPerGroup = 8;
+
+    /// <summary>
+    /// The places, in the order Item Sources' tooltip and the Item Encyclopedia's "Found in" list them: Combat first (what
+    /// people ask about), then the rest by name; the likeliest on top inside a group.
+    /// </summary>
+    public List<ItemLine> Sorted(IEnumerable<ItemRef> refs) =>
+        refs.Select(Describe)
+            .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>
+    /// The kinds of place an item comes from, in the order a player thinks of them: the Item Encyclopedia's "Comes from"
+    /// filter, and the Combat Simulator's choice of what Find upgrades tries. <see cref="KindOf"/> tells them apart.
+    /// </summary>
+    public static readonly SourceKind[] Kinds =
+    {
+        new("combat", "Enemy drop", "Dropped by an enemy, or the reward of a dungeon", "Combat"),
+        new("skill", "Skill", "Made, gathered, grown or caught with a skill", "SkillIcon"),
+        new("shop", "Shop", "Bought in the shop", "Shop"),
+        new("chest", "Chest", "Found by opening another item", "OpenChest256"),
+        new("thieving", "Thieving", "Stolen with Thieving", "Thieving"),
+        new("quest", "Quest", "The reward of a quest", "Quests"),
+        new("upgrade", "Upgrade", "Made by upgrading another item", "upgrade"),
+        new("none", "No source", "Nothing in the game's data gives this item", "question"),
+    };
+
+    /// <summary>
+    /// The kind of place one source of an item is (<see cref="Kinds"/>). By the name of the class that holds the item, so
+    /// a class that is gone after a game update only moves its items under "Skill" instead of stopping the mod. An item
+    /// without any source is "none"; that is for the caller to say.
+    /// </summary>
+    public static string KindOf(ItemRef r) => r.Owner switch
+    {
+        Enemy or Dungeon => "combat",
+        Item => r.Path.Contains("Upgrad", StringComparison.OrdinalIgnoreCase) ? "upgrade" : "chest",
+        _ => r.Owner.GetType().Name switch
+        {
+            "ShopPurchase" => "shop",
+            "ThievingRecipe" => "thieving",
+            "Quest" => "quest",
+            "ItemUpgrade" => "upgrade",
+            _ => "skill",
+        },
+    };
 
     public static string Percent(double chance) =>
         chance >= 0.9995 ? "always" : chance >= 0.1 ? chance.ToString("0.#%") : chance >= 0.001 ? chance.ToString("0.##%")

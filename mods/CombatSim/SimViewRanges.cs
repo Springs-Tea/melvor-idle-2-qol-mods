@@ -113,9 +113,10 @@ sealed partial class SimView
 
     // A copy of the character takes about a second per fight; the fighting itself is the small part.
     // Fights run side by side share the processor with the game: four of them are worth about one and a half.
-    string Took(int fights, double hours)
+    // Find upgrades runs fewer at a time than a scan (SimUpgrades.cs, UpgradeSearch.Workers).
+    string Took(int fights, double hours, int? workers = null)
     {
-        double seconds = 1 + fights * (1.0 + 0.2 * hours) / (1 + 0.15 * (Math.Max(1, Math.Min(_state.Workers, fights)) - 1));
+        double seconds = 1 + fights * (1.0 + 0.2 * hours) / (1 + 0.15 * (Math.Max(1, Math.Min(workers ?? _state.Workers, fights)) - 1));
         return seconds < 90 ? $"{Math.Max(1, Math.Round(seconds))}s" : $"{Math.Round(seconds / 60)} min";
     }
 

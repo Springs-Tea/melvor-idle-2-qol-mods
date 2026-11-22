@@ -146,6 +146,7 @@ sealed partial class SimState
     /// <summary>The table's lines: one per fight; in best mode, the stance that trains the skill best.</summary>
     public List<SimResult> Lines()
     {
+        if (ShowingUpgrades) return UpgradeLines();   // the items tried for one fight (SimUpgrades.cs)
         if (ShownComparing) return PairLines();   // two setups (SimCompare.cs)
         IEnumerable<SimResult> pool;
         if (Viewing != null) pool = Viewing.Results;
@@ -161,8 +162,11 @@ sealed partial class SimState
         return pool.GroupBy(r => r.Target.FightKey).Select(g => g.OrderByDescending(r => r.Failed ? -1 : Xp(r)).First()).ToList();
     }
 
-    public string SetupKey => LoadoutId + ";" + string.Join(",", Overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => o.Key + "=" + o.Value))
-                              + (SpellId == "" ? "" : ";spell=" + SpellId);
+    public string SetupKey => KeyWith(Overrides);
+    /// <summary>The key of this loadout and spell with these changes: a pick in a slot's picker (Find upgrades tries them).</summary>
+    public string KeyWith(IReadOnlyDictionary<string, string> overrides) =>
+        LoadoutId + ";" + string.Join(",", overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => o.Key + "=" + o.Value))
+        + (SpellId == "" ? "" : ";spell=" + SpellId);
     public string SetupLabel
     {
         get
@@ -665,6 +669,7 @@ sealed partial class SimView
     /// <summary>Back from an earlier scan to the current results.</summary>
     void ShowCurrent()
     {
+        if (LeaveUpgrades()) return;   // from the items tried for a fight: back to the fights, that one selected (SimViewUpgrades.cs)
         _state.Selected = null;
         _state.Pinned = false;
         _tableSignature = "";
@@ -984,6 +989,7 @@ sealed partial class SimView
     {
         List<SimResult> ordered = Sorted(_state.Lines());
         MatchCompare(ordered);   // the header's cells for one setup or two (SimViewCompare.cs)
+        MatchUpgrades(ordered);   // or for the items tried for a fight (SimViewUpgrades.cs)
         PaintHeaders();
 
         string signature = _state.Viewing?.Id + "#" + _state.ShownSetupKey + "#" + _state.ShownComparing + _state.ShownBest + _state.ShownSkillId + "#" + string.Join("|", ordered.Select(LineKey)) + "#" + _state.Selected + "#" + _state.SortKey + _state.SortDescending;
@@ -1029,6 +1035,7 @@ sealed partial class SimView
             : _state.BestMode ? "Choose the skill you want to train and where on the left, then press Simulate.\n\nEvery fight is tried in each attack stance of your weapon, and the fights are ranked by what they give that skill."
             : "Choose where to fight and with which equipment on the left, then press Simulate.\n\nEvery fight is run with the game's own combat, on a hidden copy of your character. Nothing is saved.";
         if (_state.ShownComparing) FillPairShowing(ordered);   // the wins of each setup, and the words when there is nothing
+        if (_state.ShowingUpgrades) FillUpgradeShowing(ordered);   // the fight the items are tried for, and how far it is
 
         // The last scans, one click away, while there is nothing else to look at.
         string recent = any || _state.Running ? "" : string.Join("|", _state.History.Take(3).Select(h => h.Id));
@@ -1048,6 +1055,7 @@ sealed partial class SimView
 
     Control BuildRow(SimResult result, ButtonGroup group)
     {
+        if (_state.ShowingUpgrades) return BuildUpgradeRow(result, group);   // an item tried (SimViewUpgrades.cs)
         var row = new Button
         {
             ThemeTypeVariation = "OutlineToggleButton", ToggleMode = true, ButtonGroup = group,
@@ -1095,7 +1103,8 @@ sealed partial class SimView
         scroll.AddChild(_details);
         body.AddChild(scroll);
 
-        // Below the list, always in sight: go and fight what is selected.
+        // Below the list, always in sight: what else to wear for the selected fight, and go and fight it.
+        body.AddChild(BuildUpgradeButton());   // Find upgrades (SimViewUpgrades.cs)
         body.AddChild(BuildWearBox(width - 30));
         _fightNote = Wrapped("", width - 30, GameStyle.TextGrey, 11);
         _fightNote.HorizontalAlignment = HorizontalAlignment.Center;
@@ -1139,11 +1148,13 @@ sealed partial class SimView
             _fightNote.Visible = _fightNote.Text != "";
         }
         FillWear();
+        FillUpgradeButton();   // for the same fight (SimViewUpgrades.cs)
     }
 
     void FillDetails()
     {
         if (_state.ShownComparing) { FillPairDetails(); return; }   // two setups (SimViewCompare.cs)
+        if (FillUpgradeDetails()) return;   // an item tried for the fight (SimViewUpgrades.cs)
         var shown = _state.ShownResults;
         SimResult? r = _state.Selected != null ? shown.GetValueOrDefault(SimResult.MakeKey(_state.ShownSetupKey, _state.Selected)) : null;
         var others = r == null ? new List<SimResult>()
@@ -1366,7 +1377,7 @@ sealed partial class SimView
     public void DevOpenPicker(string slotName)
     {
         if (slotName == "details=end") { if (_details.GetParent() is ScrollContainer scroll) scroll.ScrollVertical = int.MaxValue; return; }
-        if (DevColumns(slotName) || DevRanges(slotName) || DevPairs(slotName)) return;
+        if (DevColumns(slotName) || DevRanges(slotName) || DevPairs(slotName) || DevUpgrades(slotName)) return;
         if (slotName.StartsWith("sort=", StringComparison.Ordinal))
         {
             _headers.FirstOrDefault(h => h.Text.Equals(slotName[5..], StringComparison.OrdinalIgnoreCase))?.EmitSignal(BaseButton.SignalName.Pressed);

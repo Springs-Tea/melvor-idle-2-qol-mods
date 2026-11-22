@@ -52,6 +52,14 @@ sealed class SimOptions
     /// the result says so when it does not (SimEngine.NotAsShown). Null: not checked.
     /// </summary>
     public Dictionary<string, string>? Shown;
+    /// <summary>
+    /// The dice of the fight are set from this key instead of the result's own, and kept in step with it all fight
+    /// (SimDice.InStep). Find upgrades (issue #4) gives every fight of a search the key of the setup as it is, so every
+    /// item is fought with the same luck as the setup. Null: the result's own key, set once when the copy is loaded.
+    /// </summary>
+    public string? Dice;
+    /// <summary>What the status line names while this fight runs (the item Find upgrades tries); "" is the fight's name.</summary>
+    public string StatusName = "";
 #if DEVTOOLS
     /// <summary>Development: the slots on the left when Simulate was pressed (SimGear.Describe), for SimEngine.DevGear.</summary>
     public string DevGear = "";
@@ -121,6 +129,12 @@ sealed class SimResult
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SimSpread? Spread;
     public string Note = "";
+    /// <summary>
+    /// The part of <see cref="Note"/> that says the copy did not put on what it was asked to (SimEngine.Wear, NotAsShown):
+    /// an item that could not be equipped, or other equipment than the slots show. "" when it wore it. Find upgrades
+    /// (SimUpgrades.cs) does not judge such a trial. Not kept in the history.
+    /// </summary>
+    [JsonIgnore] public string WearNote = "";
     public bool Failed;
     public double RealMilliseconds;
 

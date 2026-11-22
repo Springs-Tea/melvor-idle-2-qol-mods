@@ -67,6 +67,103 @@ static class SimDice
     /// <summary>The first eight bytes of the key's SHA-256.</summary>
     public static ulong SeedOf(string key) => BinaryPrimitives.ReadUInt64LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
+    // ---- dice kept in step (Find upgrades, issue #4) -------------------------------------------------------
+
+    static int s_stepOff;
+
+    /// <summary>
+    /// The copy's dice kept in step with this key from now on (<see cref="InStep"/>), for a fight whose dice are another
+    /// fight's (SimOptions.Dice). Null when they cannot be: then one line in the log, and the fights have the same dice at
+    /// their start only.
+    /// </summary>
+    public static InStep? Keep(Game sim, string key, Action<string> log)
+    {
+        if (Volatile.Read(ref s_off) != 0 || Volatile.Read(ref s_stepOff) != 0) return null;
+        try { return new InStep(DiceFor(sim), key, log); }
+        catch (Exception e)
+        {
+            StepOff(log, e);
+            return null;
+        }
+    }
+
+    // Once a game session: the fights are still right, but an item's numbers again carry luck of their own.
+    static void StepOff(Action<string> log, Exception e)
+    {
+        if (Interlocked.Exchange(ref s_stepOff, 1) == 0)
+            log($"Find upgrades could not keep the dice of its fights in step (the game was updated?): {e.Message}. " +
+                "Its items now share the dice of the setup as it is only at the start of each fight, so a small difference may be luck.");
+    }
+
+    // Its own methods, never inlined: a game update that removed these fails when they are called, inside the try.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Xoshiro256StarStarRandom DiceFor(Game sim) => DiceOf(sim);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void Restore(Xoshiro256StarStarRandom dice, ulong s0, ulong s1, ulong s2, ulong s3) =>
+        dice.RestoreState(new Xoshiro256StarStarRandom.State(s0, s1, s2, s3));
+
+    /// <summary>
+    /// Dice kept in step (issue #4). Find upgrades compares every item with one fight of the setup as it is. With dice
+    /// of its own, each fight had luck of its own, and one unlucky fight of the setup put nearly every item ahead of it:
+    /// in its second check, 14 of 16 boots came out above the setup (on average 266 kills an hour against its 244), while
+    /// the very same setup with other dice made 268. The same seed at the start is not enough: a copy rolls one set of
+    /// dice for everything, and the first roll that turns out otherwise with the item (a hit that now misses, and so no
+    /// roll for its damage) moves every roll after it. So the dice are set again before every tick, from the key and the
+    /// moment of the fight: the kills and deaths so far and the ticks since the last kill (or since the fight went on after
+    /// a death). Every fight of a search then meets its first, second, third enemy with the same rolls at the same moment,
+    /// whatever the item, and what differs comes from the item. The state is the SHA-256 of the key and that moment: its
+    /// 32 bytes are the four numbers of the game's dice (Xoshiro256StarStarRandom.State). One hash a tick costs about
+    /// 0.4 µs (measured outside the game): about 22 ms in a quarter of an hour of fighting, beside a copy's second or two.
+    /// </summary>
+    public sealed class InStep
+    {
+        readonly Xoshiro256StarStarRandom _dice;
+        readonly Action<string> _log;
+        // The key's own SHA-256, then the moment: kills, deaths and ticks, written in place before every tick. 48 bytes,
+        // one block of the hash whatever the key's length.
+        readonly byte[] _moment = new byte[48];
+        const int At = 32;
+        bool _off;
+
+        internal InStep(Xoshiro256StarStarRandom dice, string key, Action<string> log)
+        {
+            _dice = dice;
+            _log = log;
+            SHA256.HashData(Encoding.UTF8.GetBytes(key), _moment);
+        }
+
+        /// <summary>How many times the dice were set, once before every tick: for the development lines.</summary>
+        public long Count { get; private set; }
+        public bool Off => _off;
+
+        /// <summary>Before a tick: the dice of this moment of the fight.</summary>
+        public void Roll(int kills, int deaths, long ticksSince)
+        {
+            if (_off) return;
+            try
+            {
+                Span<byte> moment = _moment;
+                BinaryPrimitives.WriteInt32LittleEndian(moment[At..], kills);
+                BinaryPrimitives.WriteInt32LittleEndian(moment[(At + 4)..], deaths);
+                BinaryPrimitives.WriteInt64LittleEndian(moment[(At + 8)..], ticksSince);
+                Span<byte> hash = stackalloc byte[32];
+                SHA256.HashData(moment, hash);
+                ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(hash), s1 = BinaryPrimitives.ReadUInt64LittleEndian(hash[8..]),
+                      s2 = BinaryPrimitives.ReadUInt64LittleEndian(hash[16..]), s3 = BinaryPrimitives.ReadUInt64LittleEndian(hash[24..]);
+                // All four 0 is the one state these dice never leave; a hash gives it about never.
+                if ((s0 | s1 | s2 | s3) == 0) s0 = 1;
+                Restore(_dice, s0, s1, s2, s3);
+                Count++;
+            }
+            catch (Exception e)
+            {
+                _off = true;
+                StepOff(_log, e);
+            }
+        }
+    }
+
 #if DEVTOOLS
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_RNG")]
     static extern IRandom DiceOfSlot(ActiveEquipmentSlot slot);
@@ -96,7 +193,8 @@ static class SimDice
     public sealed class DevCheck
     {
         readonly Action<string> _log;
-        readonly string _key, _before, _start;
+        // The fight (its result's key) and the key of its dice: another fight's in a search for upgrades.
+        readonly string _name, _key, _before, _start;
         readonly Game _sim;
         readonly CombatEntity? _combat;
         readonly Xoshiro256StarStarRandom _game;
@@ -105,9 +203,10 @@ static class SimDice
         // What happened during the fight that a scan a minute later could have met at another moment.
         readonly List<string> _levels = new(), _events = new();
 
-        internal DevCheck(Game sim, Game? real, string key, Action<string> log)
+        internal DevCheck(Game sim, Game? real, string key, Action<string> log, string name)
         {
             _log = log;
+            _name = name;
             _key = key;
             _sim = sim;
             _game = DiceOf(sim);
@@ -142,7 +241,7 @@ static class SimDice
                 foreach (Xoshiro256StarStarRandom dice in DiceOfOpening(bank.ItemOpening).Values) _opening.Add((dice, dice.GetState()));
             foreach (ThievingEntity thieving in sim.Entities.GetAllObjects().OfType<ThievingEntity>())
                 foreach (var recipe in thieving.Action.ActiveRecipes.Values) _thieving.Add((recipe.PRNG, recipe.PRNG.GetState()));
-            _before = $"seed {SeedOf(_key):x16}, the game's dice start at {Hex(_dice)}; on the game's dice: {string.Join("; ", parts)}";
+            _before = (_name != _key ? $"the dice of {_key}, " : "") + $"seed {SeedOf(_key):x16}, the game's dice start at {Hex(_dice)}; on the game's dice: {string.Join("; ", parts)}";
             _start = Character();
         }
 
@@ -199,21 +298,25 @@ static class SimDice
             return slots.Count == 0 ? "empty" : string.Join(", ", slots);
         }
 
-        /// <summary>Two lines in the log, once the fight is over: the dice and which moved; the character before and after.</summary>
-        public void After()
+        /// <summary>
+        /// Two lines in the log, once the fight is over: the dice and which moved, and whether they were kept in step
+        /// (<paramref name="step"/>, Find upgrades); the character before and after.
+        /// </summary>
+        public void After(InStep? step)
         {
             try
             {
                 int Moved(List<(Xoshiro256StarStarRandom Dice, Xoshiro256StarStarRandom.State State)> dice) => dice.Count(d => !d.Dice.GetState().Equals(d.State));
                 Xoshiro256StarStarRandom.State end = _game.GetState();
-                _log($"Dev: dice of {_key}: {_before}; after the fight the game's dice {(end.Equals(_dice) ? "did not move" : "moved, to " + Hex(end))}, " +
-                     $"item opening dice moved: {Moved(_opening)} of {_opening.Count}, thieving dice moved: {Moved(_thieving)} of {_thieving.Count}");
+                string kept = step == null ? "" : step.Off ? $"; kept in step: SWITCHED OFF after {step.Count:N0} ticks" : $"; kept in step: set again before each of {step.Count:N0} ticks";
+                _log($"Dev: dice of {_name}: {_before}; after the fight the game's dice {(end.Equals(_dice) ? "did not move" : "moved, to " + Hex(end))}, " +
+                     $"item opening dice moved: {Moved(_opening)} of {_opening.Count}, thieving dice moved: {Moved(_thieving)} of {_thieving.Count}{kept}");
                 string came;
                 lock (_levels) lock (_events)
                     came = (_levels.Count == 0 ? "no level up" : "level ups " + string.Join(", ", _levels)) + "; " +
                            (_events.Count == 0 ? "nothing else came" : string.Join(", ", _events.GroupBy(e => e).Select(g => g.Count() == 1 ? g.Key : $"{g.Key} x{g.Count()}")));
-                _log($"Dev: copy of {_key}: took {_start}");
-                _log($"Dev: copy of {_key}: during the fight {came}; at the end {Character()}");
+                _log($"Dev: copy of {_name}: took {_start}");
+                _log($"Dev: copy of {_name}: during the fight {came}; at the end {Character()}");
             }
             catch (Exception e) { _log("Dev: the dice check failed after the fight: " + e.Message); }
         }
@@ -233,10 +336,13 @@ static class SimDice
     static IEnumerable<ActiveSlayerMaster> Masters(CombatEntity combat) =>
         combat.SlayerTasks?.ActiveMasters.Values ?? Enumerable.Empty<ActiveSlayerMaster>();
 
-    /// <summary>Development: <see cref="DevCheck"/> for a copy whose dice were just set; null (and one line) when it cannot be made.</summary>
-    public static DevCheck? DevBefore(Game sim, Game? real, string key, Action<string> log)
+    /// <summary>
+    /// Development: <see cref="DevCheck"/> for a copy whose dice were just set from <paramref name="key"/>, named in the log
+    /// by its fight (<paramref name="name"/>, its result's key); null (and one line) when it cannot be made.
+    /// </summary>
+    public static DevCheck? DevBefore(Game sim, Game? real, string key, Action<string> log, string name)
     {
-        try { return new DevCheck(sim, real, key, log); }
+        try { return new DevCheck(sim, real, key, log, name); }
         catch (Exception e) { log("Dev: the dice could not be watched: " + e.Message); return null; }
     }
 #endif

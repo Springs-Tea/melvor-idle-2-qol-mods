@@ -171,9 +171,11 @@ sealed partial class SimView
     static string BaseOf(string key) => key.IndexOf('@') is var at and >= 0 ? key[..at] : key;
 
     // The sort key for the kind of list on show: a column's key stands for its first cell in compare mode (the fights
-    // where the choice matters most first), and a cell's key for its column in a list of one setup.
+    // where the choice matters most first) and for what an item adds to it in the items tried for a fight
+    // (SimViewUpgrades.cs), and a cell's key for its column in a list of one setup.
     string SortKeyOnShow(string key) =>
-        key == NameKey ? key : !_state.ShownComparing ? BaseOf(key) : key.Contains('@') ? key : key + Versus;
+        key == NameKey ? key : _state.ShowingUpgrades ? BaseOf(key) + Gain : !_state.ShownComparing ? BaseOf(key)
+        : key.Contains('@') && !key.EndsWith(Gain, StringComparison.Ordinal) ? key : BaseOf(key) + Versus;
 
     List<SimColumn>? _pairCatalog;
     /// <summary>The three cells of every column (<see cref="ColumnOf"/> finds them by their keys).</summary>
@@ -333,6 +335,7 @@ sealed partial class SimView
     /// <summary>A line that could not be simulated: in compare mode with neither setup.</summary>
     bool LineFailed(SimResult line)
     {
+        if (_state.ShowingUpgrades) return UpgradeLineFailed(line);   // also an item not tried (SimViewUpgrades.cs)
         if (!_state.ShownComparing) return line.Failed;
         var (a, b) = _state.Pair(line);
         return Usable(a) == null && Usable(b) == null;
@@ -341,6 +344,7 @@ sealed partial class SimView
     // What makes a line of the list, for its signature: its result, in compare mode both.
     string LineKey(SimResult line)
     {
+        if (_state.ShowingUpgrades) return line.Key + line.RealMilliseconds;   // every item tried is a setup of its own
         if (!_state.ShownComparing) return line.Target.Key + line.RealMilliseconds;
         var (a, b) = _state.Pair(line);
         return $"{a?.Key}{a?.RealMilliseconds}/{b?.Key}{b?.RealMilliseconds}";

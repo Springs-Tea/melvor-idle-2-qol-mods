@@ -56,6 +56,11 @@ public partial class CombatSimMod : IMod, ISimLookup
         public string TrainSkill { get; set; } = "";
         /// <summary>The list's columns by key, left to right; null is the default list (SimColumns.Default).</summary>
         public List<string>? Columns { get; set; }
+        /// <summary>Which items Find upgrades tries (SimUpgrades.cs, UpgradeChoice): slot ids and kinds of source, none ticked is all.</summary>
+        public List<string> UpgradeSlots { get; set; } = new();
+        public List<string> UpgradeKinds { get; set; } = new();
+        public string UpgradeText { get; set; } = "";
+        public bool UpgradeCannotWear { get; set; }
     }
 
     // What each saved loadout holds is kept inside the equipment component; only the one that is worn right
@@ -101,6 +106,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
         _state.Columns = SimColumns.Read(_settings.Columns);
+        ReadUpgradeChoice();   // SimUpgrades.cs
         _engine = new SimEngine(ctx.Log);
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         _history = new SimHistory(ctx.Directory, ctx.Log);
@@ -159,6 +165,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Current = "";
         _state.Overrides.Clear();
         _state.ForgetCompare();
+        ForgetUpgrades();   // SimUpgrades.cs: the items tried, and where items come from, were the character's before
         _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = _state.FightReport = "";
         _wearShown = null;   // FightSetup.cs: the words on show were for the character before
         _history.Close();
@@ -361,8 +368,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     {
         if (_game == null) return;
         // Unlocks, equipment, food and levels may have changed since last time: the window is built again
-        // from them. During a run it is left alone.
-        bool refreshed = _run == null || !_engine.Running;
+        // from them. During a run it is left alone, also while upgrades are being found (SimUpgrades.cs).
+        bool refreshed = (_run == null && _upgradeRun == null) || !_engine.Running;
         if (refreshed) BuildCatalog();
         ReadHistory();
         if (refreshed || _window is not { IsAlive: true }) Build();
@@ -555,6 +562,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _settings.BestMode = _state.BestMode;
         _settings.TrainSkill = _state.TrainSkillId;
         _settings.Columns = SimColumns.Write(_state.Columns);
+        WriteUpgradeChoice();   // SimUpgrades.cs
         WriteSettings();
     }
 
@@ -688,6 +696,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     // Results come from the background thread; the window is only touched here, on the game's thread.
     void Pump(bool force = false)
     {
+        if (PumpUpgrades()) return;   // the run under way finds upgrades: its results are not scans (SimUpgrades.cs)
         bool changed = force;
         // Asked first: once the engine says it stopped, everything it made is already in the queue.
         bool running = _engine.Running && _run != null;
@@ -876,6 +885,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 _devSession = new DevSession(_history.DevKeep(), new Dictionary<string, SimResult>(_state.Results), _state.Done, _state.Total,
                     _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.Selected,
                     _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending, (_state.Compare, _state.ShowingB, _state.Other));
+                DevKeepUpgrades();   // SimUpgrades.cs
             }
             foreach (string line in File.ReadAllLines(request))
                 if (line.Trim() != "") _devCommands.Enqueue(line.Trim());
@@ -1003,6 +1013,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
     //                 game's own equipment screen (CombatSimGear.DevGearCommand)
     //   compare=<loadout>|<slot=item id>|<spell>, compare=off, side=a|b, wear=on|off   compare mode (SimCompare.cs)
+    //   upgrades=<enemy>, upgrades=slot=|from=|search=|cannot|clear|go|panel, upgrades=stop|back|line=<item>|hover=<item>|log
+    //                 Find upgrades and its panel (SimUpgrades.cs)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1036,6 +1048,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("compare=", StringComparison.Ordinal)) DevCompare(command[8..].Trim());
                 else if (command.StartsWith("side=", StringComparison.Ordinal)) DevSide(command[5..].Trim());
                 else if (command.StartsWith("wear=", StringComparison.Ordinal)) DevTickWear(command[5..].Trim());
+                else if (command.StartsWith("upgrades=", StringComparison.Ordinal)) DevUpgradesCommand(command[9..].Trim());
                 else if (!DevGearCommand(command)) return false;   // pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
                 break;
         }
@@ -1092,9 +1105,13 @@ public partial class CombatSimMod : IMod, ISimLookup
                 Error saved = image.SavePng(Path.Combine(_ctx.Directory, file));
                 if (saved != Error.Ok) { _ctx.Log($"Dev: could not save {file}: {saved}"); return; }
                 LogFold(file);
-                // The window alone, as Item Encyclopedia's crop-*.png: the picture is in the screen's pixels, the
-                // window in the game's own, which the game stretches.
-                Rect2 frame = _ctx.Tree.Root.GetFinalTransform() * window.Root.GetGlobalRect().Grow(10);
+                // The window alone, as Item Encyclopedia's crop-*.png, with a panel that is open beside it (as the
+                // run request's "Dev: rect" line takes them): the picture is in the screen's pixels, the window in the
+                // game's own, which the game stretches.
+                Rect2 drawn = window.Root.GetGlobalRect();
+                foreach (Node child in window.Layer.GetChildren())
+                    if (child is PanelContainer { Visible: true } panel && panel != window.Root) drawn = drawn.Merge(panel.GetGlobalRect());
+                Rect2 frame = _ctx.Tree.Root.GetFinalTransform() * drawn.Grow(10);
                 var whole = new Rect2I(0, 0, image.GetWidth(), image.GetHeight());
                 Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(whole);
                 if (window.Visible && part.Size.X > 0 && part.Size.Y > 0)
@@ -1142,6 +1159,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.TrainSkillId = _settings.TrainSkill;
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.Columns = SimColumns.Read(_settings.Columns);
+        ReadUpgradeChoice();
+        _ctx.Log($"Dev: the choice of Find upgrades put back to {DevChoice(_state.UpgradeChoice)}, as settings.json has it.");
         _state.WearSetup = _settings.WearSetupFirst;
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         if (_window is { IsAlive: true } window)
@@ -1172,10 +1191,11 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.SortKey = session.SortKey;
         _state.SortDescending = session.SortDescending;
         (_state.Compare, _state.ShowingB, _state.Other) = session.Compare;
+        string upgrades = DevPutBackUpgrades();   // SimUpgrades.cs
         BuildGear();
         _ctx.Log($"Dev: also put back: {history}. Current results: {results} put back to the {_state.Results.Count} from before. " +
                  $"Setup: {setup} put back to {_state.SetupLabel}; selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}. " +
-                 $"Compare: {compare}; put back to {DevCompareState()}.");
+                 $"Compare: {compare}; put back to {DevCompareState()}. Upgrades: {upgrades}.");
     }
 
     // cards.request (EnemyCards) photographs the game's enemy cards, which this window would cover. It closes

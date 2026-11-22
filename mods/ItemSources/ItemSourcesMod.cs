@@ -43,8 +43,9 @@ public partial class ItemSourcesMod : IMod
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_BankTagIngredientContainer")]
     static extern HBoxContainer? UsedRowOf(ItemInfoPanel panel);
 
-    // A long group (an item fifteen enemies drop) must not push the others off the tooltip.
-    internal const int MaxLines = 24, MaxPerGroup = 8;
+    // A long group (an item fifteen enemies drop) must not push the others off the tooltip (shared with the Combat
+    // Simulator's Find upgrades, in ItemLines).
+    internal const int MaxLines = ItemLines.MaxLines, MaxPerGroup = ItemLines.MaxPerGroup;
     const int TipGap = 8;
     // The way from "Found in" to its list, for a pointer that has stopped moving along it: how long the list
     // stays up over it, and (much shorter) how long a row that lies in the way is passed over.
@@ -321,13 +322,8 @@ public partial class ItemSourcesMod : IMod
         _tip.Position = new Vector2(MathF.Round(Math.Max(0, x)), MathF.Round(y));
     }
 
-    internal static List<ItemLine> SortedLines(IEnumerable<ItemRef> refs, ItemLines names)
-    {
-        // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group.
-        return refs.Select(names.Describe)
-            .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
+    // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group (ItemLines.Sorted).
+    internal static List<ItemLine> SortedLines(IEnumerable<ItemRef> refs, ItemLines names) => names.Sorted(refs);
 
     // Laid out like the game's own item tooltip: the name, a small tag, the fading line, then the lines.
     PanelContainer Build(Item item, bool found, ItemIndex? index)

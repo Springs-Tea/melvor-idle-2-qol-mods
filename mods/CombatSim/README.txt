@@ -12,8 +12,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     beside the red X to fold it down to its title. Until you run a scan after loading your
     character, it says "Combat Simulator". During a scan it counts the finished fights,
     "Simulator · 4 of 12", and at the end it says "Simulator · Done: 12 fights". A scan you
-    cancel says "Simulator · Stopped: 4 of 12". "Simulator · Error" means the window has a
-    message for you: open it to read it.
+    cancel says "Simulator · Stopped: 4 of 12". Find upgrades counts its fights the same way.
+    "Simulator · Error" means the window has a message for you: open it to read it.
   - Click the fold button again or the round chart button to return to the same tab, list,
     sort order and selected fight. The red X closes the window even when folded. A scan
     keeps running while the window is folded or closed. The window remembers its place,
@@ -47,6 +47,26 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     says where each setup does best. Details shows the fight with both setups side by side.
     Fight is for the setup on the left. A and B last until the game is closed or another
     character is opened.
+  - Find upgrades, the button over "Wear this setup first", opens a panel where you choose
+    which items to try against the selected fight, one slot at a time, on top of the setup on
+    the left: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop,
+    Skill, Shop, Chest and the other kinds of the Item Encyclopedia), or by name. Each tick
+    says how many items it stands for; the line beside Simulate says how many fights a press
+    runs and about how long, at most 40 items a press. The choice is kept. Each item is one
+    fight from the same moment of your character, one at a time, in the background like a
+    scan (Stop, or Cancel on the left, stops it). Every item is fought with the same luck as
+    the setup as it is, so a difference comes from the item, not from the dice.
+    Every column of the list says what the item changes: "+14%", "-23%", "×2.5", "+7,300"
+    where there was none, "+1,200" more Net gold; green better, red worse, grey where it could
+    be luck, "no better" for the same. Only words stay the item's own: Safe or Risky, the best
+    drop, a first death where one of the two never dies. Click a column's name to put the
+    largest gains on top. "Comes from" is Item Sources' answer, or "In your bank" when you
+    have one. A two-handed weapon takes the shield off and a shield the two-handed weapon, as
+    a pick in the slot does. Items whose requirements you do not meet are never tried; ticked
+    in the panel, they are listed at the end with what they need in grey. Click a line for
+    both numbers of every column and every place the item comes from. Nothing is put on, and
+    the items tried are not kept in History. "Back to the fights" leaves them, and "Show
+    upgrades" under Details brings them back.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.

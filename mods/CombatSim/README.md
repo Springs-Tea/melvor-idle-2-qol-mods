@@ -30,6 +30,7 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 - [Choosing where](#choosing-where)
 - [Trying other equipment and spells](#trying-other-equipment-and-spells)
 - [Comparing two setups](#comparing-two-setups)
+- [What to get next: "Find upgrades"](#what-to-get-next-find-upgrades)
 - [Finding where to train: "Best for"](#finding-where-to-train-best-for)
 - [Supplies: unlimited or from the bank](#supplies-unlimited-or-from-the-bank)
 - [Earlier scans](#earlier-scans)
@@ -51,8 +52,9 @@ and is never larger than the room above that bar.
 Click the button beside the red X to fold the window down to its title. Until you run a scan after loading
 your character, it says **Combat Simulator**. During a scan it counts the finished fights,
 **Simulator · 4 of 12**, and at the end it says **Simulator · Done: 12 fights**. A scan you cancel says
-**Simulator · Stopped: 4 of 12**. **Simulator · Error** means the window has a message for you: open it to
-read it.
+**Simulator · Stopped: 4 of 12**. [Find upgrades](#what-to-get-next-find-upgrades) counts its fights the same
+way, one for each item and one for the setup as it is. **Simulator · Error** means the window has a message
+for you: open it to read it.
 
 Click the fold button again or the round chart button to return to the same tab, list, sort order and
 selected fight. The red X closes the window even when folded. A scan keeps running while the window is
@@ -266,7 +268,8 @@ tick Compare: see [Comparing two setups](#comparing-two-setups).
 to search; "Only items I own" hides the rest. A slot you changed gets a gold frame, and "Undo changes"
 brings the loadout's own items back. An item you do not own is handed to the copy so you can see what it
 would do; an item whose requirements you do not meet cannot be equipped by the copy either, and the result
-says so.
+says so. To try the items that fit a slot, up to 40 in one go:
+[Find upgrades](#what-to-get-next-find-upgrades).
 
 **Two-handed weapons** fill both hands, as on the game's own equipment screen: the Offhand shows the weapon
 too, faded the way the game shows it. Picking a two-handed weapon takes off what is in the Offhand, picking
@@ -343,6 +346,81 @@ the button would be.
 
 A and B are kept until you close the game or open another character; Compare starts unticked then. A scan of
 two setups goes into History as **A against B: ...**, with both setups named.
+
+## What to get next: "Find upgrades"
+
+> What should I get next for this fight?
+
+Simulate the fight, click its line, and press **Find upgrades**, the button over "Wear this setup first" under
+Details. Nothing runs yet: a panel opens over the list, where History opens, and there you choose which items
+to try, one slot at a time, on top of the setup on the left, against that fight.
+
+![The Find upgrades panel over the list: Boots ticked, "16 items · 17 fights · about 19s" and Simulate](../../docs/img/combat-simulator-upgrades-panel.png)
+
+- **Slots**: the slots of the setup on the left. Tick one or a few; none ticked is every slot.
+- **Comes from**: **Owned** (in your bank or worn now), **Drops in** the area of the fight, and the kinds of
+  the Item Encyclopedia's "Comes from" filter: Enemy drop, Skill, Shop, Chest, Thieving, Quest, Upgrade, No
+  source. None ticked is every item. The game's data is read the first time you open the panel; until then
+  only Owned can be chosen.
+- **Search items...**: only the items with these words in their name.
+- **List the items I cannot wear yet**: see below. They cost no fight.
+
+Each tick says how many items it stands for, with the rest of your choice as it is, and clicking **Slots** or
+**Comes from** unticks the whole group. The line beside **Simulate** says what a press runs: "16 items · 17
+fights · about 19s", by the estimate of the line above Simulate. One press tries at most 40 items: with more,
+Simulate is greyed until you tick fewer slots, or where they come from. Your choice is kept for the next time.
+
+Each item is one fight of the length chosen on the left, and the setup as it is is fought once more beside
+them; "Go on until" is not used, so all are as long. A search fights one at a time, so the game you play stays
+smooth: it runs in the background like a scan, the items come into the list in the middle as they are tried,
+the line over the list says how many are done, the line under Simulate names the item being tried, and the
+folded title counts the fights. **Stop**, where the button was, or Cancel on the left, stops it; the items
+tried so far stay.
+
+![Find upgrades for Black Slime: sixteen boots against the Mithril Boots worn, what each changes in every column, and the Details of Winged Boots](../../docs/img/combat-simulator-upgrades.png)
+
+- **The same moment, the same luck.** The setup as it is and every item are fought from the same moment of
+  your character. Every item is fought with the same luck as the setup as it is, so a difference comes from
+  the item, not from the dice. For that the setup as it is is fought once more, so its numbers in Details can
+  differ a little from its line in the list of fights, which had dice of its own. An item goes on the way a
+  pick in that slot's item picker puts it on: a two-handed weapon takes the shield off too, and a shield takes
+  the two-handed weapon off, which leaves the Weapon slot empty. The tooltip of a line says what the item went
+  on in place of. In Best for, every item is fought in the stance of the line you selected when its weapon has
+  that stance; when it does not, the game's own stance for it is used, and the line's tooltip says so.
+- **What it adds.** Every column you chose for the list says what the item changes in it, in the words of
+  Compare: **+14%** is 14% more with it, **-23%** 23% less, **×2.5** two and a half times as much, **+7,300**
+  that much where there was none, and for Net gold how much more or less, **+1,200**. Green is better and red
+  is worse, the way the column says (more XP, fewer deaths), and grey where it could be luck because the two
+  95% ranges overlap. **no better** is less than half a percent apart. For Healed, Items and Sim time neither
+  is better: no colour, and "the same". Only words stay the item's own, coloured: Safe or Risky, the name of
+  the best drop, and a first death where one of the two never dies ("none", or the time). Put the pointer on a
+  column's name for its words.
+- **The order.** Click a column's name to sort by what the item adds there: the first click puts the clear
+  gains on top, the largest first, then the gains that could be luck, then no better, then the losses that
+  could be luck, then what makes it worse. **Item** sorts by name and **Comes from** puts what you have first.
+- **Comes from** is Item Sources' answer: the headings of its list, such as "Combat", "Smithing" or "Combat,
+  Opening". Put the pointer on it for how many places each heading has, and click the line for every place. An
+  item you have says **In your bank** instead, or **Worn now**, and "x3" after its name says how many your
+  bank holds: the cheapest upgrade is the one you have already. Until the game's data is read, the cells say
+  `...`.
+- **Items you cannot wear yet.** An item whose requirements you do not meet, such as a level, cannot be worn
+  by the copy either, so it is never tried. With **List the items I cannot wear yet** ticked in the panel,
+  they come at the end of the list once the search is done, with what they need in grey beside their name, in
+  the game's words: "Level 40 Attack". At most 60 are listed.
+- **No numbers.** An item the copy could not put on as asked (no arrows in your bank with supplies From bank,
+  an item the game would not equip) says why in gold beside its name instead of numbers, and a fight that
+  failed in red.
+- **Details.** Click a line: every column with both numbers ("13,815 with it, 12,100 now") and where the item
+  comes from, place by place, as the Item Encyclopedia lists it. Fight under it is still the selected fight
+  with what you have on: Find upgrades never puts anything on.
+- **Back to the fights**, over the list, leaves the items; the fight they were tried for stays selected. The
+  button under Details then says **Show upgrades** and brings them back, while the search runs and after it,
+  as long as the setup on the left is the one they were tried on. Over the items, Find upgrades opens the
+  panel for another search. They are not kept in History or on the enemy cards: search again for the numbers
+  of a later moment.
+
+Find upgrades is greyed while an earlier scan is on show or a scan is running. Two slots at a time are not
+tried: for a new weapon and a new shield together, pick one in its slot and press Find upgrades again.
 
 ## Finding where to train: "Best for"
 
@@ -466,6 +544,9 @@ Fight does what it does unticked. It can always be ticked and unticked.
   the stance.
 - **Is this weapon worth buying?** Simulate your area, click the weapon slot, pick the weapon (you do not
   have to own it), simulate again, read "Compared with".
+- **What should I get next for this fight?** Click the fight's line, press Find upgrades, tick a slot or two,
+  press Simulate. The top line adds the most to the column the list is sorted by, and In your bank marks what
+  you have already.
 - **Which of my two setups is better, and where?** Tick Compare, press B and make it the other setup, press
   Simulate. The fights where the choice matters most are on top, and the line above the list counts the
   fights each setup wins.
@@ -533,7 +614,8 @@ Look at Loot in Details for what the gold is made of, and simulate such an enemy
 ### The same setup and the same character give the same numbers
 
 The dice of each fight are set from the fight and the setup. Press Simulate again with nothing changed and you
-get the very same numbers.
+get the very same numbers. [Find upgrades](#what-to-get-next-find-upgrades) gives every item it tries the dice
+of the setup as it is instead, so that each is fought with the same luck.
 
 Your character counts as part of "nothing changed": the copy is your character at the moment you press
 Simulate. Its XP decides when a level comes during the simulated time, its slayer task when that task ends,
@@ -605,6 +687,13 @@ Everything is in `mods\CombatSim`:
 | "Other setup" right after a scan, with nothing changed | Report it with the log: your setup was read differently from the scan's. |
 | "Skips Gold Ring (not in your bank)" above Fight, or "Gold Ring did not go on" after it | Wear this setup first only puts on what is in your bank. The other pieces go on, the fight starts with them, and the window stays open to say what stayed. |
 | "Your bank has no room for ..." above Fight | That piece would have to go back to your bank, and the game says it does not fit there. Make room in your bank, then open the simulator again. |
+| "Level 40 Attack" in grey on a line of Find upgrades, and no numbers | You do not meet that item's requirements: the copy cannot wear it either, so it was not tried. Untick List the items I cannot wear yet, in the panel of Find upgrades, to leave such items out. |
+| A line of Find upgrades with a gold note beside the name and no numbers | The copy did not put the item on as asked, and the note is why: no arrows in your bank with supplies From bank, or an item the game would not equip. |
+| Simulate greyed in the panel of Find upgrades | The line beside it says why: more than 40 items (tick fewer slots, or where they come from), no item in your choice, the game's data still being read, or a scan running. |
+| `...` under Comes from | The game's data is still being read, once a character: it fills in a moment later. `-` means it could not be read: `MelvorModLoader.log` has a line `[CombatSim] Where items come from could not be read`. |
+| "The stance ... is not available with this weapon" on a line of Find upgrades | In Best for, that item's weapon has other stances than the line you selected: it was fought in the stance the game chose for it. |
+| Find upgrades greyed | An earlier scan is on show, or a scan is running. Put the pointer on it for why. |
+| No Find upgrades button under Details | No fight is selected, or a game update changed what it reads: `MelvorModLoader.log` then has a line `[CombatSim] Find upgrades is switched off`. The rest of the simulator works as before. |
 | "Your equipment or bank changed after the words above Fight were written" | Something changed between the text and your click. Nothing was put on and no fight was started: read the new text, then press Fight again. |
 | "Wear this setup first" looks greyed | It puts nothing on for this fight; put the pointer on it for why. An earlier scan is on show; there is nothing to put on (you wear the setup already, or every changed item is skipped); that loadout is no longer there; your bank has no room for what the change of loadout takes off; Fight could not work out what to put on (`MelvorModLoader.log` says why); or a game update changed how equipment is put on (then `MelvorModLoader.log` has a line `Wear this setup first is switched off`). Fight then does what it does unticked. |
 | "The fight was not started" after Fight, with Wear this setup first ticked | The game did not do a step the way it should: it had not finished changing the loadout, or it put on or took off something else. Fight stopped there; the gold line says what went on before. Look at your equipment, and report it with `MelvorModLoader.log`, which has the count of each piece before and after. |

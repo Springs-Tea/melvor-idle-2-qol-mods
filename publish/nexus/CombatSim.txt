@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-simulator.png (main), combat-simulator-best.png, combat-simulator-compare.png, combat-simulator-areas.png, combat-simulator-spell.png, combat-simulator-history.png, combat-simulator-picker.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-What an hour of each fight gives, uses and risks, from the game's own combat run on a hidden copy of your character, each rate with its 95% range. Choose the numbers the list shows, compare two setups at once, find where to train, look at earlier scans, see Safe or Risky on enemy cards, and let Fight put on the simulated setup from your bank.
+What an hour of each fight gives, uses and risks, from the game's own combat on a hidden copy of your character, with 95% ranges. Choose the numbers shown, compare two setups, rank gear by what it adds, find where to train, look at earlier scans, see Safe or Risky on enemy cards, and let Fight put on the simulated setup from your bank.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -53,6 +53,9 @@ The button beside the red X folds the window down to its title so you can follow
 
 [size=4][b]Best for[/b][/size]
 Not "what does this area give" but "where should I go". Choose the skill you want to train and where to look: every fight is tried in each attack stance of your weapon, and the fights are ranked by what they give that skill, with the best stance named on each line.
+
+[size=4][b]Find upgrades[/b][/size]
+What should I get next for this fight? Click a fight's line and press [b]Find upgrades[/b] under its details. A panel opens where you choose which items to try before anything runs: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop, Skill, Shop, Chest and the other kinds of the Item Encyclopedia) or by name. It says how many fights a press runs and about how long, at most 40 items a press, and keeps your choice. The items are tried one slot at a time on top of your setup, each one fight from the same moment of your character, one at a time in the background so the game stays smooth. Every item is fought with the same luck as your setup, so a difference comes from the item, not from the dice. Each column of the list says what the item changes ("+14%", "-23%", "×2.5"): green where it is better, red where it is worse, grey where it could be luck, "no better" where it is the same. Click a column's name to put the largest gains on top. [b]Comes from[/b] is Item Sources' answer, or [b]In your bank[/b] when you have one already. A two-handed weapon takes the shield off and a shield the two-handed weapon, as on the game's equipment screen. Items you cannot wear yet can be listed with what they need; they are never tried. Nothing is put on.
 
 [size=4][b]History and Fight[/b][/size]
 The last ten scans of a character are kept, also after the game was closed: look at one again without simulating anything. The red [b]Fight[/b] button starts the selected fight in the game.

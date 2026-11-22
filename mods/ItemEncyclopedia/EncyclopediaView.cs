@@ -784,11 +784,8 @@ sealed class EncyclopediaView
             _details.AddChild(Note(found ? "Nothing in the game's data gives this item." : "Nothing in the game's data uses this item."));
             return;
         }
-        // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group.
-        var groups = refs.Select(_catalog.Lines.Describe)
-            .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
-            .GroupBy(l => l.Group).ToList();
+        // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group (ItemLines.Sorted).
+        var groups = _catalog.Lines.Sorted(refs).GroupBy(l => l.Group).ToList();
         bool chances = found && refs.Any(r => r.Chance < 0.9995);
         foreach (var group in groups)
         {

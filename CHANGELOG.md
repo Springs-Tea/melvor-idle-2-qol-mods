@@ -48,6 +48,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   name sorts by it, Best for lists the targets that give an item, a locked target shows as ??? with what it needs,
   and a click on a line opens that target's place without starting to steal. In View Possible Rewards each
   reward's quantity tells its number per hour, and the card of a target that can knock you out gets a Risky tag.
+- **Combat Simulator**: **Find upgrades**, under a fight's details, tries the items you choose (by slot, where they
+  come from or name, up to 40 at a time) against that fight with the same luck as your setup, and lists them by
+  what they add, with where each comes from and "In your bank" for what you have already.
 
 ## 0.5.0
 

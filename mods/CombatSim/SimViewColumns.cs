@@ -18,11 +18,11 @@ sealed partial class SimView
     const string NameKey = "name";
 
     List<SimColumn>? _catalog, _shown;
-    bool _shownComparing;
+    bool _shownComparing, _shownUpgrades;
     Dictionary<string, SimColumn>? _byKey;
     List<SimColumn> Catalog => _catalog ??= SimColumns.All(_state);
-    /// <summary>A column by its key, or one of the cells of compare mode by theirs (SimViewCompare.cs).</summary>
-    SimColumn? ColumnOf(string key) => (_byKey ??= Catalog.Concat(PairCatalog).ToDictionary(c => c.Key)).GetValueOrDefault(key);
+    /// <summary>A column by its key, or one of the cells of compare mode (SimViewCompare.cs) or of Find upgrades (SimViewUpgrades.cs) by theirs.</summary>
+    SimColumn? ColumnOf(string key) => (_byKey ??= Catalog.Concat(PairCatalog).Concat(UpgradeCatalog).ToDictionary(c => c.Key)).GetValueOrDefault(key);
 
     Control _resultsColumn = null!, _sidewaysRow = null!;
     HBoxContainer _headerCells = null!;
@@ -43,13 +43,17 @@ sealed partial class SimView
     // Where the numbers can stop when they move sideways: the start of each group.
     IEnumerable<float> Stops => _groups.Select(g => g.Start);
 
-    /// <summary>The columns of the list, from left to right; in compare mode each as its three cells (SimViewCompare.cs).</summary>
+    /// <summary>
+    /// The columns of the list, from left to right; in compare mode each as its three cells (SimViewCompare.cs), for the
+    /// items tried for a fight each as what the item adds, and where it comes from at the end (SimViewUpgrades.cs).
+    /// </summary>
     List<SimColumn> Shown()
     {
-        if (_shown != null && _shownComparing == _state.ShownComparing) return _shown;
+        if (_shown != null && _shownComparing == _state.ShownComparing && _shownUpgrades == _state.ShowingUpgrades) return _shown;
         _shownComparing = _state.ShownComparing;
+        _shownUpgrades = _state.ShowingUpgrades;
         List<SimColumn> shown = BaseShown();
-        return _shown = _shownComparing ? shown.SelectMany(PairCells).ToList() : shown;
+        return _shown = _shownUpgrades ? UpgradeCells(shown) : _shownComparing ? shown.SelectMany(PairCells).ToList() : shown;
     }
 
     /// <summary>The columns chosen for the list, from left to right, for one setup or two.</summary>
@@ -389,7 +393,7 @@ sealed partial class SimView
         bool descending = SortedDescending;
         if (key == NameKey)
         {
-            var byName = results.OrderBy(r => r.Target.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var byName = results.OrderBy(LineName, StringComparer.OrdinalIgnoreCase).ToList();
             if (descending) byName.Reverse();
             return byName;
         }
@@ -418,7 +422,7 @@ sealed partial class SimView
             if (!GodotObject.IsInstanceValid(header)) continue;
             string key = header.GetMeta("column").AsString();
             // The XP column says whose experience it is; in compare mode its first cell, which carries its name.
-            if (key is "xp" or "xp" + Versus)
+            if (key is "xp" or "xp" + Versus or "xp" + Gain)
                 header.Text = _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName : "XP";
             Color color = key == sorted ? GameStyle.TextGold : GameStyle.TextGrey;
             foreach (string name in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_focus_color" })
@@ -534,7 +538,7 @@ sealed partial class SimView
     IEnumerable<Control> Compared(SimResult r, SimResult other)
     {
         var same = new List<string>();
-        foreach (SimColumn column in Shown())
+        foreach (SimColumn column in BaseShown())
         {
             // A number one of the two does not have (nothing killed, not a dungeon, not recorded) is left out.
             if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;

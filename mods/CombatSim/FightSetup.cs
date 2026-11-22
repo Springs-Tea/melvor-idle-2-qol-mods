@@ -439,7 +439,8 @@ public partial class CombatSimMod
     }
 
     // The game's own words for the requirements that are not met ("Level 40 Attack"), as the item tooltips show them.
-    static string Unmet(ConditionGroup needs)
+    // Find upgrades (SimUpgrades.cs) asks for "" in place of the plain words, and says the rest of its sentence itself.
+    static string Unmet(ConditionGroup needs, string otherwise = "you do not meet its requirements")
     {
         try
         {
@@ -448,7 +449,7 @@ public partial class CombatSimMod
             if (words.Count > 0) return string.Join(", ", words);
         }
         catch (Exception) { }   // the plain words below
-        return "you do not meet its requirements";
+        return otherwise;
     }
 
     // Whether the bank takes all of these back, as the game itself checks a change to it before making it. The
