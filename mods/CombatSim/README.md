@@ -14,8 +14,9 @@
 
 The Combat Simulator answers that without fighting. You choose where, for how long and with what; it runs
 the fights and shows, for every one of them, an hour's kills, XP, gold, food and deaths, or any other of its
-numbers you choose for the list. The newest answer for an enemy also sits on its card in the game's combat
-areas menu: Safe or Risky, XP and deaths per hour.
+numbers you choose for the list. Every rate comes with its 95% range, so a real difference can be told from
+luck. The newest answer for an enemy also sits on its card in the game's combat areas menu: Safe or Risky, XP
+and deaths per hour.
 
 It does **not** re-create the game's combat formulas. It loads a copy of your character into a second,
 hidden game and runs the game's own combat on it. Nothing the copy does is ever saved.
@@ -66,10 +67,11 @@ The window has three columns: **Setup** on the left (what to simulate), **Result
 1. **Fights** is selected at the top of Setup. Leave it.
 2. **Where**: click it and tick an area, for example the one you are fighting in. Close the list with Done.
 3. **Each fight lasts**: 1 hour is a good start. This is game time, not waiting time: an hour of fighting
-   takes about a quarter of a second to simulate.
+   takes about a quarter of a second to simulate. Leave **Go on until**, beside it, on Time is up (see
+   [Go on until](#go-on-until)).
 4. **Supplies**: leave it on Unlimited.
 5. **Equipment** shows what you are wearing. Leave it.
-6. Press **Simulate**. The line under the button says how many fights that is and about how long it takes.
+6. Press **Simulate**. The line above the button says how many fights that is and about how long it takes.
    The button turns into Cancel while it runs.
 7. The lines appear in the middle as they finish, best XP first. Click one to see its details.
 
@@ -97,6 +99,10 @@ better. Fights with the same number, like all those that eat no food, stand with
 next to a name is the enemy's combat level; a dungeon says `Dungeon` and is simulated as a whole, run after
 run.
 
+Put the pointer on a line for the 95% range of each of its numbers, three to a line in the order of the list:
+**Kills ± 7.9%**, **Gold ± 14%**, **Deaths up to 3.69**. See
+[How far to trust the numbers](#how-far-to-trust-the-numbers).
+
 A `-` means there is no number. A fight that killed nothing has no Food/kill: that counts as the worst there
 is, so it is last on the first click and first on the second. A number that is missing, because the fight is
 not a dungeon or because an earlier scan did not record it, stands at the bottom either way.
@@ -108,9 +114,15 @@ The **Details** of a line, from top to bottom:
   percent. When the other setup's number is 0 there is no percent: the line shows this setup's own number
   and `vs 0`. Low HP, Safe, First death, Net gold and Best drop always show this setup's own number. Green
   is better and red is worse, the way the column says: more XP is better, fewer deaths and less food are
-  better. A number for which neither is better (Healed, Items, Sim time) has no colour. The columns in
-  which the two setups are the same share one line at the end, **The same: ...**, and a number one of them
-  does not have (`-`) is left out.
+  better. Green and red only when the two ranges do not overlap: where they do, the line is grey and says
+  **could be luck**, because a longer fight could turn it round. That holds for a 0 too: no deaths against
+  one death an hour, or no food against two pieces, could be luck; no damage taken against steady damage
+  all through the other fight is not. A skill a setup gains no XP in while it gains XP in others, like Magic
+  with a sword, is a real 0: that setup does not train the skill, no longer fight would turn it round, and
+  any XP in it is better. A number for which neither is better (Healed, Items, Sim time) has no colour.
+  The columns in which the two setups are less than half a percent apart share one line at the end,
+  **The same: ...**, and a number one of them does not have (`-`) is left out. A scan made before the
+  ranges were counted is compared as before: half a percent apart or more is better or worse.
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
@@ -120,6 +132,10 @@ The **Details** of a line, from top to bottom:
   the number of kills it had counted by then, in red.
 - **Used**: what the fight consumed per hour: food, runes, arrows, prayer points.
 - **Loot**: every item dropped per hour, with what it sells for.
+
+The small line under every rate in Details starts with its 95% range: `± 2%`, `0.62 to 8.77`, or for Deaths
+with none, `up to 3.69 an hour`. Under **Your food lasts** it is the kills at the two ends of the range of
+food per kill, on a line of its own. The last line says how long the fight was simulated.
 
 A gold line of text under the name is a note from the run: an item that could not be equipped, a fight that
 ended early because something ran out.
@@ -381,6 +397,9 @@ Fight does what it does unticked. It can always be ticked and unticked.
   the stance.
 - **Is this weapon worth buying?** Simulate your area, click the weapon slot, pick the weapon (you do not
   have to own it), simulate again, read "Compared with".
+- **Is it really better, or was that luck?** "Compared with" is green or red only when the two ranges do not
+  overlap, and grey with "could be luck" when they do. Go on until ± 2% sure narrows the ranges where it is
+  close.
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
   at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
   was. Columns > Idle puts Safe, the deaths, the first death and the enemy's biggest hit side by side for
@@ -403,7 +422,9 @@ flowchart LR
     D -.->|"never saved"| G(("Discarded"))
 ```
 
-- Every fight starts from a **fresh copy** of the same snapshot, so one result cannot leak into the next.
+- Every fight starts from a **fresh copy** of the same snapshot, so one result cannot leak into the next. Its
+  dice are set from the fight and the setup, so the same setup and the same character give the same numbers
+  again (see [below](#the-same-setup-and-the-same-character-give-the-same-numbers)).
 - Loading a copy takes about a second, an hour of fighting about a quarter of one. Up to four fights run
   side by side, leaving half of your processor to the game you are playing: thirty-eight fights of an hour
   each take about half a minute.
@@ -414,8 +435,65 @@ flowchart LR
 
 ## How far to trust the numbers
 
-Fights are random. Two runs of the same fight differ by a few percent; the longer the fight, the steadier
-the numbers. Use an hour or more before you decide anything on a difference of a few percent.
+Fights are random, so every rate the simulator shows comes with its 95% range: a range worked out this way
+holds the true number 95 times in 100.
+
+- **± 2%** after a number: the true rate is within 2% of it, either way.
+- **0.62 to 8.77**: a range that is not the same on both sides. Deaths, a dungeon's runs and anything else
+  that is counted one at a time and did not come in every tenth of the fight have one, because so few cannot
+  be told to a percent. So does a number whose range reaches 0.
+- **up to 3.69**: there were none. **0 deaths in an hour is not "never"**: up to 3.69 deaths an hour would
+  fit what was seen. Simulate 12 hours without a death and it is up to 0.31.
+- A number that was 0 all fight and is not counted one at a time, like no damage taken, has no range.
+- Put the pointer on a line of the list for the ranges of its numbers. In Details the range of each rate is
+  on the small line under it.
+- A scan made before the ranges were counted has none. Simulate again for them.
+
+The range comes from the fight itself: it is cut into ten parts of the same game time, and how much the parts
+differ says how far the whole could be off. This is statistics, not a rule of the game: no number of the game
+is worked out by it. The longer the fight, the narrower the range: four times the time gives half the range.
+
+**A rare drop that did not come is in no range.** A range only knows what the fight saw. When much of an
+enemy's gold comes from a valuable drop that comes about once in the time simulated, or less, a fight that
+never got it shows gold that looks steady, with a narrow range, and the true gold can be well above it.
+Look at Loot in Details for what the gold is made of, and simulate such an enemy for 12 hours.
+
+### The same setup and the same character give the same numbers
+
+The dice of each fight are set from the fight and the setup. Press Simulate again with nothing changed and you
+get the very same numbers.
+
+Your character counts as part of "nothing changed": the copy is your character at the moment you press
+Simulate. Its XP decides when a level comes during the simulated time, its slayer task when that task ends,
+and its potions how long they last. While you fight or train, these move on, so a scan a minute later can
+come out a little different: a few XP or a kill, and more for the enemy of your slayer task. The ranges are
+about luck and do not cover such changes. To compare two setups, simulate them one right after the other.
+
+### Go on until
+
+**Go on until**, beside "Each fight lasts", keeps simulating each fight after its time until every number in
+the list is known to the size you choose: **± 1% sure**, **± 2% sure**, **± 5% sure** or **± 10% sure**, 12
+hours of fighting at most. **Time is up**, as it starts, simulates exactly the time on the left.
+
+- It goes by the numbers the list shows ([Choosing the columns](#choosing-the-columns)): a number you do not
+  show does not hold a fight back.
+- A range halves for four times the time, so the simulator can tell how far 12 hours would bring a number. One
+  that 12 hours cannot bring within your size is waited for until it is within the next larger size it can
+  reach: with ± 2% sure, a number that could only get to ± 4% in 12 hours goes on until it is within ± 5%.
+- A number that 12 hours cannot bring even within ± 10% does not hold a fight back and is left as it came
+  out: most often a few deaths, gold that hangs on a valuable drop, or a number close to 0. A number that is
+  0, like no deaths, holds nothing back either.
+- **A smaller size never ends a fight sooner than a larger one**: it waits for everything the larger one
+  waits for, and more.
+- It is greyed out with supplies From bank: those fights are about how far your supplies get you in the time
+  you chose.
+- The line above Simulate says the most the run can take: `up to 2 min`. Cancel stops it like any run.
+- The Fought column and the last line of Details say how long each fight was simulated. Low HP, First death,
+  Max hit, Safe and the tag on the enemy's card are of all that time: a fight that ran longer had more time to
+  get low or to die once, so read them with its length in mind. The other numbers are per hour, per kill or
+  per run, and compare as they are.
+- A fight that ends as soon as its ranges are small enough sometimes ended on a lucky stretch, so its ranges
+  are a little less sure than 95%. For a close call, choose the next smaller size.
 
 The simulator was compared with the real game once: 4,188 XP per hour simulated against 4,125 on the game's
 own ten minute average for the same fight. That is one point, not a proof. Tell us when you see it off.
@@ -424,10 +502,10 @@ own ten minute average for the same fight. That is one point, not a proof. Tell 
 
 Everything is in `mods\CombatSim`:
 
-- `settings.json`: the window's place, size and folded state, your last choices and the list's columns
-  (`"Columns"`, `null` while they are the ones the list starts with). `"Workers"` sets how many fights run
-  side by side, 1 to 8 (0 lets the mod choose: half of the processor, four at most). Lower it if the game
-  stutters during a scan.
+- `settings.json`: the window's place, size and folded state, your last choices (Go on until is `"Sure"`, in
+  percent, 0 for Time is up) and the list's columns (`"Columns"`, `null` while they are the ones the list
+  starts with). `"Workers"` sets how many fights run side by side, 1 to 8 (0 lets the mod choose: half of the
+  processor, four at most). Lower it if the game stutters during a scan.
 - `history\<character>\`: the earlier scans. Delete the folder, or press Clear in History, to forget them.
 
 ## When something is off
@@ -439,6 +517,10 @@ Everything is in `mods\CombatSim`:
 | "Ran out of ... after ..." | From bank: that supply was used up. Without arrows or runes the fight ended there; without food it went on. |
 | "Stopped at ... after 10 deaths without food or a kill" | From bank: the food was gone and you died ten times in a row without killing anything. The fight ended there; the numbers are of the time until then. |
 | "The fight could not be started" | The game refused to start it for the copy, usually an unmet requirement of the area. |
+| With Go on until, fights of 12 hours | A number of the list could get within the size, or the next larger one, but only just in 12 hours. Show fewer columns, or choose a larger size. |
+| With Go on until, a fight that did not go on | Every number of the list was within the size already, or 12 hours could not bring it even within ± 10% (a few deaths, gold from a rare drop). |
+| With Go on until ± 2% sure, a number still at ± 4% | 12 hours could not bring that number within ± 2%, so the fight waited only until it was within ± 5%. |
+| No range in the tooltip or in Details | The scan was made before the ranges were counted: simulate again. Or the number was 0 all fight and is not counted one at a time, like no damage taken. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |
 | No tag on an enemy card | That enemy has no scan yet (scans made before the tags existed do not count), its fight failed, it belongs to a dungeon, or the tags are switched off at the bottom of History. If no card ever gets one, look for `[CombatSim] The tags on the enemy cards are switched off` in `MelvorModLoader.log`: a game update changed the menu; the simulator itself keeps working. |

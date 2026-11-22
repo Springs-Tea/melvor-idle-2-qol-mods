@@ -34,6 +34,18 @@ sealed class SimOptions
     public string? SpellId;
     /// <summary>Identifies this equipment setup, and names it for people.</summary>
     public string SetupKey = "", SetupLabel = "";
+    /// <summary>
+    /// Simulate longer (issue #5), with unlimited supplies only: after <see cref="Hours"/> the fight goes on, a part
+    /// at a time (SimParts), until the range of every rate of <see cref="Watch"/> is within this share of it (0.02 is
+    /// ± 2%), or within the next of <see cref="SureSizes"/> it can still reach, and <see cref="MostHours"/> at most.
+    /// 0: the fight lasts <see cref="Hours"/>.
+    /// </summary>
+    public double Sure;
+    /// <summary>The sizes "Go on until" offers, as shares (0.01 to 0.1): the steps a rate that cannot reach <see cref="Sure"/> falls back on.</summary>
+    public double[] SureSizes = Array.Empty<double>();
+    public double MostHours = 12;
+    /// <summary>The rates the list shows, whose ranges a longer fight waits for.</summary>
+    public List<SimRate> Watch = new();
 }
 
 /// <summary>An amount of something, by the game's id, with what one of it sells for (0 when unknown).</summary>
@@ -83,6 +95,9 @@ sealed class SimResult
     /// say: the list shows "-" for them then.
     /// </summary>
     public double? RunesUsed, AmmoUsed, PrayerPointsUsed;
+    /// <summary>How far the rates could be off, for their ranges (SimRanges). Null in scans made before the ranges.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SimSpread? Spread;
     public string Note = "";
     public bool Failed;
     public double RealMilliseconds;

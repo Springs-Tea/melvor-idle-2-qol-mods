@@ -26,9 +26,12 @@ enum Better { More, Less, Neither }
 /// <param name="Percent">"Compared with" says the change in percent; false: this setup's own number.</param>
 /// <param name="Trim">Words that can be longer than the column: cut with "...".</param>
 /// <param name="Dash">When the column shows "-" other than for a fight that could not be simulated.</param>
+/// <param name="Rate">The rate the column shows, for its 95% range (issue #5, <see cref="SimRanges"/>); null for a
+/// number that has none: the lowest HP, a hit, a first death, a drop, a time.</param>
+/// <param name="Format">How the column writes a number, for the ends of a range; <see cref="SimView.Fmt"/> when null.</param>
 sealed record SimColumn(string Key, string Group, string Title, string Name, string Tip, float Width,
     Func<SimResult, double?> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint, Better Better,
-    bool Percent = true, bool Trim = false, string Dash = "")
+    bool Percent = true, bool Trim = false, string Dash = "", Func<SimRate>? Rate = null, Func<double, string>? Format = null)
 {
     /// <summary>
     /// The tooltip of the column's name over the list: its whole name first when the title is short for it (and the
@@ -109,11 +112,16 @@ static class SimColumns
     // "-" for no number, dim; the number in the column's format and colour otherwise.
     static SimColumn Number(string key, string group, string title, string name, string tip, float width,
         Func<SimResult, double?> value, Better better, Func<double, string>? format = null, Func<SimResult, double, Color>? tint = null,
-        bool percent = true, string dash = "") =>
+        bool percent = true, string dash = "", Func<SimRate>? rate = null) =>
         new(key, group, title, name, tip, width, value,
             r => value(r) is { } v && double.IsFinite(v) ? (format ?? SimView.Fmt)(v) : "-",
             r => value(r) is { } v && double.IsFinite(v) ? tint?.Invoke(r, v) ?? GameStyle.TextWhite : GameStyle.TextDim,
-            better, percent, Dash: dash);
+            better, percent, Dash: dash, Rate: rate, Format: format);
+
+    // The rates of the columns, by what they count (SimRanges) and what per.
+    static Func<SimRate> EachHour(string of) => () => SimRate.PerHour(of);
+    static Func<SimRate> EachKill(string of) => () => SimRate.PerKill(of);
+    static Func<SimRate> EachRun(string of) => () => SimRate.PerRun(of);
 
     // Nothing killed, or no run finished: the worst there is (see SimColumn).
     static double Worst(Better better) => better == Better.Less ? double.PositiveInfinity : double.NegativeInfinity;
@@ -137,14 +145,16 @@ static class SimColumns
         var columns = new List<SimColumn>
         {
             // ---- Offence
-            Number("kills", Offence, "Kills", "Kills", "Enemies killed per hour", 58, r => r.KillsPerHour, Better.More),
+            Number("kills", Offence, "Kills", "Kills", "Enemies killed per hour", 58, r => r.KillsPerHour, Better.More,
+                rate: EachHour(SimRanges.Kills)),
             Number("killTime", Offence, "Kill time", "Time per kill",
                 "Seconds of game time for each kill, waiting for the next enemy included", 66,
-                r => PerKill(r, r.Hours * 3600, Better.Less), Better.Less, Seconds, dash: NoKill),
+                r => PerKill(r, r.Hours * 3600, Better.Less), Better.Less, Seconds, dash: NoKill, rate: EachKill(SimRanges.Seconds)),
 
             // ---- Defence
             new("deaths", Defence, "Deaths", "Deaths", "Times you die per hour", 60, r => r.DeathsPerHour,
-                r => r.Deaths == 0 ? "0" : SimView.Fmt(r.DeathsPerHour), r => r.Deaths == 0 ? GameStyle.TextDim : SimView.Bad, Better.Less),
+                r => r.Deaths == 0 ? "0" : SimView.Fmt(r.DeathsPerHour), r => r.Deaths == 0 ? GameStyle.TextDim : SimView.Bad, Better.Less,
+                Rate: EachHour(SimRanges.Deaths)),
             new("firstDeath", Defence, "First death", "First death",
                 "How far into the fight you died for the first time; none when you never died", 76,
                 // Never dying is the best there is: it sorts above the latest first death.
@@ -167,46 +177,52 @@ static class SimColumns
                 "The most the enemy's attacks can deal, as the game says, or a bigger loss of hitpoints seen in the fight", 58,
                 r => r.MaxEnemyHit, Better.Less, dash: "for a dungeon, and in an earlier scan made before the enemy cards"),
             Number("damageTaken", Defence, "Dmg taken", "Damage taken", "Hitpoints you lose per hour", 66,
-                r => r.PerHour(r.DamageTaken), Better.Less),
+                r => r.PerHour(r.DamageTaken), Better.Less, rate: EachHour(SimRanges.Damage)),
             Number("damagePerKill", Defence, "Dmg/kill", "Damage taken per kill", "Hitpoints you lose for each kill", 62,
-                r => PerKill(r, r.DamageTaken, Better.Less), Better.Less, dash: NoKill),
+                r => PerKill(r, r.DamageTaken, Better.Less), Better.Less, dash: NoKill, rate: EachKill(SimRanges.Damage)),
             Number("healed", Defence, "Healed", "Healed by food", "Hitpoints food healed per hour", 60,
-                r => r.PerHour(r.Healed), Better.Neither),
+                r => r.PerHour(r.Healed), Better.Neither, rate: EachHour(SimRanges.Healed)),
 
             // ---- Supplies
-            Number("food", Supplies, "Food", "Food eaten", "Food eaten per hour", 52, r => r.FoodPerHour, Better.Less),
+            Number("food", Supplies, "Food", "Food eaten", "Food eaten per hour", 52, r => r.FoodPerHour, Better.Less,
+                rate: EachHour(SimRanges.Food)),
             Number("foodPerKill", Supplies, "Food/kill", "Food per kill", "Food eaten per kill: the less, the longer your food lasts", 66,
-                r => PerKill(r, r.FoodEaten, Better.Less), Better.Less, SimView.PerKill, dash: NoKill),
+                r => PerKill(r, r.FoodEaten, Better.Less), Better.Less, SimView.PerKill, dash: NoKill, rate: EachKill(SimRanges.Food)),
             Number("runes", Supplies, "Runes", "Runes used", "Runes used per hour by your spells", 60,
-                r => Hourly(r, r.RunesUsed), Better.Less, dash: NotCounted),
+                r => Hourly(r, r.RunesUsed), Better.Less, dash: NotCounted, rate: EachHour(SimRanges.Runes)),
             Number("runesPerKill", Supplies, "Runes/kill", "Runes per kill", "Runes per kill used by your spells", 70,
-                r => PerKill(r, r.RunesUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted),
+                r => PerKill(r, r.RunesUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted,
+                rate: EachKill(SimRanges.Runes)),
             Number("ammo", Supplies, "Ammo", "Ammo used", "Ammo used per hour: arrows, bolts and the like", 58,
-                r => Hourly(r, r.AmmoUsed), Better.Less, dash: NotCounted),
+                r => Hourly(r, r.AmmoUsed), Better.Less, dash: NotCounted, rate: EachHour(SimRanges.Ammo)),
             Number("ammoPerKill", Supplies, "Ammo/kill", "Ammo per kill", "Ammo per kill: arrows, bolts and the like", 68,
-                r => PerKill(r, r.AmmoUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted),
+                r => PerKill(r, r.AmmoUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted,
+                rate: EachKill(SimRanges.Ammo)),
             Number("prayer", Supplies, "Prayer pts", "Prayer points used", "Prayer points used per hour by your prayers", 70,
-                r => Hourly(r, r.PrayerPointsUsed), Better.Less, dash: NotCounted),
+                r => Hourly(r, r.PrayerPointsUsed), Better.Less, dash: NotCounted, rate: EachHour(SimRanges.Prayer)),
             Number("prayerPerKill", Supplies, "Pts/kill", "Prayer points per kill", "Prayer points per kill used by your prayers", 62,
-                r => PerKill(r, r.PrayerPointsUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted),
+                r => PerKill(r, r.PrayerPointsUsed, Better.Less), Better.Less, SimView.PerKill, dash: NoKill + ", or " + NotCounted,
+                rate: EachKill(SimRanges.Prayer)),
             Number("cost", Supplies, "Cost", "Supplies cost",
                 "Supplies cost: what the food, runes, ammo and potions used in an hour sell for. Prayer points have no price", 60,
-                r => r.PerHour(Cost(r)), Better.Less, tint: (_, _) => GameStyle.TextGold),
+                r => r.PerHour(Cost(r)), Better.Less, tint: (_, _) => GameStyle.TextGold, rate: EachHour(SimRanges.Cost)),
 
             // ---- Economy
             Number("gold", Economy, "Gold", "Gold", "Coins dropped plus what the dropped items sell for, per hour", 66,
-                r => r.GoldPerHour, Better.More, tint: (_, _) => GameStyle.TextGold),
+                r => r.GoldPerHour, Better.More, tint: (_, _) => GameStyle.TextGold, rate: EachHour(SimRanges.Gold)),
             Number("goldPerKill", Economy, "Gold/kill", "Gold per kill", "Gold per kill: coins and what the dropped items sell for", 66,
-                r => PerKill(r, r.GoldPerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoKill),
+                r => PerKill(r, r.GoldPerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoKill,
+                rate: EachKill(SimRanges.Gold)),
             Number("coins", Economy, "Coins", "Coins", "Coins dropped per hour", 60, r => r.CoinsPerHour, Better.More,
-                tint: (_, _) => GameStyle.TextGold),
+                tint: (_, _) => GameStyle.TextGold, rate: EachHour(SimRanges.Coins)),
             Number("loot", Economy, "Loot", "Loot value", "Loot value: what the dropped items sell for, per hour", 60, r => r.LootValuePerHour,
-                Better.More, tint: (_, _) => GameStyle.TextGold),
+                Better.More, tint: (_, _) => GameStyle.TextGold, rate: EachHour(SimRanges.Loot)),
             Number("lootPerKill", Economy, "Loot/kill", "Loot value per kill", "Loot value per kill: what the items dropped for each kill sell for", 66,
-                r => PerKill(r, r.LootValuePerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoKill),
+                r => PerKill(r, r.LootValuePerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoKill,
+                rate: EachKill(SimRanges.Loot)),
             Number("netGold", Economy, "Net gold", "Gold after supplies", "Gold after supplies: gold per hour less what the supplies used sell for", 66,
                 r => r.GoldPerHour - r.PerHour(Cost(r)), Better.More, tint: (_, v) => v < 0 ? SimView.Bad : GameStyle.TextGold,
-                percent: false),
+                percent: false, rate: EachHour(SimRanges.NetGold)),
             new("bestDrop", Economy, "Best drop", "Most valuable drop", "Most valuable drop: the item that sells for the most of all that dropped", 110,
                 r => BestDrop(r)?.SellsFor ?? 0, r => BestDrop(r)?.Name ?? "none", r => BestDrop(r) != null ? GameStyle.TextPaper : GameStyle.TextDim,
                 Better.More, Percent: false, Trim: true),
@@ -216,27 +232,30 @@ static class SimColumns
 
             // ---- Experience
             Number("xp", Experience, "XP", "Experience",
-                "Experience per hour: all combat skills together, or the skill you are training", 66, r => state.Xp(r), Better.More),
+                "Experience per hour: all combat skills together, or the skill you are training", 66, r => state.Xp(r), Better.More,
+                rate: () => state.XpRate),
             Number("xpPerKill", Experience, "XP/kill", "Experience per kill", "Experience per kill, of the XP column", 62,
-                r => PerKill(r, state.Xp(r) * r.Hours, Better.More), Better.More, dash: NoKill),
+                r => PerKill(r, state.Xp(r) * r.Hours, Better.More), Better.More, dash: NoKill, rate: () => SimRate.PerKill(state.XpRate.Of)),
         };
         foreach (string id in SimEngine.CombatSkills)
         {
             string skill = state.Skills.FirstOrDefault(k => k.Id == id).Name ?? id[(id.IndexOf(':') + 1)..];
             columns.Add(Number(SkillPrefix + id, Experience, skill, skill + " XP", $"{skill} XP per hour", 66,
-                r => r.PerHour(r.Xp.GetValueOrDefault(id)), Better.More));
+                r => r.PerHour(r.Xp.GetValueOrDefault(id)), Better.More, rate: EachHour(SimRanges.XpOf(id))));
         }
         columns.AddRange(new[]
         {
             // ---- Dungeons
             Number("runs", Dungeons, "Runs", "Dungeon runs", "Whole runs of the dungeon per hour", 52,
-                r => r.Target.IsDungeon ? r.PerHour(r.DungeonRuns) : null, Better.More, dash: "for a fight that is not a dungeon"),
+                r => r.Target.IsDungeon ? r.PerHour(r.DungeonRuns) : null, Better.More, dash: "for a fight that is not a dungeon",
+                rate: EachHour(SimRanges.Runs)),
             Number("runTime", Dungeons, "Run time", "Time per run", "Game time for each run of the dungeon, deaths included", 66,
-                r => PerRun(r, r.Hours * 3600, Better.Less), Better.Less, SimText.Clock, dash: NoRun),
+                r => PerRun(r, r.Hours * 3600, Better.Less), Better.Less, SimText.Clock, dash: NoRun, rate: EachRun(SimRanges.Seconds)),
             Number("deathsPerRun", Dungeons, "Deaths/run", "Deaths per run", "Deaths per run: times you die for each run of the dungeon", 72,
-                r => PerRun(r, r.Deaths, Better.Less), Better.Less, SimView.PerKill, dash: NoRun),
+                r => PerRun(r, r.Deaths, Better.Less), Better.Less, SimView.PerKill, dash: NoRun, rate: EachRun(SimRanges.Deaths)),
             Number("goldPerRun", Dungeons, "Gold/run", "Gold per run", "Gold per run: coins and what the dropped items sell for", 66,
-                r => PerRun(r, r.GoldPerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoRun),
+                r => PerRun(r, r.GoldPerHour * r.Hours, Better.More), Better.More, tint: (_, _) => GameStyle.TextGold, dash: NoRun,
+                rate: EachRun(SimRanges.Gold)),
 
             // ---- Time
             Number("fought", Time, "Fought", "Time simulated",

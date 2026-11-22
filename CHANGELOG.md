@@ -26,6 +26,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   game's own actions; an item that is not in your bank, or whose old piece your bank has no room for, is skipped
   and its slot stays as it is. The text above the button names every step, and Fight never does more than it
   says.
+- **Combat Simulator**: every rate has a 95% range, on a line's tooltip and under each number in Details.
+  "Compared with" says better or worse only when the two ranges do not overlap, and "could be luck" when they
+  do; a skill one setup never trains is a real 0. **Go on until** beside "Each fight lasts" keeps a fight going
+  until its numbers are known to ± 1% to ± 10%, 12 hours at most.
 
 ## 0.5.0
 

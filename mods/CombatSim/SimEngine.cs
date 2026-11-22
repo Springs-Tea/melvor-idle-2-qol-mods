@@ -35,7 +35,7 @@ namespace CombatSim;
 sealed class SimEngine
 {
     public const string Gold = "MelvorBase:GoldPieces";
-    const int TicksPerSecond = 60;
+    internal const int TicksPerSecond = 60;
     // How often the fight is looked at (restarted after a death, supplies handed back, a cancel noticed).
     const int CheckEvery = 64;
     // Unlimited supplies: what a slot that holds a pile (arrows) is filled with, and what the copy's bank is
@@ -125,6 +125,10 @@ sealed class SimEngine
         workers = Math.Clamp(workers, 1, Math.Max(1, targets.Count));
 #if DEVTOOLS
         _musicScan = new MusicScan(_log);
+        _devTwins.Clear();
+        _devReal = new WeakReference<Game>(real);
+        // Two scans of the same setup start from the same snapshot only when nothing changed in between.
+        _log($"Dev: snapshot {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(save), 0, 8)}, {save.Length:N0} bytes");
 #endif
         Task.Run(() =>
         {
@@ -252,7 +256,14 @@ sealed class SimEngine
 #endif
             sim.LoadForSave();
             using (var stream = new MemoryStream(save)) LoadState(stream, sim);
+            SimDice.Set(sim, result.Key, _log);
+#if DEVTOOLS
+            SimDice.DevCheck? dice = SimDice.DevBefore(sim, _devReal != null && _devReal.TryGetTarget(out Game? real) ? real : null, result.Key, _log);
+#endif
             Fight(sim, target, options, result, cancel);
+#if DEVTOOLS
+            dice?.After();
+#endif
         }
         catch (Exception e)
         {
@@ -275,8 +286,34 @@ sealed class SimEngine
 #endif
             result.RealMilliseconds = clock.Elapsed.TotalMilliseconds;
         }
+#if DEVTOOLS
+        if (!cancel.IsCancellationRequested) DevTwin(result);
+#endif
         return result;
     }
+
+#if DEVTOOLS
+    // Development: every result in one line, and a fight that was asked for twice in one run side by side (the
+    // "twice=" request of CombatSimMod), to see that the same setup gives the same numbers.
+    readonly ConcurrentDictionary<string, string> _devTwins = new();
+    // The game that is played, to tell that a copy's dice are its own.
+    WeakReference<Game>? _devReal;
+
+    void DevTwin(SimResult result)
+    {
+        string xp = string.Join(" ", result.Xp.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key.Replace("MelvorBase:", "")}={x.Value:0.##}"));
+        string line = $"{SimText.Clock(result.Hours * 3600)}, kills {result.Kills}, deaths {result.Deaths}, runs {result.DungeonRuns}, food {result.FoodEaten}, " +
+                      $"damage {result.DamageTaken}, healed {result.Healed}, lowest {result.LowestHp}, xp {xp}, gold {result.GoldPerHour * result.Hours:0.##}, " +
+                      $"loot {string.Join(" ", result.Loot.Select(l => $"{l.Id.Replace("MelvorBase:", "")}={l.Quantity:0.##}"))}, used {string.Join(" ", result.Used.Select(u => $"{u.Id.Replace("MelvorBase:", "")}={u.Quantity:0.##}"))}" +
+                      (result.Failed ? ", failed: " + result.Note : "");
+        _log($"Dev: result {result.Key}: {line}");
+        if (_devTwins.TryAdd(result.Key, line)) return;
+        string first = _devTwins[result.Key];
+        _log(first == line
+            ? $"Dev: the same fight twice, {result.Target.Name} {result.Target.StanceName}: the same numbers both times."
+            : $"Dev: the same fight twice, {result.Target.Name} {result.Target.StanceName}: DIFFERENT.\n  first:  {first}\n  second: {line}");
+    }
+#endif
 
     void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, CancellationToken cancel)
     {
@@ -414,8 +451,12 @@ sealed class SimEngine
         if (notes.Count > 0) result.Note = string.Join(" ", notes);
 
         long total = (long)(options.Hours * 3600 * TicksPerSecond);
+        // Simulated longer, the fight may go on to the longest duration, until its ranges are small enough (SimParts).
+        // Never From bank: that fight is about how far the supplies get you in the time asked.
+        long limit = options.Sure > 0 && options.UnlimitedSupplies ? Math.Max(total, (long)(options.MostHours * 3600 * TicksPerSecond)) : total;
+        var parts = new SimParts(sim, combat, result, options, total, CheckEvery, xpBefore, loot, used, () => ammoUsed, _log);
         int deathsSeen = 0, restarts = 0;
-        for (; ticks < total; ticks++)
+        for (; ticks < limit; ticks++)
         {
             sim.PropagateTick();
             if (ticks % CheckEvery != 0) continue;
@@ -430,6 +471,9 @@ sealed class SimEngine
                 notes.Add($"Ran out of {ItemName(eaten)} after {Clock(ticks)}.");
                 result.Note = string.Join(" ", notes);
             }
+            // A part ends here when one is due; simulated longer, the fight ends with it once its ranges are small
+            // enough, unless it has just ended by itself and is told below why.
+            if (parts.Step(ticks) && sim.ActionManager.HasActiveAction) break;
             if (sim.ActionManager.HasActiveAction) continue;
 
             // The fight ended. After a death it goes on, to learn how often that happens; anything else
@@ -464,7 +508,15 @@ sealed class SimEngine
         result.Used = used.Values.OrderByDescending(u => u.Quantity).ToList();
         result.AmmoUsed = ammoUsed;
         SortSupplies(combat, result);
+        // The ranges are an extra: if they cannot be worked out, the fight's numbers still stand, without them.
+        try { result.Spread = parts.Finish(ticks); }
+        catch (Exception e)
+        {
+            if (Interlocked.Exchange(ref _rangesLogged, 1) == 0) _log("The ranges of a fight could not be worked out: " + e.Message);
+        }
     }
+
+    int _rangesLogged;
 
     int _suppliesLogged;
 
@@ -502,8 +554,9 @@ sealed class SimEngine
     }
 
     // Its own method, never inlined: a game update that removed these fails when it is called, inside the try.
+    // Also read by SimParts, for the runes and prayer points of each part of the fight.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    static (HashSet<string> Runes, HashSet<string> Prayer) SupplyKinds(CombatEntity combat) =>
+    internal static (HashSet<string> Runes, HashSet<string> Prayer) SupplyKinds(CombatEntity combat) =>
         (combat.MagicSpells.ActiveSpells.Keys.SelectMany(s => s.RuneCosts)
              .Concat(combat.MagicSpells.ActiveImbuements.Keys.SelectMany(s => s.RuneCosts)).Select(c => c.Item.Id).ToHashSet(),
          combat.Prayer.CostCurrencies.Select(c => c.Id).ToHashSet());

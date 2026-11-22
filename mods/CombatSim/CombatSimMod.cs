@@ -46,6 +46,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         /// <summary>Fights simulated side by side, 1 to 8; 0 lets the mod choose (half of the processor, four at most).</summary>
         public int Workers { get; set; }
         public int Duration { get; set; } = 1;
+        /// <summary>"Go on until": the size in percent, one of SimState.SureSizes; 0 is "Time is up" (off).</summary>
+        public double Sure { get; set; }
         public bool Unlimited { get; set; } = true;
         public bool ShowEnemyCards { get; set; } = true;
         /// <summary>"Wear this setup first" above the Fight button: off until the player ticks it.</summary>
@@ -92,6 +94,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.FightAreas = _settings.Areas.ToHashSet();
         _state.BestAreas = _settings.BestAreas.ToHashSet();
         _state.Duration = _settings.Duration;
+        _state.Sure = SimState.SureSizes.Contains(_settings.Sure) ? _settings.Sure : 0;
         _state.Unlimited = _settings.Unlimited;
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.WearSetup = _settings.WearSetupFirst;
@@ -163,6 +166,9 @@ public partial class CombatSimMod : IMod, ISimLookup
 #if DEVTOOLS
         _devCommands.Clear();
         _devShotAt = _devPickerAt = -1;
+        // What was kept of the character before is not this one's to put back (the settings are the mod's own).
+        _devSession = null;
+        _devStarted.Clear();
 #endif
         if (now == null) return;
         _combat = now.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? c) ? c as CombatEntity : null;
@@ -558,6 +564,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _settings.Areas = _state.FightAreas.OrderBy(a => a, StringComparer.Ordinal).ToList();
         _settings.BestAreas = _state.BestAreas.OrderBy(a => a, StringComparer.Ordinal).ToList();
         _settings.Duration = _state.Duration;
+        _settings.Sure = _state.Sure;
         _settings.Unlimited = _state.Unlimited;
         _settings.ShowEnemyCards = _state.ShowEnemyCards;
         _settings.WearSetupFirst = _state.WearSetup;
@@ -567,22 +574,31 @@ public partial class CombatSimMod : IMod, ISimLookup
         WriteSettings();
     }
 
+    // What a run is asked, from the choices on the left.
+    SimOptions RunOptions() => new()
+    {
+        Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
+        UnlimitedSupplies = _state.Unlimited,
+        LoadoutId = _state.LoadoutId == "" ? null : _state.LoadoutId,
+        Overrides = new Dictionary<string, string>(_state.Overrides),
+        SpellId = _state.SpellId == "" ? null : _state.SpellId,
+        SetupKey = _state.SetupKey,
+        SetupLabel = _state.SetupLabel,
+        // "Go on until": the longest duration is as far as a fight goes on; never From bank (SimEngine.Fight).
+        Sure = _state.Unlimited ? _state.Sure / 100 : 0,
+        SureSizes = SimState.SureSizes.Where(size => size > 0).Select(size => size / 100).ToArray(),
+        MostHours = SimState.Durations[^1].Hours,
+        Watch = _view?.WatchedRates() ?? new List<SimRate>(),
+    };
+
     void Simulate()
     {
         if (_game == null) return;
         var targets = _state.ToSimulate();
-        var options = new SimOptions
-        {
-            Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
-            UnlimitedSupplies = _state.Unlimited,
-            LoadoutId = _state.LoadoutId == "" ? null : _state.LoadoutId,
-            Overrides = new Dictionary<string, string>(_state.Overrides),
-            SpellId = _state.SpellId == "" ? null : _state.SpellId,
-            SetupKey = _state.SetupKey,
-            SetupLabel = _state.SetupLabel,
-        };
-        _state.Message = "";
+        // First back to the current results: the XP column of an earlier scan may be of another skill (RunOptions).
         _state.Viewing = null;
+        var options = RunOptions();
+        _state.Message = "";
         if (!_engine.Start(_game, targets, options, _state.Workers, out string error)) { _state.Message = error; _ctx.Log(error); }
         else
         {
@@ -602,7 +618,9 @@ public partial class CombatSimMod : IMod, ISimLookup
                 SetupLabel = options.SetupLabel,
                 Asked = targets.Count,
             };
-            _ctx.Log($"Simulating {targets.Count} fights, {options.Hours:0.##} h each, supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {options.SetupLabel}, {Math.Min(_state.Workers, targets.Count)} at a time.");
+            _ctx.Log($"Simulating {targets.Count} fights, {options.Hours:0.##} h each" +
+                     (options.Sure > 0 ? $" or on until {SimRanges.Size(_state.Sure)} sure ({options.MostHours:0.##} h at most)" : "") +
+                     $", supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {options.SetupLabel}, {Math.Min(_state.Workers, targets.Count)} at a time.");
             _runClock.Restart();
         }
         Pump(force: true);
@@ -717,6 +735,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         if (scan.Results.Count == 0) return;
         scan.At = DateTime.UtcNow;
         _history.Add(scan);
+#if DEVTOOLS
+        DevKept(scan);
+#endif
     }
 
     // ---- the button in the game's strip of round buttons on the right edge -------------------------------
@@ -800,16 +821,59 @@ public partial class CombatSimMod : IMod, ISimLookup
     string? _devSelect, _devPicker;
     long _devPickerAt = -1;
     readonly Queue<string> _devCommands = new();
-    // The settings as they were before the request; put back once its last line has run.
+    // The settings as they were before the request, and the rest of the player's simulator it may change: put back
+    // once its last line has run and its runs are over.
     Settings? _devSettings;
+    DevSession? _devSession;
+
+    // What a request may change that settings.json does not hold: the earlier scans (a run goes into History, and can
+    // push the oldest out), the current results and the line about the last run, and the setup, selection and sort
+    // of the window. Made: the ids of the scans the request's own runs put into History, the only ones it takes out
+    // again; PlayerMade: those of the player's own runs that ended meanwhile, which stay.
+    sealed record DevSession((string? Folder, List<Scan> Scans) History, Dictionary<string, SimResult> Results, int Done, int Total,
+        string Message, string LoadoutId, Dictionary<string, string> Overrides, string SpellId, string? Selected, bool Pinned, Scan? Viewing,
+        string SortKey, bool SortDescending)
+    {
+        public readonly List<string> Made = new(), PlayerMade = new();
+    }
+
+    // The runs a request started itself (DevSimulate), until their scan goes into History (DevKept).
+    readonly HashSet<Scan> _devStarted = new();
+
+    // A run the request starts. Its scan is the request's: the only kind the put back takes out of History. A run the
+    // player started by his own click, also one that was going when the request began, is his.
+    void DevSimulate()
+    {
+        Scan? before = _run;
+        Simulate();
+        if (_run != null && !ReferenceEquals(_run, before)) _devStarted.Add(_run);
+    }
+
+    // A scan has just gone into History: note whose it is, at that moment.
+    void DevKept(Scan scan)
+    {
+        bool request = _devStarted.Remove(scan);
+        if (_devSession is not { } session) return;
+        (request ? session.Made : session.PlayerMade).Add(scan.Id);
+        _ctx.Log($"Dev: history: scan {scan.Id} kept, {(request ? "the request's own" : "the player's own (not the request's)")}.");
+    }
 
     void DevRequests()
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
-        if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1) DevPutBack();
+        if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1
+            && _run == null && !_state.Running && !_engine.Running) DevPutBack();
         if (_devCommands.Count == 0 && File.Exists(request))
         {
             _devSettings ??= JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(_settings));
+            if (_devSession == null)
+            {
+                // As Open reads it, so that what is kept is what the player has, not an empty list.
+                ReadHistory();
+                _devSession = new DevSession(_history.DevKeep(), new Dictionary<string, SimResult>(_state.Results), _state.Done, _state.Total,
+                    _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.Selected,
+                    _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending);
+            }
             foreach (string line in File.ReadAllLines(request))
                 if (line.Trim() != "") _devCommands.Enqueue(line.Trim());
             File.Delete(request);
@@ -818,7 +882,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         while (_devCommands.TryPeek(out string? command))
         {
             if (command == "wait=progress" && _state.Running && _state.Done == 0) return;
-            if (command == "wait=finished" && _state.Running) return;
+            // Also the run of "twice=", which is not the window's.
+            if (command == "wait=finished" && (_state.Running || _engine.Running)) return;
             _devCommands.Dequeue();
             if (command == "wait=progress" && (!_state.Running || _state.Done == _state.Total))
             {
@@ -827,7 +892,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 return;
             }
             if (command is "wait=progress" or "wait=finished") continue;
-            if (command == "simulate") { Simulate(); continue; }
+            if (command == "simulate") { DevSimulate(); continue; }
             if (DevWindowCommand(command)) return;
             bool prepare = command.StartsWith("setup=", StringComparison.Ordinal);
             if (!prepare && !command.Contains('|'))
@@ -880,7 +945,7 @@ public partial class CombatSimMod : IMod, ISimLookup
             Build();
             _window!.Visible = true;
             _window.SetMinimised(false);
-            if (!prepare && !noRun) Simulate();
+            if (!prepare && !noRun) DevSimulate();
             _devSelect = parts.Length > 3 ? parts[3].Trim() : null;
             _devPickerAt = -1;
             _devShotAt = prepare ? -1 : -2;
@@ -929,6 +994,9 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   wait=progress, wait=finished   the next lines wait for the first finished fight, or for the end
     //   cancel, select=first, sort=<column>, scale=min|max
     //   shot=<name>   shot-<name>.png and crop-<name>.png once drawn, the window's state in shot-<name>.txt
+    //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
+    //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
+    //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -957,10 +1025,39 @@ public partial class CombatSimMod : IMod, ISimLookup
             default:
                 if (command.StartsWith("sort=", StringComparison.Ordinal)) _view?.DevOpenPicker(command);
                 else if (command.StartsWith("shot=", StringComparison.Ordinal)) DevShot(command[5..]);
+                else if (command.StartsWith("sure=", StringComparison.Ordinal)) DevSure(command[5..]);
+                else if (command.StartsWith("twice=", StringComparison.Ordinal)) DevTwice(command[6..].Trim());
                 else return false;
                 break;
         }
         return true;
+    }
+
+    void DevSure(string size)
+    {
+        if (!double.TryParse(size, out double percent) || !SimState.SureSizes.Contains(percent))
+        {
+            _ctx.Log($"Dev: sure={size} is not one of the sizes {string.Join(", ", SimState.SureSizes)}.");
+            return;
+        }
+        _state.Sure = percent;
+        Open();
+        Build();
+        _window!.Visible = true;
+        _ctx.Log($"Dev: Go on until set to {SimView.SureItem(percent)}{(_state.Unlimited ? "" : ", which From bank does not use")}.");
+    }
+
+    // The same fight twice, from one snapshot, side by side: the run is not the window's (no _run), so it neither
+    // shows in the list nor goes into the history. Both results are logged, and whether they came out the same.
+    void DevTwice(string name)
+    {
+        if (_game == null || _engine.Running) { _ctx.Log("Dev: twice: no character, or a run is going on."); return; }
+        if (_state.Catalog.Count == 0) BuildCatalog();
+        SimTarget? target = _state.ToSimulate().FirstOrDefault(t => name == "first" || t.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (target == null) { _ctx.Log($"Dev: twice: no fight {name} where the simulator is set to fight."); return; }
+        SimOptions options = RunOptions();
+        if (!_engine.Start(_game, new[] { target, target }, options, 2, out string error)) { _ctx.Log("Dev: twice: " + error); return; }
+        _ctx.Log($"Dev: twice: {target.Name} {target.StanceName}, {options.Hours:0.##} h, with {options.SetupLabel}, two copies side by side from one snapshot.");
     }
 
     void DevShot(string name)
@@ -1004,19 +1101,33 @@ public partial class CombatSimMod : IMod, ISimLookup
     }
 
     // A request leaves the player's simulator as it was: settings.json (the window's fold, place and size, also
-    // after scale=min|max) and the Setup choices it holds go back to what they were before the first line.
+    // after scale=min|max) and the Setup choices it holds go back to what they were before the first line. History
+    // loses the request's own scans only (SimHistory.DevPutBack). The current results, the equipment and spell
+    // chosen, the selected line and the sort go back too, unless the player ran a scan of his own meanwhile.
     void DevPutBack()
     {
         Settings before = _devSettings!;
         _devSettings = null;
         _ctx.Log($"Dev: request done. It left the window at {_settings.X},{_settings.Y}, scale {_settings.Scale}, folded {_settings.Minimised}, " +
                  $"folded right {_settings.FoldedRight}; put back to {before.X},{before.Y}, scale {before.Scale}, folded {before.Minimised}, folded right {before.FoldedRight}.");
+        if (_devSession is { } session)
+        {
+            _devSession = null;
+            _devStarted.Clear();
+            string history = _history.DevPutBack(session.History, session.Made);
+            if (session.PlayerMade.Count > 0)
+                // The player simulated meanwhile: the window shows his own run, which is not the request's to undo.
+                _ctx.Log($"Dev: also put back: {history}. Current results and setup: left as they are, the player's own scan " +
+                         $"({string.Join(", ", session.PlayerMade)}) ended during the request.");
+            else PutBackWindow(session, history);
+        }
         _settings = before;
         WriteSettings();
         // As OnLoad reads them.
         _state.FightAreas = _settings.Areas.ToHashSet();
         _state.BestAreas = _settings.BestAreas.ToHashSet();
         _state.Duration = _settings.Duration;
+        _state.Sure = SimState.SureSizes.Contains(_settings.Sure) ? _settings.Sure : 0;
         _state.Unlimited = _settings.Unlimited;
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
@@ -1031,6 +1142,29 @@ public partial class CombatSimMod : IMod, ISimLookup
             _window!.Visible = shown;
             SyncStripButton();
         }
+    }
+
+    // The current results, the line about the last run, the setup, the selection and the sort, as they were before
+    // the request.
+    void PutBackWindow(DevSession session, string history)
+    {
+        int results = _state.Results.Count;
+        string setup = _state.SetupLabel;
+        _state.Results.Clear();
+        foreach (var (key, result) in session.Results) _state.Results[key] = result;
+        (_state.Done, _state.Total, _state.Message, _state.Current) = (session.Done, session.Total, session.Message, "");
+        _state.LoadoutId = session.LoadoutId;
+        _state.Overrides.Clear();
+        foreach (var (slot, item) in session.Overrides) _state.Overrides[slot] = item;
+        _state.SpellId = session.SpellId;
+        _state.Selected = session.Selected;
+        _state.Pinned = session.Pinned;
+        _state.Viewing = session.Viewing != null && _history.Scans.Contains(session.Viewing) ? session.Viewing : null;
+        _state.SortKey = session.SortKey;
+        _state.SortDescending = session.SortDescending;
+        BuildGear();
+        _ctx.Log($"Dev: also put back: {history}. Current results: {results} put back to the {_state.Results.Count} from before. " +
+                 $"Setup: {setup} put back to {_state.SetupLabel}; selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}.");
     }
 
     // cards.request (EnemyCards) photographs the game's enemy cards, which this window would cover. It closes

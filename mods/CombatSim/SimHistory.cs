@@ -20,6 +20,8 @@ sealed class SimHistory
     readonly string _root;
     readonly Action<string> _log;
     readonly object _disk = new();
+    // The writes and deletes, one after another in the order they were asked for, so a later one never runs first.
+    Task _writing = Task.CompletedTask;
     string? _folder;
 
     /// <summary>Newest first.</summary>
@@ -88,6 +90,9 @@ sealed class SimHistory
         _byEnemy = null;
         Scans.Clear();
         _folder = null;
+#if DEVTOOLS
+        _devAdded = null;
+#endif
     }
 
     /// <summary>Keeps the scan, and drops the oldest ones beyond <see cref="Kept"/>.</summary>
@@ -95,22 +100,22 @@ sealed class SimHistory
     {
         _byEnemy = null;
         Scans.Insert(0, scan);
+#if DEVTOOLS
+        _devAdded?.Insert(0, scan);
+#endif
         var dropped = Scans.Skip(Kept).ToList();
         if (dropped.Count > 0) Scans.RemoveRange(Kept, dropped.Count);
         if (_folder is not { } folder) return;
         // Off the game's thread: a scan of every area is a large file.
-        Task.Run(() =>
+        OnDisk(() =>
         {
-            lock (_disk)
+            try
             {
-                try
-                {
-                    Directory.CreateDirectory(folder);
-                    ModFiles.WriteWhole(FileOf(folder, scan), JsonSerializer.Serialize(scan, Json));
-                    foreach (Scan old in dropped) File.Delete(FileOf(folder, old));
-                }
-                catch (Exception e) { _log("The scan could not be saved: " + e.Message); }
+                Directory.CreateDirectory(folder);
+                ModFiles.WriteWhole(FileOf(folder, scan), JsonSerializer.Serialize(scan, Json));
+                foreach (Scan old in dropped) File.Delete(FileOf(folder, old));
             }
+            catch (Exception e) { _log("The scan could not be saved: " + e.Message); }
         });
     }
 
@@ -119,16 +124,87 @@ sealed class SimHistory
         _byEnemy = null;
         var all = Scans.ToList();
         Scans.Clear();
+#if DEVTOOLS
+        // What was cleared, the player's scans included, is gone for good: the put back brings none of it back.
+        if (_devAdded != null) { _devAdded.Clear(); _devCleared = true; }
+#endif
         if (_folder is not { } folder) return;
-        Task.Run(() =>
+        OnDisk(() =>
         {
-            lock (_disk)
-            {
-                try { foreach (Scan scan in all) File.Delete(FileOf(folder, scan)); }
-                catch (Exception e) { _log("The earlier scans could not be removed: " + e.Message); }
-            }
+            try { foreach (Scan scan in all) File.Delete(FileOf(folder, scan)); }
+            catch (Exception e) { _log("The earlier scans could not be removed: " + e.Message); }
         });
     }
+
+    // Off the game's thread, after everything asked for before it.
+    void OnDisk(Action work)
+    {
+        lock (_disk) _writing = _writing.ContinueWith(_ => work(), TaskScheduler.Default);
+    }
+
+#if DEVTOOLS
+    // Development, between DevKeep and DevPutBack: every scan added, newest first, and whether History was cleared.
+    List<Scan>? _devAdded;
+    bool _devCleared;
+
+    /// <summary>Development: the scans as they are now, to put back with <see cref="DevPutBack"/>.</summary>
+    public (string? Folder, List<Scan> Scans) DevKeep()
+    {
+        _devAdded = new();
+        _devCleared = false;
+        return (_folder, Scans.ToList());
+    }
+
+    /// <summary>
+    /// Development: History as it would be had the request made no scan. Only the scans the request's own runs made
+    /// (<paramref name="requestMade"/>, by id) are taken out, in memory and on disk. A scan the player made meanwhile,
+    /// also one that was running when the request began, stays; so does what his scan pushed out of the ten. What the
+    /// request's scans pushed out is written back. What was done, for the log.
+    /// </summary>
+    public string DevPutBack((string? Folder, List<Scan> Scans) kept, IReadOnlyCollection<string> requestMade)
+    {
+        List<Scan> added = _devAdded ?? new();
+        bool cleared = _devCleared;
+        _devAdded = null;
+        if (kept.Folder != _folder) return "History: left alone, it is another character's now";
+        var players = added.Where(s => !requestMade.Contains(s.Id)).ToList();
+        // The player's scans of meanwhile, newest first, then those from before unless he cleared them: the ten newest.
+        var wanted = (cleared ? players : players.Concat(kept.Scans)).DistinctBy(s => s.Id).Take(Kept).ToList();
+        var takeOut = Scans.Where(s => requestMade.Contains(s.Id)).ToList();
+        var writeBack = wanted.Where(s => Scans.All(now => now.Id != s.Id)).ToList();
+        var left = players.Where(s => Scans.Any(now => now.Id == s.Id)).ToList();
+        string Ids(List<Scan> scans) => scans.Count == 0 ? "" : $" ({string.Join(", ", scans.Select(s => s.Id))})";
+        string Said() =>
+            $"History: took out the {takeOut.Count} scans the request made{Ids(takeOut)}; " +
+            $"left in place the {left.Count} the player made meanwhile{Ids(left)}; " +
+            $"wrote back the {writeBack.Count} the request's scans had pushed out{Ids(writeBack)}" +
+            (cleared ? "; the player cleared History meanwhile, so nothing from before came back" : "") +
+            $"; {Scans.Count} scans" +
+            (left.Count == 0 && !cleared && Scans.Select(s => s.Id).SequenceEqual(kept.Scans.Select(s => s.Id)) ? ", as before" : "");
+        if (takeOut.Count == 0 && writeBack.Count == 0) return Said();
+        _byEnemy = null;
+        Scans.Clear();
+        Scans.AddRange(wanted);
+        if (_folder is { } folder)
+            OnDisk(() =>
+            {
+                try
+                {
+                    foreach (Scan scan in takeOut)
+                    {
+                        // Its size first, for the check of how much the ranges add to a file.
+                        var file = new FileInfo(FileOf(folder, scan));
+                        if (file.Exists)
+                            _log($"Dev: history: took out {file.Name}, {file.Length:N0} bytes for {scan.Results.Count} results, {file.Length / Math.Max(1, scan.Results.Count):N0} a result.");
+                        file.Delete();
+                    }
+                    foreach (Scan scan in writeBack) ModFiles.WriteWhole(FileOf(folder, scan), JsonSerializer.Serialize(scan, Json));
+                }
+                catch (Exception e) { _log("Dev: the history could not be put back: " + e.Message); }
+            });
+        return Said();
+    }
+#endif
 
     static string FileOf(string folder, Scan scan) => Path.Combine(folder, scan.Id + ".json");
 

@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-simulator.png (main), combat-simulator-best.png, combat-simulator-compare.png, combat-simulator-areas.png, combat-simulator-spell.png, combat-simulator-history.png, combat-simulator-picker.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Choose the numbers the list shows, compare equipment and spells, find where to train, look at earlier scans again, see Safe or Risky on the game's enemy cards, and let Fight put on the simulated setup from your bank.
+What an hour of each fight gives, uses and risks, from the game's own combat run on a hidden copy of your character, each rate with its 95% range. Choose the numbers the list shows, compare equipment and spells, find where to train, look at earlier scans, see Safe or Risky on enemy cards, and let Fight put on the simulated setup from your bank.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -37,7 +37,8 @@ The button beside the red X folds the window down to its title so you can follow
 [*][b]Kills, XP, Gold, Food, Food per kill, Deaths, Low HP[/b] for every fight, in a table you sort by clicking a column. The first click puts the best fights on top: the most XP, but the fewest deaths. A small arrow after the column's name shows which way it is sorted.
 [*][b]Columns[/b]: choose which numbers the table shows and in which order, out of 43 in groups: runes, ammo and prayer points used, what the supplies cost and the gold left after them, damage taken, Safe or Risky, the enemy's biggest hit, the XP of each skill, dungeon runs and more. Presets set several at once (Idle, Money, Supplies, Training, Dungeons). The window keeps its width: when the numbers need more room, they move sideways, a column at a time, under the enemy's name.
 [*][b]Details[/b]: XP per skill, loot item by item with its value, what was used (food, runes, arrows, prayer points), damage taken, when the first death came, food and healing per kill, how many kills the food in your bank is enough for.
-[*][b]Compared with[/b]: the same fight with other equipment or another spell, side by side, for every column of the table, mostly in percent: green where this one is better, red where it is worse. The columns in which both are the same share one line.
+[*][b]How sure[/b]: every rate comes with its 95% range, which holds the true number 95 times in 100. Put the pointer on a line for the ranges of its numbers ("Kills ± 7.9%", "Deaths up to 3.69", because no deaths in an hour is not "never"); in the details each rate has its range under it. A rare drop that did not come in the time simulated is in no range: when an enemy's gold hangs on one, simulate it for 12 hours.
+[*][b]Compared with[/b]: the same fight with other equipment or another spell, side by side, for every column of the table, mostly in percent: green where this one is better, red where it is worse, but only when the two ranges do not overlap. Otherwise it is grey and says "could be luck". XP in a skill one setup does not train at all, like Magic with a sword, is a real 0: any XP in it is better. The columns in which both are the same share one line.
 [*][b]On the enemy cards[/b] of the game's combat areas menu: [b]Safe[/b] or [b]Risky[/b], XP and deaths per hour, from your newest scan of that enemy made with what you have on now. Safe means no deaths, and no hit of that enemy reaches your auto-eat point. A grey "Other setup" tag says the scan was made with other equipment. Click a tag to open its scan; opening the menu never simulates anything.
 [/list]
 
@@ -46,6 +47,7 @@ The button beside the red X folds the window down to its title so you can follow
 [*][b]Equipment[/b]: pick one of your saved loadouts, or click any slot to try another item: every item of the game that fits, with a search box, whether you own it or not.
 [*][b]Spells[/b]: when the weapon casts spells, choose which one to fight with.
 [*][b]Supplies[/b]: Unlimited gives the rates of a fight that is kept supplied; From bank uses what you own and tells you what ran out, and when.
+[*][b]Go on until[/b]: each fight goes on after its time until every number in the table is known to the size you choose ("± 1% sure" to "± 10% sure"), 12 hours of fighting at most. A number that 12 hours cannot bring that far goes on until it is within the next larger size it can reach; one that cannot reach even ± 10%, like a few deaths or gold that hangs on a rare drop, does not hold it back. A smaller size never ends a fight sooner than a larger one. Not with supplies From bank.
 [/list]
 
 [size=4][b]Best for[/b][/size]
@@ -66,7 +68,7 @@ The text above the button names every step before you press it, or why nothing g
 
 [size=4][b]Good to know[/b][/size]
 [list]
-[*]Fights are random: two runs of the same fight differ by a few percent. Longer fights are steadier.
+[*]Fights are random, but the dice of each fight are set from the fight and the setup: the same setup and the same character give the same numbers again. The copy is your character as it is when you press Simulate, XP, slayer task and potions included; while you play these move on, so a scan a minute later can differ a little, and more for the enemy of your slayer task. The ranges say how far luck could have moved the numbers; longer fights narrow them.
 [*]An item whose requirements you do not meet cannot be equipped by the copy either; the result says so.
 [*]Up to four fights are simulated side by side. If the game stutters during a scan, set "Workers" in mods\CombatSim\settings.json to 1 or 2.
 [*]The Fight button changes your equipment only with [b]Wear this setup first[/b] ticked.

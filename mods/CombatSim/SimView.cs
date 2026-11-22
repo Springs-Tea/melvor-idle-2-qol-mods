@@ -32,6 +32,10 @@ sealed class SimState
     /// <summary>An earlier scan that is on show instead of the current results.</summary>
     public Scan? Viewing;
     public int Duration = 1;
+    /// <summary>"Go on until": simulate each fight on until every range in the list is within this many percent; 0 is off.</summary>
+    public double Sure;
+    /// <summary>The sizes "Go on until" offers, in percent; 0 is off ("Time is up").</summary>
+    public static readonly double[] SureSizes = { 0, 1, 2, 5, 10 };
     public bool Unlimited = true;
     /// <summary>The newest result of each fight on its enemy card in the game's combat areas menu.</summary>
     public bool ShowEnemyCards = true;
@@ -128,6 +132,8 @@ sealed class SimState
 
     /// <summary>XP per hour as the table ranks it: of the trained skill in best mode, all combat XP otherwise.</summary>
     public double Xp(SimResult r) => ShownBest && ShownSkillId != "" ? r.PerHour(r.Xp.GetValueOrDefault(ShownSkillId)) : r.XpPerHour;
+    /// <summary>The rate <see cref="Xp"/> is, for its range.</summary>
+    public SimRate XpRate => SimRate.PerHour(ShownBest && ShownSkillId != "" ? SimRanges.XpOf(ShownSkillId) : SimRanges.Xp);
 
     /// <summary>The table's lines: one per fight; in best mode, the stance that trains the skill best.</summary>
     public List<SimResult> Lines()
@@ -277,7 +283,8 @@ sealed partial class SimView
         _where.Pressed += OpenAreas;
         body.AddChild(_where);
 
-        var timing = _s.Spaced(new HBoxContainer(), 6);
+        // Spaced like the rows of two buttons above and below it, so its two drop-downs line up with them.
+        var timing = _s.Spaced(new HBoxContainer(), 4);
         var left = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 6);
         left.AddChild(Caption("Each fight lasts"));
         _duration = _s.Dropdown();
@@ -287,6 +294,7 @@ sealed partial class SimView
         _duration.ItemSelected += index => { _state.Duration = (int)index; _changed(); Refresh(); };
         left.AddChild(_duration);
         timing.AddChild(left);
+        timing.AddChild(SureBox());
         body.AddChild(timing);
 
         body.AddChild(Caption("Supplies"));
@@ -1023,7 +1031,7 @@ sealed partial class SimView
             ButtonPressed = result.Target.Key == _state.Selected,
             CustomMinimumSize = new Vector2(0, _s.Px(30)), FocusMode = Control.FocusModeEnum.None,
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-            TooltipText = result.Note,
+            TooltipText = RowTip(result),
         };
         row.Pressed += () => { _state.Selected = result.Target.Key; _state.Pinned = true; FillDetails(); };
 
@@ -1153,7 +1161,7 @@ sealed partial class SimView
                 // number: two to a line.
                 var skills = other.Xp.OrderByDescending(x => x.Value).Take(3).Select(x => $"{_lookup.Skill(x.Key).Name} {Fmt(other.PerHour(x.Value))}");
                 _details.AddChild(Stat(other.Target.StanceName, Fmt(_state.Xp(other)), null,
-                    string.Join("\n", skills.Chunk(2).Select(line => string.Join("  ·  ", line)))));
+                    string.Join("\n", new[] { Ranged(other, _state.XpRate) }.Concat(skills.Chunk(2).Select(line => string.Join("  ·  ", line))).OfType<string>())));
             }
         }
 
@@ -1175,10 +1183,12 @@ sealed partial class SimView
         }
 
         _details.AddChild(_s.Section("Per hour"));
-        _details.AddChild(Stat("Kills", Fmt(r.KillsPerHour), null, r.Kills > 0 ? $"one every {r.SecondsPerKill:0.#}s" : null));
-        if (r.Target.IsDungeon) _details.AddChild(Stat("Dungeon runs", Fmt(r.PerHour(r.DungeonRuns))));
-        _details.AddChild(Stat("Combat XP", Fmt(r.XpPerHour)));
-        _details.AddChild(Stat("Gold", Fmt(r.GoldPerHour), GameStyle.TextGold, $"{Fmt(r.CoinsPerHour)} coins + {Fmt(r.LootValuePerHour)} loot"));
+        _details.AddChild(Stat("Kills", Fmt(r.KillsPerHour), null,
+            Notes(Ranged(r, SimRate.PerHour(SimRanges.Kills)), r.Kills > 0 ? $"one every {r.SecondsPerKill:0.#}s" : null)));
+        if (r.Target.IsDungeon) _details.AddChild(Stat("Dungeon runs", Fmt(r.PerHour(r.DungeonRuns)), null, Ranged(r, SimRate.PerHour(SimRanges.Runs))));
+        _details.AddChild(Stat("Combat XP", Fmt(r.XpPerHour), null, Ranged(r, SimRate.PerHour(SimRanges.Xp))));
+        _details.AddChild(Stat("Gold", Fmt(r.GoldPerHour), GameStyle.TextGold,
+            Notes(Ranged(r, SimRate.PerHour(SimRanges.Gold)), $"{Fmt(r.CoinsPerHour)} coins + {Fmt(r.LootValuePerHour)} loot")));
 
         if (r.Xp.Count > 0)
         {
@@ -1186,22 +1196,22 @@ sealed partial class SimView
             foreach (var (id, xp) in r.Xp.OrderByDescending(x => x.Value))
             {
                 var (skill, icon) = _lookup.Skill(id);
-                _details.AddChild(Stat(skill, Fmt(r.PerHour(xp)), null, null, icon));
+                _details.AddChild(Stat(skill, Fmt(r.PerHour(xp)), null, Ranged(r, SimRate.PerHour(SimRanges.XpOf(id))), icon));
             }
         }
 
         _details.AddChild(_s.Section("Survival"));
-        _details.AddChild(Stat("Deaths", r.Deaths == 0 ? "none" : Fmt(r.DeathsPerHour), r.Deaths == 0 ? Good : Bad,
-            r.Deaths > 0 ? $"first after {Clock(r.FirstDeathSeconds)}" : null));
+        _details.AddChild(Stat("Deaths", r.Deaths == 0 ? "none" : Fmt(r.DeathsPerHour), r.Deaths == 0 ? Good : Bad, DeathsNote(r)));
         _details.AddChild(Stat("Lowest hitpoints", $"{r.LowestHp:N0} / {r.MaxHp:N0}",
             r.LowestHpFraction < 0.15 ? Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite, r.LowestHpFraction.ToString("P0")));
-        _details.AddChild(Stat("Damage taken", Fmt(r.PerHour(r.DamageTaken))));
-        _details.AddChild(Stat("Healed by food", Fmt(r.PerHour(r.Healed)), null, $"{Fmt(r.FoodPerHour)} eaten"));
+        _details.AddChild(Stat("Damage taken", Fmt(r.PerHour(r.DamageTaken)), null, Ranged(r, SimRate.PerHour(SimRanges.Damage))));
+        _details.AddChild(Stat("Healed by food", Fmt(r.PerHour(r.Healed)), null,
+            Notes(Ranged(r, SimRate.PerHour(SimRanges.Healed)), $"{Fmt(r.FoodPerHour)} eaten")));
         if (r.Kills > 0)
         {
             double perKill = r.FoodPerKill;
-            _details.AddChild(Stat("Food per kill", PerKill(perKill), null, EveryKills(perKill)));
-            if (r.FoodEaten > 0) _details.AddChild(Stat("Healed per kill", Fmt(r.HealedPerKill)));
+            _details.AddChild(Stat("Food per kill", PerKill(perKill), null, Notes(Ranged(r, SimRate.PerKill(SimRanges.Food), PerKill), EveryKills(perKill))));
+            if (r.FoodEaten > 0) _details.AddChild(Stat("Healed per kill", Fmt(r.HealedPerKill), null, Ranged(r, SimRate.PerKill(SimRanges.Healed))));
             // How far the food in the bank goes here; only known for the loadout the character wears.
             // An earlier scan is of another day's fight; today's bank says nothing about it. A fight that
             // ate the bank empty has counted it instead: see below.
@@ -1210,7 +1220,7 @@ sealed partial class SimView
                 // Whole kills: the piece that is left over does not finish another one.
                 double kills = Math.Floor(_state.FoodInBank / perKill);
                 _details.AddChild(Stat("Your food lasts", kills >= 1 || _state.FoodInBank == 0 ? $"{Fmt(kills)} {(kills == 1 ? "kill" : "kills")}" : "less than 1 kill",
-                    null, $"{_state.FoodInBank:N0} {_state.FoodName} in the bank"));
+                    null, LastsNote(r, _state.FoodInBank, $"{_state.FoodInBank:N0} {_state.FoodName} in the bank")));
             }
         }
         else if (r.FoodEaten > 0) _details.AddChild(Stat("Food per kill", "-", GameStyle.TextDim, "nothing was killed"));
@@ -1223,7 +1233,7 @@ sealed partial class SimView
         {
             _details.AddChild(_s.Section("Used"));
             foreach (Amount used in r.Used.Take(8))
-                _details.AddChild(Stat(used.Name, "-" + Fmt(r.PerHour(used.Quantity)), Bad, null, _lookup.AmountIcon(used)));
+                _details.AddChild(Stat(used.Name, "-" + Fmt(r.PerHour(used.Quantity)), Bad, Ranged(r, used), _lookup.AmountIcon(used)));
         }
 
         var drops = r.Loot.Where(l => !l.IsCurrency || l.Id != SimEngine.Gold).ToList();
@@ -1232,11 +1242,11 @@ sealed partial class SimView
             _details.AddChild(_s.Section("Loot"));
             foreach (Amount drop in drops.Take(12))
                 _details.AddChild(Stat(drop.Name, "+" + Fmt(r.PerHour(drop.Quantity)), null,
-                    drop.SellsFor > 0 ? $"{Fmt(r.PerHour(drop.Quantity * drop.SellsFor))} gold" : null, _lookup.AmountIcon(drop)));
+                    Notes(Ranged(r, drop), drop.SellsFor > 0 ? $"{Fmt(r.PerHour(drop.Quantity * drop.SellsFor))} gold" : null), _lookup.AmountIcon(drop)));
             if (drops.Count > 12) _details.AddChild(_s.Text($"and {drops.Count - 12} more", GameStyle.TextDim, 12));
         }
 
-        Label foot = Wrapped($"{Clock(r.Hours * 3600)} of fighting simulated in {r.RealMilliseconds / 1000:0.0}s.", 250, GameStyle.TextDim, 11);
+        Label foot = Wrapped($"{Clock(r.Hours * 3600)} of fighting simulated in {r.RealMilliseconds / 1000:0.0}s.{RangesFoot(r)}", 250, GameStyle.TextDim, 11);
         foot.HorizontalAlignment = HorizontalAlignment.Center;
         _details.AddChild(new Control { CustomMinimumSize = new Vector2(0, _s.Px(4)), MouseFilter = Control.MouseFilterEnum.Ignore });
         _details.AddChild(foot);
@@ -1291,16 +1301,16 @@ sealed partial class SimView
         _supplyHint.Text = _state.Unlimited
             ? "Never runs out: what a fight gives and uses while you keep it supplied."
             : "Uses your bank: how far your food, ammo and runes get you.";
-        // A copy of the character takes about a second per fight; the fighting itself is the small part.
-        // Fights run side by side share the processor with the game: four of them are worth about one and a half.
-        double seconds = 1 + fights * (1.0 + 0.2 * hours) / (1 + 0.15 * (Math.Max(1, Math.Min(_state.Workers, fights)) - 1));
+        // With the stances the line is about as wide as the column and broke inside the time ("about 2" | "min"): the
+        // time goes on a line of its own.
         _estimate.Text = fights == 0 ? "Nothing to simulate here"
-            : $"{fights} {(fights == 1 ? "fight" : "fights")}{(_state.PerStance ? $" ({_state.Stances.Count} stances each)" : "")}  ·  about {(seconds < 90 ? $"{Math.Max(1, Math.Round(seconds))}s" : $"{Math.Round(seconds / 60)} min")}";
+            : $"{fights} {(fights == 1 ? "fight" : "fights")}{(_state.PerStance ? $" ({_state.Stances.Count} stances each)\n" : "  ·  ")}{Estimate(fights, hours)}";
 
         _go.Text = _state.Running ? "Cancel" : "Simulate";
         _go.ThemeTypeVariation = _state.Running ? "TexturedButtonCancel8x" : "TexturedActionButtonGreen8x";
         _go.Disabled = !_state.Running && fights == 0;
         _modeFights.Disabled = _modeBest.Disabled = _where.Disabled = _duration.Disabled = _loadout.Disabled = _unlimited.Disabled = _fromBank.Disabled = _reset.Disabled = _state.Running;
+        _sure.Disabled = _state.Running || !_state.Unlimited;
         if (_train != null) _train.Disabled = _state.Running;
         if (_spell != null && GodotObject.IsInstanceValid(_spell)) _spell.Disabled = _state.Running;
         _where.Text = _state.ScopeLabel;
@@ -1325,7 +1335,7 @@ sealed partial class SimView
     public void DevOpenPicker(string slotName)
     {
         if (slotName == "details=end") { if (_details.GetParent() is ScrollContainer scroll) scroll.ScrollVertical = int.MaxValue; return; }
-        if (DevColumns(slotName)) return;
+        if (DevColumns(slotName) || DevRanges(slotName)) return;
         if (slotName.StartsWith("sort=", StringComparison.Ordinal))
         {
             _headers.FirstOrDefault(h => h.Text.Equals(slotName[5..], StringComparison.OrdinalIgnoreCase))?.EmitSignal(BaseButton.SignalName.Pressed);

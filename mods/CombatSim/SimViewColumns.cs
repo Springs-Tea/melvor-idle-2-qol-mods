@@ -489,8 +489,9 @@ sealed partial class SimView
     // ---- "Compared with" ------------------------------------------------------------------------------------
 
     /// <summary>
-    /// This setup against another, column by column: green where this one is better, red where it is worse. The
-    /// columns in which the two are the same share one line at the end, so a long list stays short to read.
+    /// This setup against another, column by column, by the simulator's one rule (<see cref="Judge"/>): green where
+    /// this one is better, red where it is worse, grey with "could be luck" where the two ranges overlap. The columns
+    /// in which the two are the same share one line at the end, so a long list stays short to read.
     /// </summary>
     IEnumerable<Control> Compared(SimResult r, SimResult other)
     {
@@ -499,35 +500,49 @@ sealed partial class SimView
         {
             // A number one of the two does not have (nothing killed, not a dungeon, not recorded) is left out.
             if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
-            // In "Best for" the XP column is the trained skill's, and named after it.
-            string name = column.Key == "xp" && _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName + " XP" : column.Name;
+            string name = NameOf(column);
+            Verdict verdict = Judge(column, r, other);
+            string? luck = verdict == Verdict.Luck ? SimRanges.Words(verdict) : null;
             if (!column.Percent)
             {
                 // This setup's own words or number, coloured against the other's.
-                yield return Stat(name, column.Text(r), column.Better switch
-                {
-                    Better.More => Versus(mine, theirs),
-                    Better.Less => Versus(theirs, mine),
-                    _ => GameStyle.TextWhite,
-                });
+                yield return Stat(name, column.Text(r), Tint(verdict), luck);
                 continue;
             }
-            if (theirs == 0 ? mine == 0 : Math.Abs(mine / theirs - 1) < 0.005)
+            if (verdict == Verdict.Same)
             {
                 same.Add(name);
                 continue;
             }
             // There is no percent of nothing: this setup's own number against the other's 0.
             string text = theirs == 0 ? column.Text(r) + " vs 0" : Change(mine, theirs);
-            bool better = column.Better == Better.More ? mine > theirs : mine < theirs;
-            yield return Stat(name, text, column.Better == Better.Neither ? GameStyle.TextWhite : better ? Good : Bad);
+            yield return Stat(name, text, Tint(verdict), luck);
         }
         if (same.Count > 0) yield return Wrapped("The same: " + string.Join(", ", same), 250, GameStyle.TextGrey, 12);
     }
 
-    // For a number shown as it is: green when the first is the better one, red when it is the worse.
-    static Color Versus(double better, double worse) =>
-        Math.Abs(better - worse) <= 0.005 * Math.Max(Math.Abs(better), Math.Abs(worse)) ? GameStyle.TextWhite : better > worse ? Good : Bad;
+    /// <summary>
+    /// This setup's number in a column against another setup's, by the one rule of <see cref="SimRanges.Judge"/>:
+    /// better or worse only when their ranges do not overlap. For "Compared with", and for the setups side by side
+    /// of issue #2.
+    /// </summary>
+    Verdict Judge(SimColumn column, SimResult r, SimResult other) =>
+        column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)
+            ? SimRanges.Judge(r, other, column.Rate?.Invoke(), mine, theirs, column.Better)
+            : Verdict.Differs;
+
+    // Green when better, red when worse; grey when it could be luck; white for the same, or a number neither way better.
+    static Color Tint(Verdict verdict) => verdict switch
+    {
+        Verdict.Better => Good,
+        Verdict.Worse => Bad,
+        Verdict.Luck => GameStyle.TextGrey,
+        _ => GameStyle.TextWhite,
+    };
+
+    // In "Best for" the XP column is the trained skill's, and named after it.
+    string NameOf(SimColumn column) =>
+        column.Key == "xp" && _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName + " XP" : column.Name;
 
     // ---- the picker -----------------------------------------------------------------------------------------
 
