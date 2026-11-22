@@ -6,12 +6,18 @@
     "combat-simulator-areas.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795292578-1141828444.png",
     "combat-simulator-spell.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795292579-285991954.png",
     "combat-simulator-history.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795292580-1748306650.png",
-    "combat-simulator-picker.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795294043-1932858513.png"
+    "combat-simulator-picker.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795294043-1932858513.png",
+    "combat-simulator-folded.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795339430-86842806.png",
+    "combat-simulator-cards.png": "https://staticdelivery.nexusmods.com/mods/11155/images/17/17-1795339430-1904771019.png"
   },
   "ItemSources": {
     "item-sources.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795292801-531061179.png",
     "item-sources-used.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795292801-932053480.png",
-    "item-sources-pin.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795292803-1530942659.png"
+    "item-sources-pin.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795292803-1530942659.png",
+    "item-sources-chance.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795339460-1767685699.png",
+    "item-sources-make.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795339459-1400398820.png",
+    "item-sources-drops.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795339461-154660919.png",
+    "item-sources-thieving.png": "https://staticdelivery.nexusmods.com/mods/11155/images/18/18-1795339462-844002447.png"
   },
   "ItemEncyclopedia": {
     "item-encyclopedia.png": "https://staticdelivery.nexusmods.com/mods/11155/images/24/24-1795307785-1373523922.png",
@@ -22,6 +28,15 @@
   "RecipeRates": {
     "recipe-rates.png": "https://staticdelivery.nexusmods.com/mods/11155/images/19/19-1795292985-1245360284.png",
     "recipe-rates-list.png": "https://staticdelivery.nexusmods.com/mods/11155/images/19/19-1795292986-1025747024.png"
+  },
+  "SkillBonuses": {
+    "skill-bonuses.png": "https://staticdelivery.nexusmods.com/mods/11155/images/35/35-1795338799-302943564.png"
+  },
+  "AstrologyOverview": {
+    "astrology-overview.png": "https://staticdelivery.nexusmods.com/mods/11155/images/36/36-1795339109-1979449982.png"
+  },
+  "AwaySummary": {
+    "away-summary.png": "https://staticdelivery.nexusmods.com/mods/11155/images/37/37-1795339307-1575976634.png"
   },
   "CombatGoals": {
     "combat-goals.png": "https://staticdelivery.nexusmods.com/mods/11155/images/20/20-1795293146-840081244.png"

@@ -83,6 +83,7 @@ Take the ones you want. Each has a page of its own with pictures and details.
       A skill page shows the totals of its bonuses: the chance to double, the XP, the action time. A
       round button on the right opens a window with where each of them comes from: every item, pet, shop
       purchase, constellation and other source the game counts, the largest first, with what it gives.
+      <br><a href="https://www.nexusmods.com/melvoridle2/mods/35">Also on Nexus Mods</a>
     </td>
   </tr>
   <tr>
@@ -93,6 +94,7 @@ Take the ones you want. Each has a page of its own with pictures and details.
       choice ready first, then the shortest study time to the next unlock. Under each name the knowledge
       of that unlock, the minor nodes the next major node needs and the bonus every minor node gives; a
       locked one shows only what it still misses. Click a row to look at that constellation.
+      <br><a href="https://www.nexusmods.com/melvoridle2/mods/36">Also on Nexus Mods</a>
     </td>
   </tr>
   <tr>
@@ -103,6 +105,7 @@ Take the ones you want. Each has a page of its own with pictures and details.
       with how long you were away and what changed, under the headings of the game's own summary: XP and
       levels, items gained and used, gold, and when an action stopped or a defeat cost you something. A
       round button on the right opens the last summary again.
+      <br><a href="https://www.nexusmods.com/melvoridle2/mods/37">Also on Nexus Mods</a>
     </td>
   </tr>
   <tr>

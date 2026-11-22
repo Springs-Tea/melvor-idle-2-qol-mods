@@ -4,6 +4,8 @@
   <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
   &nbsp;
   <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+  &nbsp;
+  <a href="https://www.nexusmods.com/melvoridle2/mods/36"><img src="../../docs/img/art/btn-nexus.svg" alt="On Nexus Mods" height="46"></a>
 </p>
 
 > Which constellation is closest to its next unlock?
@@ -53,6 +55,8 @@ above that bar.
 | A row and the game's constellation screen disagree | Include the constellation name and a picture of each screen when reporting it. |
 
 ## Install
+
+<p>Get the zip from <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases">Releases</a>, or from <a href="https://www.nexusmods.com/melvoridle2/mods/36">the mod's page on Nexus Mods</a> if you prefer.</p>
 
 1. Install the [Melvor Mod Loader](https://www.nexusmods.com/melvoridle2/mods/2) (0.1.3 or newer).
 2. In Steam, right-click Melvor Idle 2 and choose **Manage > Browse local files**.
