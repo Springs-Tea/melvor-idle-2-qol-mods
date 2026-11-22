@@ -1,21 +1,14 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using GamesByMalcs.Melvor2;
-using GamesByMalcs.Melvor2.Components.CombatAreas;
 using GamesByMalcs.Melvor2.Components.Inventories;
-using GamesByMalcs.Melvor2.Data;
 using GamesByMalcs.Melvor2.Data.Items;
-using GamesByMalcs.Melvor2.Entities;
 using GamesByMalcs.Melvor2.Entities.Bank;
-using GamesByMalcs.Melvor2.Entities.Combat;
-using GamesByMalcs.Melvor2.Localization;
 using Godot;
 using MelvorModLoader;
 using MelvorMods.Shared;
@@ -51,7 +44,6 @@ public class ItemSourcesMod : IMod
     // A long group (an item fifteen enemies drop) must not push the others off the tooltip.
     const int MaxLines = 24, MaxPerGroup = 8;
 
-    sealed record Line(string Group, string Name, Texture2D? Icon, string Quantity, double Chance);
 
     ModContext _ctx = null!;
     readonly GameStyle _style = new();
@@ -60,9 +52,8 @@ public class ItemSourcesMod : IMod
     bool _stopped;
     int _frame;
     readonly List<ItemInfoPanel> _panels = new();
-    // Looked up once per character, on the game's thread, when the first tooltip needs them.
-    Dictionary<object, string>? _skillOfRecipe;
-    Dictionary<Enemy, List<string>>? _areasOfEnemy;
+    // Names what holds an item; looks the areas and the skills up when the first tooltip needs them.
+    ItemLines? _lines;
 
     CanvasLayer? _layer;
     PanelContainer? _tip;
@@ -123,8 +114,7 @@ public class ItemSourcesMod : IMod
         _game = game;
         _index = null;
         _indexFailed = false;
-        _skillOfRecipe = null;
-        _areasOfEnemy = null;
+        _lines = new ItemLines(game);
         _panels.Clear();
         _gameTip = null;
         _gameTipPanel = null;
@@ -260,7 +250,7 @@ public class ItemSourcesMod : IMod
         }
 
         // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group.
-        var lines = refs.Select(Describe)
+        var lines = refs.Select(_lines!.Describe)
             .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
             .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
         bool chances = lines.Any(l => l.Chance < 0.9995), quantities = lines.Any(l => l.Quantity != "");
@@ -268,7 +258,7 @@ public class ItemSourcesMod : IMod
         string group = "";
         Texture2D? groupIcon = null;
         int inGroup = 0, written = 0, leftOut = 0;
-        foreach (Line line in lines)
+        foreach (ItemLine line in lines)
         {
             if (written >= MaxLines) { leftOut++; continue; }
             if (line.Group != group)
@@ -311,7 +301,7 @@ public class ItemSourcesMod : IMod
             if (chances)
             {
                 bool always = line.Chance >= 0.9995;
-                Label chance = _style.Text(Percent(line.Chance), always ? GameStyle.TextDim : GameStyle.TextWhite, always ? 13 : 14, always ? null : GameStyle.Bold);
+                Label chance = _style.Text(ItemLines.Percent(line.Chance), always ? GameStyle.TextDim : GameStyle.TextWhite, always ? 13 : 14, always ? null : GameStyle.Bold);
                 chance.HorizontalAlignment = HorizontalAlignment.Right;
                 chance.CustomMinimumSize = new Vector2(_style.Px(52), 0);
                 row.AddChild(chance);
@@ -454,91 +444,6 @@ public class ItemSourcesMod : IMod
         if (at != card.Position) card.Position = at;
     }
 
-    static string Percent(double chance) =>
-        chance >= 0.9995 ? "always" : chance >= 0.1 ? chance.ToString("0.#%") : chance >= 0.001 ? chance.ToString("0.##%")
-        : chance > 0 ? $"1 in {1 / chance:N0}" : "-";
-
-    // ---- naming what holds the item -------------------------------------------------------------------------
-
-    Line Describe(ItemRef r)
-    {
-        string quantity = r.Max > r.Min ? $"{r.Min:N0}-{r.Max:N0}" : r.Min > 1 ? $"x{r.Min:N0}" : "";
-        switch (r.Owner)
-        {
-            case Enemy enemy:
-                List<string> areas = AreasOf(enemy);
-                string where = areas.Count == 0 ? "" : "  ·  " + areas[0] + (areas.Count > 1 ? $" +{areas.Count - 1}" : "");
-                return new Line("Combat", enemy.DisplayName.Text + where, ((IDescribedObject)enemy).Icon, quantity, r.Chance);
-            case Dungeon dungeon:
-                return new Line("Combat", dungeon.DisplayName.Text + "  ·  dungeon reward", dungeon.Icon, quantity, r.Chance);
-            case Item holder:
-                string kind = r.Path.Contains("Openable", StringComparison.OrdinalIgnoreCase) || r.Path.Contains("DropTable", StringComparison.OrdinalIgnoreCase) ? "Opening"
-                            : r.Path.Contains("Upgrad", StringComparison.OrdinalIgnoreCase) ? "Upgrading" : "Items";
-                return new Line(kind, holder.DisplayName.GetPluralText(1), holder.Icon, quantity, r.Chance);
-            default:
-                return new Line(SkillOf(r.Owner), NameOf(r.Owner), (r.Owner as IDescribedObject)?.Icon, quantity, r.Chance);
-        }
-    }
-
-    static string NameOf(object owner)
-    {
-        object? name = owner.GetType().GetProperty("DisplayName")?.GetValue(owner);
-        string? text = name switch
-        {
-            IPluralString plural => plural.GetPluralText(1),
-            ILocalizedString localized => localized.Text,
-            string s => s,
-            _ => null,
-        };
-        return !string.IsNullOrWhiteSpace(text) ? text : (owner as INamespacedObject)?.Id.Split(':').Last() ?? owner.GetType().Name;
-    }
-
-    // The skill a recipe belongs to: asked from the skills themselves where they list their recipes, read
-    // from the class's place in the game's code otherwise ("...Entities.Thieving.ThievingRecipe").
-    string SkillOf(object owner)
-    {
-        if (_skillOfRecipe == null)
-        {
-            _skillOfRecipe = new Dictionary<object, string>(ReferenceEqualityComparer.Instance);
-            foreach (GameEntity entity in _game!.Entities.GetAllObjects())
-                foreach (var component in entity.Components.Values)
-                {
-                    if (component.GetType().GetProperty("ActiveRecipes")?.GetValue(component) is not IDictionary recipes) continue;
-                    string skill = NameOf(entity);
-                    foreach (object recipe in recipes.Keys) _skillOfRecipe.TryAdd(recipe, skill);
-                }
-        }
-        if (_skillOfRecipe.TryGetValue(owner, out string? known)) return known;
-        Type type = owner.GetType();
-        Match inEntities = Regex.Match(type.Namespace ?? "", @"\.Entities\.(\w+)");
-        if (inEntities.Success) return inEntities.Groups[1].Value;
-        // "ItemUpgrade" -> "Item Upgrade"
-        return Regex.Replace(type.Name, "(?<=[a-z])(?=[A-Z])", " ");
-    }
-
-    List<string> AreasOf(Enemy enemy)
-    {
-        if (_areasOfEnemy == null)
-        {
-            _areasOfEnemy = new Dictionary<Enemy, List<string>>(ReferenceEqualityComparer.Instance);
-            void Put(Enemy e, string area)
-            {
-                if (!_areasOfEnemy.TryGetValue(e, out List<string>? list)) _areasOfEnemy[e] = list = new List<string>();
-                if (!list.Contains(area)) list.Add(area);
-            }
-            if (_game!.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? c) && c is CombatEntity combat)
-                foreach (BaseCombatArea area in combat.Areas.ActiveAreas.Keys)
-                {
-                    string name = area.DisplayName.Text;
-                    if (area is CombatArea open) foreach (Enemy e in open.Enemies) Put(e, name);
-                    else if (area is Dungeon dungeon)
-                        foreach (DungeonEnemies wave in dungeon.Enemies)
-                            foreach (WeightedEnemy weighted in wave.Enemies.Items) Put(weighted.Enemy, name);
-                }
-        }
-        return _areasOfEnemy.GetValueOrDefault(enemy) ?? new List<string>();
-    }
-
 #if DEVTOOLS
     // Development: a file "item.dump" writes every item panel of the scene to the log, shown or not, with the
     // two rows this mod watches and what sits around them.
@@ -669,7 +574,7 @@ public class ItemSourcesMod : IMod
             ItemEntry? entry = _index.For(_devItem);
             foreach (var (title, refs) in new[] { ("found in", entry?.Sources), ("used in", entry?.Uses) })
                 _ctx.Log($"Dev: {_devItem.DisplayName.GetPluralText(1)} {title}: " + (refs == null || refs.Count == 0 ? "nothing"
-                    : string.Join(" | ", refs.Select(Describe).OrderByDescending(l => l.Chance).Take(40).Select(l => $"[{l.Group}] {l.Name} {l.Quantity} {Percent(l.Chance)}"))));
+                    : string.Join(" | ", refs.Select(_lines!.Describe).OrderByDescending(l => l.Chance).Take(40).Select(l => $"[{l.Group}] {l.Name} {l.Quantity} {ItemLines.Percent(l.Chance)}"))));
             _devShotAt = _frame + 60;
         }
         if (_devItem != null && _devShotAt > 0)

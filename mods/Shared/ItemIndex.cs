@@ -11,7 +11,7 @@ using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Random;
 using Godot;
 
-namespace ItemSources;
+namespace MelvorMods.Shared;
 
 /// <summary>
 /// One place an item comes from or goes to: the game object that holds it (an enemy, a recipe, a chest...),
@@ -49,6 +49,8 @@ sealed class ItemIndex
     public int Owners { get; private set; }
 
     public ItemEntry? For(Item item) => _entries.GetValueOrDefault(item);
+    /// <summary>Every item that has a source or a use.</summary>
+    public IReadOnlyDictionary<Item, ItemEntry> Entries => _entries;
     public int Count => _entries.Count;
 
     /// <summary>Reads data only; safe to run beside the game.</summary>
