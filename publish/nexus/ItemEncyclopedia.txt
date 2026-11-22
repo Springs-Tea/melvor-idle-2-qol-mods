@@ -14,7 +14,7 @@ PICTURES
 docs/img/item-encyclopedia.png (main), item-encyclopedia-list.png, item-encyclopedia-dungeon.png, item-encyclopedia-folded.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-Every item of the game in one window. Search it, filter it by kind, slot, combat style, weapon, skill and source (down to one dungeon), and read everything about an item: its stats and requirements, how many you have, which enemy drops it and how likely, what it is made from and what it is used in.
+Every item of the game in one window. Search it, filter it by kind, slot, combat style, weapon, skill and source (down to one dungeon), and read everything about an item: its stats, in the game's item stats window even for gear not in your bank, how many you have, which enemy drops it and how likely, what it is made from and what it is used in.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -42,6 +42,7 @@ Tick several to combine them: Ranged and Torso for a ranger's body armour, Cooki
 [size=4][b]The details[/b][/size]
 [list]
 [*]The game's own item panel: picture, name, price, stats, bonuses and requirements, in the game's words.
+[*][b]View Item Stats[/b], under anything worn in combat: the game's own item stats window for it, the one the bank opens, also for gear you do not have yet. Every bonus compared with what you wear, TAB for the other loadouts. It only shows: nothing is equipped. The encyclopedia steps aside while that window is open; F9 closes the window for you and brings the encyclopedia back.
 [*]How many you have, in the bank and equipped.
 [*][b]Found in[/b]: every enemy that drops it with its level, area, amount and chance; every recipe with its level and ingredients; chests, thieving targets, shop purchases, quests. Rest the pointer on a chance for what it means: "Half the time within 9 kills. 9 times in 10 within 30."
 [*][b]Used in[/b]: every recipe, upgrade and purchase that takes it, and what comes out.

@@ -75,6 +75,8 @@ sealed class EncyclopediaView
     readonly ViewState _state;
     readonly Action _changed, _rebuild;
     readonly Action<string> _log;
+    readonly GameStats _stats;
+    readonly Action<Entry> _showStats;
     Query Q => _state.Query;
 
     LineEdit _search = null!;
@@ -94,9 +96,11 @@ sealed class EncyclopediaView
     string _shownHaving = "";
     static bool s_panelFailed, s_detailsFailed;
 
-    public EncyclopediaView(GameWindow window, Catalog catalog, ViewState state, Action changed, Action rebuild, Action<string> log)
+    public EncyclopediaView(GameWindow window, Catalog catalog, ViewState state, Action changed, Action rebuild, Action<string> log,
+        GameStats stats, Action<Entry> showStats)
     {
         _window = window; _s = window.Style; _catalog = catalog; _state = state; _changed = changed; _rebuild = rebuild; _log = log;
+        _stats = stats; _showStats = showStats;
         foreach (Choice choice in catalog.Types.Concat(catalog.Slots).Concat(catalog.Styles).Concat(catalog.Weapons).Concat(catalog.Skills)
                      .Concat(catalog.Sources).Concat(catalog.Areas.SelectMany(a => a.Areas)))
             _names[choice.Id] = choice.Name;
@@ -662,6 +666,8 @@ sealed class EncyclopediaView
         }
 
         if (!AddGameHead(entry)) _details.AddChild(PlainHead(entry, hidden: false));
+        // What it gives, as the game's own item stats window shows it: only for what can be worn.
+        if (entry.Wearable && !_stats.Gone) AddStatsButton(entry);
 
         _details.AddChild(_s.Section("You have"));
         _details.AddChild(Stat("In the bank", entry.InBank.ToString("N0"), entry.InBank > 0 ? GameStyle.TextWhite : GameStyle.TextDim));
@@ -717,6 +723,28 @@ sealed class EncyclopediaView
         // Bound once it is in the scene: the panel builds itself when it is ready.
         if (_catalog.Inventory is { } inventory) panel.Bind(entry.Item, inventory); else panel.Bind(entry.Item);
         Fit();
+    }
+
+    // The bank's own button for the game's item stats window, made as the bank's scene makes it (BankButton), under
+    // the item panel as it is under the selected item in the bank. There it sits in a row (an HBoxContainer), at the
+    // row's right end and at its least size; so it does here, with the size flags the bank's scene gives it.
+    void AddStatsButton(Entry entry)
+    {
+        Button button = BankButton.Make(_s);
+        button.Name = "ViewStats";
+        // Never holds the keyboard: TAB, Space and Enter belong to the game's window once it is open.
+        button.FocusMode = Control.FocusModeEnum.None;
+        button.Pressed += () => _showStats(entry);
+        var row = new HBoxContainer { Name = "ViewStatsRow", Alignment = BoxContainer.AlignmentMode.End };
+        row.AddChild(button);
+        _details.AddChild(row);
+        BankButton.FitFont(button, _s);
+    }
+
+    /// <summary>Builds the details again: what they can offer has changed.</summary>
+    public void RefillDetails()
+    {
+        if (_window.IsAlive) FillDetails();
     }
 
     Control PlainHead(Entry entry, bool hidden)
@@ -1076,5 +1104,21 @@ sealed class EncyclopediaView
     public string DevSearchText => _search.Text;
     public string DevRecent => string.Join(" / ", _state.Recent.Select(r => string.Join(", ", Words(r))));
     public void DevScrollDetails(int pixels) => _detailsScroll.ScrollVertical = pixels;
+    /// <summary>Development: the details' button for the game's item stats window, scrolled into sight; null when there is none.</summary>
+    public Button? DevStatsButton()
+    {
+        if (_details.FindChild("ViewStats", true, false) is not Button { Visible: true } button) return null;
+        _detailsScroll.EnsureControlVisible(button);
+        return button;
+    }
+    /// <summary>Development: the part of the details that is on screen.</summary>
+    public Rect2 DevDetailsRect => _detailsScroll.GetGlobalRect();
+    /// <summary>Development: what the details show for the selected item.</summary>
+    public string DevDetailsShown => _state.Selected is not { } entry ? "nothing selected"
+        : Hidden(entry) ? $"??? for {entry.Name} (No spoilers)"
+        : _gamePanel != null && GodotObject.IsInstanceValid(_gamePanel) && _gamePanel.IsVisibleInTree() ? $"the game's item panel for {entry.Name}"
+        : $"a plain header for {entry.Name}";
+    /// <summary>Development: whether the item would show as ??? with "No spoilers" on.</summary>
+    public bool DevHidden(Entry entry) => Hidden(entry);
 #endif
 }

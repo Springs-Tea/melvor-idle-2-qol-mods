@@ -106,6 +106,11 @@ On top is the game's own item panel, the one of the bank and of every tooltip: p
 kind of thing it is, its stats and bonuses, what it asks for and whether you meet it, in the game's words
 and numbers. Under it:
 
+- **View Item Stats**, under anything worn in combat: the game's own item stats window for the item, the one
+  the bank opens, also for gear you do not have yet. Every bonus is compared with what you wear, and TAB
+  cycles the loadouts. It only shows: nothing is equipped. While that window is open, also when the bank's
+  own button opened it, the encyclopedia steps aside, and it is back when that window closes. F9 closes the
+  window for you and brings the encyclopedia back.
 - **You have**: how many are in the bank, how many are equipped (worn, or on a skill's tool belt), what the
   lot sells for, and whether the completion log has it.
 - **Found in**: every place it comes from, under the skill or kind of place. An enemy with its level, the
@@ -114,6 +119,8 @@ and numbers. Under it:
   Rest the pointer on a chance and a small tooltip says what it means in kills (tries for a pick, a chest
   or a catch): "Half the time within 9 kills. 9 times in 10 within 30."
 - **Used in**: every recipe, upgrade and purchase that takes it, how many, and what comes out.
+
+![The game's item stats window opened from Details for a Stone Sword you do not have, compared with the Willow Bow you wear](../../docs/img/item-encyclopedia-stats.png)
 
 Every item named in there, an ingredient, a product, a chest, is a small tag with its picture. Click it and
 you are on that item's page. **Back** takes you to where you came from, as many steps as you went.
@@ -162,6 +169,7 @@ Nothing is typed in by hand, so items a game update adds show up by themselves.
 | "No item matches." | The filters and the search together leave nothing. Press Reset. |
 | "Nothing in the game's data gives this item." | No source is recorded in the game's content: a starting item, or something not obtainable yet. |
 | A plain header instead of the game's item panel | A game update changed that panel. The log says so; the rest still works. |
+| No View Item Stats under a weapon or armour | A game update changed the game's item stats window. The log says so; the rest still works. |
 | No round button | A game update moved the strip it sits in. The log says so; F9 still opens the window. |
 | "Stopped (the game was updated?)" in the log | Something the mod needs is gone. It has switched itself off; the game and your other mods keep running. |
 

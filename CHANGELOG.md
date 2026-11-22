@@ -9,6 +9,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   in the footer's own words: "1m 38s until Stop Condition". Its tooltip names the stop as the skill's page does.
   The window's small tooltips now sit on the game's dark tooltip panel, and the window first opens above the
   game's bottom bar and stays above it.
+- **Item Encyclopedia**: **View Item Stats** in the details of every weapon, armour piece, ring, amulet and ammo
+  opens the game's own item stats window for it, also for gear you do not have yet: every bonus compared with
+  what you wear, TAB for the other loadouts, as from the bank.
 
 ## 0.5.0
 
