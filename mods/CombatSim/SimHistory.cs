@@ -25,6 +25,33 @@ sealed class SimHistory
     /// <summary>Newest first.</summary>
     public readonly List<Scan> Scans = new();
 
+    // For the enemy cards: the results of each enemy of an area, newest scan first and, within a scan, the
+    // stance it ranked best first. Made on first use after the scans changed.
+    Dictionary<(string Area, string Enemy), List<(Scan Scan, SimResult Result)>>? _byEnemy;
+
+    /// <summary>
+    /// The answer for an enemy's card: the newest result made with this setup, or else the newest result of
+    /// all (<c>Same</c> false). Failed fights and results without the card's readings do not count.
+    /// </summary>
+    public (Scan Scan, SimResult Result, bool Same)? ForCard(string areaId, string enemyId, string setup)
+    {
+        if (_byEnemy == null)
+        {
+            _byEnemy = new();
+            foreach (Scan scan in Scans)
+                foreach (SimResult r in scan.Results.Where(x => !x.Failed && x.Setup != null && x.Target.EnemyId != null).OrderByDescending(scan.Rank))
+                {
+                    var key = (r.Target.AreaId, r.Target.EnemyId!);
+                    if (!_byEnemy.TryGetValue(key, out var list)) _byEnemy[key] = list = new();
+                    list.Add((scan, r));
+                }
+        }
+        if (!_byEnemy.TryGetValue((areaId, enemyId), out var results)) return null;
+        foreach (var (scan, result) in results)
+            if (result.Setup == setup) return (scan, result, true);
+        return (results[0].Scan, results[0].Result, false);
+    }
+
     public SimHistory(string modDirectory, Action<string> log)
     {
         _root = Path.Combine(modDirectory, "history");
@@ -34,6 +61,7 @@ sealed class SimHistory
     /// <summary>Reads what is on disk for this character. A file that cannot be read is skipped.</summary>
     public void Open(string character)
     {
+        _byEnemy = null;
         Scans.Clear();
         _folder = Path.Combine(_root, SafeName(character));
         try
@@ -57,6 +85,7 @@ sealed class SimHistory
 
     public void Close()
     {
+        _byEnemy = null;
         Scans.Clear();
         _folder = null;
     }
@@ -64,6 +93,7 @@ sealed class SimHistory
     /// <summary>Keeps the scan, and drops the oldest ones beyond <see cref="Kept"/>.</summary>
     public void Add(Scan scan)
     {
+        _byEnemy = null;
         Scans.Insert(0, scan);
         var dropped = Scans.Skip(Kept).ToList();
         if (dropped.Count > 0) Scans.RemoveRange(Kept, dropped.Count);
@@ -86,6 +116,7 @@ sealed class SimHistory
 
     public void Clear()
     {
+        _byEnemy = null;
         var all = Scans.ToList();
         Scans.Clear();
         if (_folder is not { } folder) return;

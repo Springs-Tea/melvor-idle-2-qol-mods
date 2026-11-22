@@ -47,6 +47,7 @@ public class CombatSimMod : IMod, ISimLookup
         public int Workers { get; set; }
         public int Duration { get; set; } = 1;
         public bool Unlimited { get; set; } = true;
+        public bool ShowEnemyCards { get; set; } = true;
         public bool BestMode { get; set; }
         public string TrainSkill { get; set; } = "";
     }
@@ -88,6 +89,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.BestAreas = _settings.BestAreas.ToHashSet();
         _state.Duration = _settings.Duration;
         _state.Unlimited = _settings.Unlimited;
+        _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
         _engine = new SimEngine(ctx.Log);
@@ -95,6 +97,9 @@ public class CombatSimMod : IMod, ISimLookup
         _history = new SimHistory(ctx.Directory, ctx.Log);
         _state.History = _history.Scans;
         ctx.Frame += OnFrame;
+        // The lines on the game's enemy cards are an extra: whatever stops them leaves the simulator running.
+        try { StartCards(); }
+        catch (Exception e) { CardReadings.Stop(ctx.Log, e); }
         ctx.Log("Ready. The round button on the right edge of the screen opens the simulator.");
     }
 
@@ -361,13 +366,7 @@ public class CombatSimMod : IMod, ISimLookup
         // from them. During a run it is left alone.
         bool refreshed = _run == null || !_engine.Running;
         if (refreshed) BuildCatalog();
-        if (!_historyRead)
-        {
-            _historyRead = true;
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            _history.Open(_game.CharacterName);
-            if (_history.Scans.Count > 0) _ctx.Log($"{_history.Scans.Count} earlier scans read in {clock.ElapsedMilliseconds} ms.");
-        }
+        ReadHistory();
         if (refreshed || _window is not { IsAlive: true }) Build();
         _window!.Visible = true;
         UpdateTitle();
@@ -379,6 +378,46 @@ public class CombatSimMod : IMod, ISimLookup
     {
         if (_window is { IsAlive: true }) _window.Visible = false;
         SyncStripButton();
+    }
+
+    // The earlier scans are read the first time the window or an enemy card needs them.
+    void ReadHistory()
+    {
+        if (_historyRead || _game == null) return;
+        _historyRead = true;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        _history.Open(_game.CharacterName);
+        if (_history.Scans.Count > 0) _ctx.Log($"{_history.Scans.Count} earlier scans read in {clock.ElapsedMilliseconds} ms.");
+    }
+
+    // Its own method, never inlined: when a game update has removed a type the cards use, loading them fails
+    // here, where OnLoad catches it, and not in OnLoad itself.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    void StartCards()
+    {
+        var cards = new EnemyCards(_ctx, _history, () => _game, () => _combat, () => _state.ShowEnemyCards, ReadHistory, ShowFromCard);
+#if DEVTOOLS
+        cards.DevWindowAside = DevCardsAside;
+        cards.DevWindowBack = DevCardsBack;
+#endif
+        _ctx.Frame += cards.OnFrame;
+    }
+
+    // A click on an enemy card's line: the simulator opens on the scan the line comes from, with that fight
+    // selected, and the area is ticked for the next Simulate.
+    void ShowFromCard(Scan scan, SimResult result)
+    {
+        if (_game == null) return;
+        _state.ScopeAreas.Add(result.Target.AreaId);
+        _state.Viewing = scan;
+        // In a Best for scan the table has one line per fight, the stance that ranks best.
+        _state.Selected = !scan.BestMode ? result.Target.Key
+            : scan.Results.Where(r => r.Target.FightKey == result.Target.FightKey && !r.Failed)
+                .OrderByDescending(scan.Rank).Select(r => r.Target.Key).FirstOrDefault() ?? result.Target.Key;
+        _state.Pinned = true;
+        Open();
+        _window!.SetMinimised(false);
+        SaveChoices();
     }
 
     void Build()
@@ -499,6 +538,7 @@ public class CombatSimMod : IMod, ISimLookup
         _settings.BestAreas = _state.BestAreas.OrderBy(a => a, StringComparer.Ordinal).ToList();
         _settings.Duration = _state.Duration;
         _settings.Unlimited = _state.Unlimited;
+        _settings.ShowEnemyCards = _state.ShowEnemyCards;
         _settings.BestMode = _state.BestMode;
         _settings.TrainSkill = _state.TrainSkillId;
         WriteSettings();
@@ -947,6 +987,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.Unlimited = _settings.Unlimited;
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
+        _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         if (_window is { IsAlive: true } window)
         {
@@ -956,6 +997,33 @@ public class CombatSimMod : IMod, ISimLookup
             SyncStripButton();
         }
     }
+
+    // cards.request (EnemyCards) photographs the game's enemy cards, which this window would cover. It closes
+    // the window as its X does (Close: the window keeps its place, fold and size, and no setting is written) and,
+    // at the end, opens it again as it was.
+    bool _devCardsClosed;
+
+    string DevCardsAside()
+    {
+        if (_window is not { IsAlive: true, Visible: true } window) return "";
+        string before = DevCardsWindow(window);
+        Close();
+        _devCardsClosed = true;
+        return $"closed the simulator window for the pictures, as its X does ({before}; now visible {window.Visible})";
+    }
+
+    string DevCardsBack()
+    {
+        if (!_devCardsClosed) return "";
+        _devCardsClosed = false;
+        if (_window is not { IsAlive: true } window) return "the simulator window was closed for the pictures and has been taken down since; it stays closed";
+        window.Visible = true;
+        SyncStripButton();
+        return $"opened the simulator window again ({DevCardsWindow(window)}; settings.json says at {_settings.X},{_settings.Y}, folded {_settings.Minimised})";
+    }
+
+    static string DevCardsWindow(GameWindow window) =>
+        $"folded {window.Minimised}, at {window.Position.X:0},{window.Position.Y:0}, {window.Root.Size.X:0}x{window.Root.Size.Y:0}, visible {window.Visible}";
 
     void DevClick(Button? button, string name)
     {

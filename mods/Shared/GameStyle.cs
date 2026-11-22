@@ -27,6 +27,30 @@ public sealed class GameStyle(float scale = 1f)
     public static readonly Color TextGold = new("edbf59");
     public static readonly Color Highlight = new("ffd16d");    // the brighter gold of a frame or a best value
 
+    /// <summary>
+    /// The game's own green and red for something good and something bad: the colours it writes positive and
+    /// negative modifiers in (ModifierUtils.GetModifierKindColor), asked of the running game each time they are
+    /// used. Paper text when the game no longer has them.
+    /// </summary>
+    public static Color Good => KindColour(true);
+    public static Color Bad => KindColour(false);
+
+    static bool s_kindColoursGone;
+
+    static Color KindColour(bool good)
+    {
+        if (s_kindColoursGone) return TextPaper;
+        try { return ModifierKindColour(good); }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException) { s_kindColoursGone = true; }
+        catch (Exception) { }   // the game is not ready to answer yet
+        return TextPaper;
+    }
+
+    // Its own method, never inlined: a game update that removed these fails when it is called, inside the try.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static Color ModifierKindColour(bool good) => GamesByMalcs.Melvor2.Modifiers.ModifierUtils.GetModifierKindColor(
+        good ? GamesByMalcs.Melvor2.Modifiers.ModifierKind.Positive : GamesByMalcs.Melvor2.Modifiers.ModifierKind.Negative);
+
     const string Fonts = "res://Assets/Fonts/Default/Static/";
     public static Font? Bold => Load<Font>(Fonts + "Default_Bold.ttf");
     public static Font? SemiBold => Load<Font>(Fonts + "Default_SemiBold.ttf");

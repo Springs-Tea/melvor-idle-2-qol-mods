@@ -33,6 +33,8 @@ sealed class SimState
     public Scan? Viewing;
     public int Duration = 1;
     public bool Unlimited = true;
+    /// <summary>The newest result of each fight on its enemy card in the game's combat areas menu.</summary>
+    public bool ShowEnemyCards = true;
     /// <summary>Fights simulated side by side.</summary>
     public int Workers = 1;
 
@@ -673,7 +675,8 @@ sealed class SimView
         if (wasOpen) return;
         const float width = 400;
         int shown = Math.Clamp(_state.History.Count, 1, 6);
-        float height = 104 + shown * 69;
+        // The last 28: the tick box for the enemy cards, its 18 px box with 2 px above and below, and the 6 px gap.
+        float height = 104 + shown * 69 + 28;
         VBoxContainer column = StartPicker("history", "Earlier scans", width, height);
 
         if (_state.History.Count == 0)
@@ -709,6 +712,12 @@ sealed class SimView
             foot.AddChild(clear);
             column.AddChild(foot);
         }
+        // The cards in the game's menu show the newest of these scans, so they are switched on and off here.
+        Button cards = _s.TickBox("Show on enemy cards in the combat areas menu", _state.ShowEnemyCards);
+        cards.TooltipText = "Each enemy card in the game's combat areas menu shows the newest scan of that fight\n" +
+                            "made with what you have on now: Safe or Risky, XP and deaths per hour";
+        cards.Toggled += on => { _state.ShowEnemyCards = on; _changed(); };
+        column.AddChild(cards);
         PlacePicker(_historyButton, width, height, below: true);
     }
 
@@ -758,7 +767,7 @@ sealed class SimView
         return row;
     }
 
-    static string Ago(DateTime utc)
+    internal static string Ago(DateTime utc)
     {
         TimeSpan age = DateTime.UtcNow - utc;
         DateTime local = utc.ToLocalTime();

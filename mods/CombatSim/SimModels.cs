@@ -55,6 +55,20 @@ sealed class SimResult
     public long DamageTaken, Healed;
     public int FoodEaten, LowestHp, MaxHp;
     /// <summary>
+    /// For the enemy cards (<see cref="CardReadings"/>): a short code of the copy's equipment, stance, spell, food
+    /// and prayers; the biggest hit the enemy could or did deal; the HP at which auto eat steps in (0: it cannot).
+    /// Null in scans made before the cards, and when a reading was not possible.
+    /// </summary>
+    public string? Setup;
+    public int? MaxEnemyHit;
+    public double? AutoEatHp;
+    /// <summary>Safe: no death, and no hit reaches the auto-eat point. Null when that cannot be told.</summary>
+    [JsonIgnore] public bool? Safe => Deaths > 0 ? false : MaxEnemyHit is { } hit && AutoEatHp is { } eat ? hit < eat : null;
+#if DEVTOOLS
+    /// <summary>Development: the setup the code stands for, to show what differs from the one worn.</summary>
+    [JsonIgnore] public string? SetupText;
+#endif
+    /// <summary>
     /// With supplies from the bank: seconds of game time until the last piece of food was eaten, or -1 when
     /// the food did not run out, and the kills made by then. The fight goes on without food after that.
     /// </summary>

@@ -13,7 +13,8 @@
 ![The simulator's window](../../docs/img/combat-simulator.png)
 
 The Combat Simulator answers that without fighting. You choose where, for how long and with what; it runs
-the fights and shows, for every one of them, an hour's kills, XP, gold, food and deaths.
+the fights and shows, for every one of them, an hour's kills, XP, gold, food and deaths. The newest answer
+for an enemy also sits on its card in the game's combat areas menu: Safe or Risky, XP and deaths per hour.
 
 It does **not** re-create the game's combat formulas. It loads a copy of your character into a second,
 hidden game and runs the game's own combat on it. Nothing the copy does is ever saved.
@@ -28,6 +29,7 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 - [Finding where to train: "Best for"](#finding-where-to-train-best-for)
 - [Supplies: unlimited or from the bank](#supplies-unlimited-or-from-the-bank)
 - [Earlier scans](#earlier-scans)
+- [On the enemy cards](#on-the-enemy-cards)
 - [The Fight button](#the-fight-button)
 - [Questions it answers](#questions-it-answers)
 - [How it works](#how-it-works)
@@ -175,6 +177,36 @@ right in the empty table.
 The numbers of an earlier scan are from then: your levels and equipment may have changed since. A gold line
 says so while one is on show, and "Back to now" leaves it.
 
+## On the enemy cards
+
+In the game's combat areas menu, where you pick an enemy to fight, each enemy's card gets a small tag at its
+bottom with the simulator's chart on it. It shows the newest scan of that enemy made with what you have on
+now:
+
+- **Safe**, in the game's green: you did not die, and no hit of that enemy reaches the point where auto eat
+  steps in, so no hit can take you from just above that point to nothing.
+- **Risky**, in the game's red: you died in the scan, or one hit of that enemy can be as big as your hitpoints
+  at the auto-eat point, or auto eat cannot heal you (no food selected, or none left in a From bank scan).
+- Then **XP per hour** and **deaths per hour**, the numbers of the table. After a Best for scan it is the XP
+  of the skill you chose, in the stance you have selected now.
+
+![Enemy cards in the combat areas menu with their Safe tags, XP and deaths per hour](../../docs/img/combat-simulator-cards.png)
+
+"What you have on now" is your equipment, toolbelt, attack stance, spell, food and prayers. Your levels do
+not count, so the tags stay after a level up. When every scan of that enemy was made with something else,
+the tag is grey and says **Other setup**: simulate again for Safe or Risky. An enemy you have not simulated
+gets no tag, and neither do the enemies of a dungeon, which is simulated as a whole.
+
+The biggest hit is the most the game says that enemy's attacks can deal, or a bigger loss of hitpoints that
+really happened in the scan. Food counts as the scan had it: in a From bank scan, food that runs out makes it
+Risky; Unlimited never runs out.
+
+Put the pointer on a tag for when the scan was made, how long it was, and the hit and the auto-eat point in
+numbers. Click it to open that scan in the simulator, with the enemy selected and its area ticked for the
+next Simulate. Opening the menu never simulates anything.
+
+To hide the tags, untick **Show on enemy cards in the combat areas menu** at the bottom of History.
+
 ## The Fight button
 
 The red button under the details starts the selected fight in the game, the way the game's own area menu
@@ -189,7 +221,8 @@ changes your equipment: if you simulated other items, you still have to put them
 - **Is this weapon worth buying?** Simulate your area, click the weapon slot, pick the weapon (you do not
   have to own it), simulate again, read "Compared with".
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
-  at" note, means yes. Low HP tells you how close it was.
+  at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
+  was.
 - **Which fight makes my food last longest?** Click Food/kill: the top line eats the least for each kill.
   "Your food lasts" in its details says how many kills the food in your bank is enough for.
 - **Which spell?** Simulate once per spell and compare.
@@ -244,6 +277,8 @@ Everything is in `mods\CombatSim`:
 | "The fight could not be started" | The game refused to start it for the copy, usually an unmet requirement of the area. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |
+| No tag on an enemy card | That enemy has no scan yet (scans made before the tags existed do not count), its fight failed, it belongs to a dungeon, or the tags are switched off at the bottom of History. If no card ever gets one, look for `[CombatSim] The tags on the enemy cards are switched off` in `MelvorModLoader.log`: a game update changed the menu; the simulator itself keeps working. |
+| "Other setup" right after a scan, with nothing changed | Report it with the log: your setup was read differently from the scan's. |
 
 ## Install
 

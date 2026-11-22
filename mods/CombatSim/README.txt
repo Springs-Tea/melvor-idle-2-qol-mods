@@ -35,6 +35,13 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     skill, with the best stance named on each line.
   - History: the last ten scans are kept, also after the game was closed. Look at one again,
     table and details, without simulating anything. They are old numbers: the window says so.
+  - Enemy cards: in the game's combat areas menu, each enemy's card gets a small tag with
+    the newest scan of that enemy made with what you have on now: Safe or Risky, then XP and
+    deaths per hour. Safe: no deaths, and no hit of that enemy reaches your auto-eat point.
+    A grey "Other setup" tag: that scan was made with other equipment, stance, spell, food or
+    prayers. An enemy you have not simulated, or a dungeon's enemy, gets no tag. Click a tag
+    to open its scan in the simulator. Opening the menu never simulates anything. Untick the
+    box at the bottom of History to hide the tags.
   - Fight: the red button under the details starts the selected fight in the game (and
     switches to the stance and the spell of that result). Your equipment is left as it is.
 

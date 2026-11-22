@@ -4,6 +4,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: each enemy's card in the game's combat areas menu gets a small tag with your newest
+  scan of that enemy: Safe or Risky, then XP and deaths per hour. It is grey and says "Other setup" when that
+  scan was made with other equipment, stance, spell, food or prayers; a click opens the scan in the simulator.
+  Opening the menu never simulates anything; a box at the bottom of History hides the tags.
 - **Skill Bonuses**, a new mod: on a skill's page, a round button opens every bonus of the selected recipe,
   tree or plot, with where each comes from: mastery ranks, constellations, potions, shop upgrades, equipment.
   The game shows only the totals; the sources add up to them.

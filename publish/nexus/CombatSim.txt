@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-simulator.png (main), combat-simulator-best.png, combat-simulator-compare.png, combat-simulator-areas.png, combat-simulator-spell.png, combat-simulator-history.png, combat-simulator-picker.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Tick the areas to try, compare loadouts, items and spells, find the best place to train a skill, and look at earlier scans again.
+What an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Compare equipment and spells, find where to train, look at earlier scans again, and see Safe or Risky on each enemy card of the combat areas menu.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -37,6 +37,7 @@ The button beside the red X folds the window down to its title so you can follow
 [*][b]Kills, XP, Gold, Food, Food per kill, Deaths, Low HP[/b] for every fight, in a table you sort by clicking a column.
 [*][b]Details[/b]: XP per skill, loot item by item with its value, what was used (food, runes, arrows, prayer points), damage taken, when the first death came, food and healing per kill, how many kills the food in your bank is enough for.
 [*][b]Compared with[/b]: the same fight with other equipment or another spell, side by side, in percent.
+[*][b]On the enemy cards[/b] of the game's combat areas menu: [b]Safe[/b] or [b]Risky[/b], XP and deaths per hour, from your newest scan of that enemy made with what you have on now. Safe means no deaths, and no hit of that enemy reaches your auto-eat point. A grey "Other setup" tag says the scan was made with other equipment. Click a tag to open its scan; opening the menu never simulates anything.
 [/list]
 
 [size=4][b]What you can change[/b][/size]

@@ -306,6 +306,8 @@ sealed class SimEngine
         combat.Player.GlobalHealth.Set(combat.Player.GlobalHealth.Max);
         result.MaxHp = combat.Player.Health.Max;
         result.LowestHp = combat.Player.Health.Current;
+        // What the enemy's card in the game's menu needs from this fight; nothing for a dungeon.
+        using var card = enemy == null ? null : CardReadings.Start(sim, combat, bank, result, _log);
 
         var xpBefore = sim.LeveledEntities.Where(s => CombatSkills.Contains(s.Id)).ToDictionary(s => s.Id, s => (double)s.Experience.Xp);
         var loot = new Dictionary<string, Amount>();
@@ -416,6 +418,7 @@ sealed class SimEngine
             sim.PropagateTick();
             if (ticks % CheckEvery != 0) continue;
             if (options.UnlimitedSupplies) Refill();
+            card?.Sample();
             if (cancel.IsCancellationRequested) break;
             // Food from the bank can run out while the fight goes on; what follows is a fight without food.
             if (!options.UnlimitedSupplies && result.FoodGoneSeconds < 0 && eaten != null && result.FoodEaten > 0 && bank.Inventory.GetQuantity(eaten) == 0)
