@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: nine quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: ten quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -74,6 +74,15 @@ Take the ones you want. Each has a page of its own with pictures and details.
       XP per hour on every recipe of a skill's list, the best one in gold. In the XP tooltip the whole
       hour: XP, items made and used, what the products sell for, and how long your materials last.
       <br><a href="https://www.nexusmods.com/melvoridle2/mods/19">Also on Nexus Mods</a>
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/SkillBonuses"><img src="docs/img/skill-bonuses.png" alt="Skill Bonuses"></a></td>
+    <td>
+      <h3><a href="mods/SkillBonuses">Skill Bonuses</a></h3>
+      A skill page shows the totals of its bonuses: the chance to double, the XP, the action time. A
+      round button on the right opens a window with where each of them comes from: every item, pet, shop
+      purchase, constellation and other source the game counts, the largest first, with what it gives.
     </td>
   </tr>
   <tr>
@@ -209,9 +218,10 @@ flowchart TB
         M7["ItemEncyclopedia"]
         M8["AstrologyOverview"]
         M9["AwaySummary"]
+        M10["SkillBonuses"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

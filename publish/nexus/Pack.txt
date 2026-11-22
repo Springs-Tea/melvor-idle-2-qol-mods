@@ -11,18 +11,19 @@ REQUIREMENT
 Melvor Mod Loader, 0.1.3 or newer
 
 SUMMARY (the short line under the name)
-Nine quality-of-life mods in one zip: a combat simulator, where items come from and what uses them, an encyclopedia of every item, XP per hour on every recipe, an overview of your constellations, a recap of your time away, level goals for combat skills, and kill and dungeon counters. They look like the game, and none of them changes your save.
+Ten quality-of-life mods in one zip: a combat simulator, where items come from and what uses them, an item encyclopedia, XP per hour on every recipe, the source of every skill bonus, an overview of your constellations, a recap of your time away, combat level goals, and kill and dungeon counters. They look like the game and never change your save.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Quality of Life Mods[/b][/size]
-Nine mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all nine.
+Ten mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all ten.
 
 [list]
 [*][b]Combat Simulator[/b]: what an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Compare loadouts, items and spells, find the best place to train a skill, look at earlier scans again.
 [*][b]Item Sources[/b]: hover "Found in" or "Used in" on an item to see which enemy drops it and where, how many and how likely, and every recipe, chest or shop purchase that gives or uses it. Alt keeps any item's tooltip open, anywhere in the game.
 [*][b]Item Encyclopedia[/b]: every item of the game in one window, with a search and filters by kind, slot, combat style, weapon, skill and source, and everything about each item: stats, requirements, where it drops and how likely, what it is made from and what it is used in.
 [*][b]Recipe Rates[/b]: XP per hour on every recipe of a skill's list, and the whole hour in the XP tooltip.
+[*][b]Skill Bonuses[/b]: where a skill's bonuses come from. A round button on a skill page opens a window with every stat of the page's stats panel and, under it, every item, pet, shop purchase, constellation and other source the game counts, with what each one gives.
 [*][b]Astrology Overview[/b]: your constellations in one window, those with a node choice ready first, then the shortest study time to the next unlock, with the knowledge it needs, the bonus every minor node gives, and what a locked one still misses.
 [*][b]Away Summary[/b]: switch to another app or minimise the game while your character trains, and come back to how long you were away and what changed: XP and levels, items gained and used, gold, and when an action stopped.
 [*][b]Combat Goals[/b]: XP per hour and the time left to a level goal, for every combat skill you are training.

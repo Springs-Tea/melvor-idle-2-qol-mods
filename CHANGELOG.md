@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Skill Bonuses**, a new mod: on a skill's page, a round button opens every bonus of the selected recipe,
+  tree or plot, with where each comes from: mastery ranks, constellations, potions, shop upgrades, equipment.
+  The game shows only the totals; the sources add up to them.
 - **Away Summary**, a new mod: come back to the game after a while in another window, and a summary in the
   look of the game's own "Welcome Back" window says what changed while you were away: the XP and levels,
   the items gained and used, gold, and when an action stopped or what a defeat cost.

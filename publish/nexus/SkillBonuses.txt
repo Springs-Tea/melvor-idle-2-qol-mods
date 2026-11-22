@@ -1,0 +1,61 @@
+NAME
+Skill Bonuses
+
+VERSION
+{version}
+
+FILE
+dist/SkillBonuses-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+docs/img/skill-bonuses.png (main)
+
+SUMMARY (the short line under the name, at most 350 characters)
+Where a skill's bonuses come from. A round button on every skill page with a stats panel opens a window with each stat's total as the page shows it and, under it, every item, pet, shop purchase, constellation and other source the game counts for it, with what each one gives.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Skill Bonuses[/b][/size]
+Why is my Woodcutting this fast? A skill page shows the totals of its bonuses: the chance to double, to keep materials, the XP, the action time. To know what gives what, you would have to look through your gear, pets, potions, Astrology and the shop. This window lists it for you.
+
+[size=4][b]Where it is[/b][/size]
+On a skill page with a stats panel, a round button joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. While it is open, the window follows you from skill to skill; on a page without bonuses (the bank, the shop, combat) it steps aside.
+
+[size=4][b]What the window shows[/b][/size]
+[list]
+[*][b]The skill[/b], and [b]what the numbers are for[/b]: the recipe the page is showing, or a drop-down where a page has many (trees, rocks, thieving targets, farm plots). On Woodcutting, Mining and Thieving it opens on the one your character is working on.
+[*][b]Every stat of the page's stats panel[/b], with its total as the page writes it.
+[*][b]Under each stat, every source of it[/b], the largest first, with the game's own picture of it where the game has one, and what it gives. A stat that nothing adds to is greyed out.
+[*][b]Other[/b], under a total that the listed sources do not add up to at the page's precision: part of it has no source the game names.
+[/list]
+
+[size=4][b]Where the numbers come from[/b][/size]
+From the game itself: the window reads the same stats the page's panel shows, and the list of sources the game keeps with each of them. Every value is written by the game's own stat row, so the units and the rounding are the page's. On Woodcutting, Mining, Thieving and Farming the window reads a card's stats without its tooltip ever being opened.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]The window only reads. Nothing is bought, worn, selected, started or stopped from it, and a click on it never reaches the game's cards under it.
+[*]It shows the bonuses your character has. Bonuses you could still get are not in this version: which of them would count for which stat is decided inside the game, and the mod would have to guess.
+[*]Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. It is never higher than the screen above the game's bottom bar: a longer list scrolls. Its place and size are kept in its own folder.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\SkillBonuses\SkillBonuses.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\SkillBonuses[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.
+It uses the game's own textures, fonts and colours, so it looks like part of the game. It gives no items, XP or bonuses.
+Open source (MIT), with the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/SkillBonuses]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/SkillBonuses[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
