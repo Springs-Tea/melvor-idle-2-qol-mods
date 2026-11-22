@@ -26,6 +26,7 @@ shop purchase. It works in the bank, and on any item's tooltip anywhere in the g
 - [Anywhere else: Alt](#anywhere-else-alt)
 - [Planning a quantity](#planning-a-quantity)
 - [Reading the list](#reading-the-list)
+- [Enemy and thieving drops](#enemy-and-thieving-drops)
 - [Questions it answers](#questions-it-answers)
 - [How it works](#how-it-works)
 - [Good to know](#good-to-know)
@@ -116,6 +117,29 @@ kept open with Alt. The game's own tooltip follows the pointer, so its list cann
 
 "Used in" reads the same way, with the amount the recipe or purchase takes.
 
+## Enemy and thieving drops
+
+The game lists an enemy's drops in **View Enemy Stats**, under **Drops**, and a thieving target's under
+**View Possible Rewards**, each with its chance. Item Sources adds two things there and changes nothing the
+game shows:
+
+- **On each chance**, the tooltip of "Found in". Rest the pointer on the chance of Rope in the Golbin
+  Ambusher's drops: "Half the time within 9 kills. 9 times in 10 within 30."
+- **Beside a thieving target's name**, a tag like the one of [Kills in Combat](../KillsInCombat/README.md):
+  your successful tries on that target, from the game's own statistics. In View Enemy Stats the row with the
+  enemy's name has no free room, so the count is left out there rather than put over the game's badges; Kills
+  in Combat shows your kills of an enemy in the fight.
+
+![The Golbin Ambusher's drops in View Enemy Stats, the tooltip on Copper Dagger: "Half the time within 2 kills. 9 times in 10 within 7."](../../docs/img/item-sources-drops.png)
+
+- The tooltip counts with the chance per kill or per try. Where the window gives a chance inside its table,
+  that is another number, so the tooltip first says the one it counts with: "7.5% per kill."
+- Thieving counts successful tries, as the tag does, with your bonuses to the common and rare loot chance. A
+  reward under **On Completion** counts completions of the heist.
+- A sure drop or a currency gets no tooltip; a chance of a half or better gets only the second sentence.
+
+![A thieving target's possible rewards: the tag with successful tries beside the name, the tooltip on Clay: "2.7% per successful try."](../../docs/img/item-sources-thieving.png)
+
 ## Questions it answers
 
 - **Where do I farm this?** Found in > Combat: enemy, area, chance. Compare the chances and pick.
@@ -149,7 +173,8 @@ flowchart LR
 ## Good to know
 
 - "Found in" shows the base chances from the game's data. Bonuses to drop chance or doubling are not
-  applied. Make leaves chances out too: to save materials, double items or skip steps.
+  applied. Make leaves chances out too: to save materials, double items or skip steps. The drop
+  windows count with the chances the window shows.
 - A few relations are left out on purpose, because they neither give nor take the item: quest steps and
   Mastery Guild tasks that only ask you to have it, and the pieces of an equipment set.
 - The mod has no settings and writes no files.
@@ -163,6 +188,8 @@ flowchart LR
 | "The game's data could not be read" | A game update changed the content in a way the mod cannot walk. The log says where; the mod needs an update. |
 | Alt does nothing | The item's tooltip must be up when you let go of Alt. If the log says "Keeping a tooltip open with Alt is switched off", a game update changed the item panel; the bank rows still work. |
 | "Make is switched off" in the log | The planner could not read the game. The pinned item and its two source and use rows are still available. |
+| No tag beside a name in a drop window | There was no room for it without covering part of the window. The log says what it would have covered. |
+| A drop window without tooltips | The mod could not read that window or table and left it as the game shows it. The log names it; "Drop window tooltips and counts switched off" means a game update changed the windows. |
 
 ## Install
 

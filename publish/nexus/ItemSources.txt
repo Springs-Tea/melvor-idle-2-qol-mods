@@ -14,7 +14,7 @@ PICTURES
 docs/img/item-sources.png (main), item-sources-used.png, item-sources-pin.png, item-sources-chance.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it. Press Alt on any item tooltip, anywhere in the game, to keep it open and do the same there. Its Make button says what it takes to make a number of it.
+Hover "Found in" or "Used in" on an item: which enemy drops it and where, how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it. Press Alt to keep any item tooltip open; its Make button says what it takes to make a number of it. On the game's drop lists: what each chance means in kills.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -55,9 +55,16 @@ What do I need for a hundred of these? Keep the tooltip of a bar, an arrow, a po
 [*]A long group shows its first eight lines and says how many more there are.
 [/list]
 
+[size=4][b]Enemy and thieving drops[/b][/size]
+The game lists an enemy's drops in [b]View Enemy Stats[/b], under [b]Drops[/b], and a thieving target's under [b]View Possible Rewards[/b], each with its chance. Item Sources adds on each chance the tooltip of "Found in", and beside a thieving target's name a tag with your successful tries, from the game's own statistics: "Half the time within 9 kills. 9 times in 10 within 30."
+[list]
+[*]It counts with the chance per kill or per try. Where the window gives a chance inside its table, the tooltip first says the one it counts with: "7.5% per kill."
+[*]Thieving counts successful tries, with your bonuses to the common and rare loot chance. A reward under [b]On Completion[/b] counts completions of the heist.
+[/list]
+
 [size=4][b]Good to know[/b][/size]
 [list]
-[*]The chances are the base ones from the game's own drop tables; bonuses to drop chance are not applied.
+[*]The chances under "Found in" are the base ones from the game's own drop tables; bonuses to drop chance are not applied. The drop windows count with the chances the window shows.
 [*]The list is read from the game's data when a character is opened, so items and enemies a game update adds show up by themselves.
 [*]Alt together with another key (Alt+Tab) is not this key.
 [/list]

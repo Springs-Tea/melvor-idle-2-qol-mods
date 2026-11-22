@@ -31,6 +31,12 @@ the way) and rest it on a chance. A small tooltip says, for example, "Half the t
 9 times in 10 within 30." Kills for an enemy, tries for a pick, a chest or a catch. This works in
 the bank and on a tooltip kept open with Alt.
 
+The game's drop lists, in View Enemy Stats (Drops) and on a thieving target's View Possible
+Rewards, get the same tooltip on each chance; a thieving target's also gets a tag beside the name
+with your successful tries, from the game's statistics. The tooltip counts with the chance per kill or per
+try, thieving with your bonuses; where the window gives a chance inside its table, it first says
+the one it counts with ("7.5% per kill."). On Completion rewards count completions of the heist.
+
 The chances are worked out from the game's own drop tables. The list is read from the game's
 data when a character is opened, so items and enemies a game update adds show up by themselves.
 

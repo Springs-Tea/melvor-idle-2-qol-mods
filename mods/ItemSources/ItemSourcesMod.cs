@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using GamesByMalcs.Melvor2;
 using GamesByMalcs.Melvor2.Components.Inventories;
+using GamesByMalcs.Melvor2.CustomControls;
 using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities.Bank;
 using Godot;
@@ -18,7 +19,8 @@ namespace ItemSources;
 /// <summary>
 /// The game's item panel says "Found in" and "Used in" with a few skill icons. Hover either row and this
 /// lists what is behind them: which enemy drops the item, where that enemy lives, how many and how likely;
-/// which recipe makes it; which chest holds it; and every recipe, upgrade or purchase that uses it.
+/// which recipe makes it; which chest holds it; and every recipe, upgrade or purchase that uses it. On the
+/// game's own drop windows it adds the kills or tries so far and what each chance means in kills (DropWindows).
 /// </summary>
 public partial class ItemSourcesMod : IMod
 {
@@ -55,6 +57,9 @@ public partial class ItemSourcesMod : IMod
     bool _stopped;
     int _frame;
     readonly List<ItemInfoPanel> _panels = new();
+    readonly List<PanelContainerPopup> _popups = new();
+    DropWindows? _drops;
+    bool _dropsFailed;
     // Names what holds an item; looks the areas and the skills up when the first tooltip needs them.
     ItemLines? _lines;
 
@@ -95,13 +100,14 @@ public partial class ItemSourcesMod : IMod
         try
         {
             Game? game = GameAccess.CurrentGame;
-            if (game is not { IsSaveLoaded: true }) { _game = null; Hide(); Unpin(); return; }
+            if (game is not { IsSaveLoaded: true }) { _game = null; CloseDrops(); Hide(); Unpin(); return; }
             if (!ReferenceEquals(game, _game)) Open(game);
             if (_lookForPanels.Due())
             {
                 FindPanels();
                 if (_pinCard != null) RefreshMakeBox();
             }
+            else _drops?.HideStale();
             Pinning();
 #if DEVTOOLS
             DevRequests();
@@ -113,6 +119,7 @@ public partial class ItemSourcesMod : IMod
         {
             _ctx.Log("Stopped (the game was updated?): the item panel changed. " + e.Message);
             _stopped = true;
+            CloseDrops();
             Hide();
             Unpin();
         }
@@ -120,6 +127,7 @@ public partial class ItemSourcesMod : IMod
         {
             _ctx.Log("Stopped (the game was updated?): " + e);
             _stopped = true;
+            CloseDrops();
             Hide();
             Unpin();
         }
@@ -127,6 +135,7 @@ public partial class ItemSourcesMod : IMod
 
     void Open(Game game)
     {
+        CloseDrops();
         _game = game;
         _index = null;
         _indexFailed = false;
@@ -168,14 +177,36 @@ public partial class ItemSourcesMod : IMod
     void FindPanels()
     {
         _panels.Clear();
-        if (GameAccess.FindGameView() is { } view) Collect(view, _panels);
+        _popups.Clear();
+        if (GameAccess.FindGameView() is { } view) Collect(view);
+        if (_dropsFailed || (_drops == null && _popups.Count == 0)) return;
+        try
+        {
+            _drops ??= new DropWindows(_game!, _style, _ctx.Log);
+            _drops.Update(_popups, _index);
+        }
+        // A window it cannot read is left alone in there; what comes out is a member gone after a game update.
+        // Only the drop windows switch off: the rest of the mod goes on.
+        catch (Exception e)
+        {
+            _ctx.Log("Drop window tooltips and counts switched off (the game was updated?): " + e.Message);
+            _dropsFailed = true;
+            CloseDrops();
+        }
     }
 
-    static void Collect(Node node, List<ItemInfoPanel> panels)
+    void CloseDrops()
+    {
+        _drops?.Clear();
+        _drops = null;
+    }
+
+    void Collect(Node node)
     {
         if (node is CanvasItem { Visible: false }) return;
-        if (node is ItemInfoPanel panel) { panels.Add(panel); return; }
-        for (int i = 0, n = node.GetChildCount(); i < n; i++) Collect(node.GetChild(i), panels);
+        if (node is ItemInfoPanel panel) { _panels.Add(panel); return; }
+        if (!_dropsFailed && node is PanelContainerPopup popup && popup.IsVisibleInTree()) _popups.Add(popup);
+        for (int i = 0, n = node.GetChildCount(); i < n; i++) Collect(node.GetChild(i));
     }
 
     void Hover()
@@ -643,15 +674,147 @@ public partial class ItemSourcesMod : IMod
     //   make=100 | make=closed | scroll=top | scroll=bottom | scroll=locked | scroll=currency | scroll=cycle | scroll=rate
     //   case=arrow | covered | locked | multiple | long | plain | empty | currency | cycle | overflow | wide | rate | crop
     //   Cases find a matching item on this character and pin it; an absent case cancels the remaining shots.
+    // The game's drop windows (DropWindows.cs), opened as a player opens them, with the game's own buttons, so the
+    // game binds each window itself:
+    //   page=Combat | page=Thieving   (the game's page of that name, as its sidebar opens it)
+    //   enemy=part of an enemy's name | enemy=first | enemy=longest   (View Enemy Stats, from the Combat page: its
+    //     areas button, the enemy's category and area in that menu when it shows others, then the enemy's View
+    //     Stats button; first is the first enemy the menu shows, longest the longest name in an open area)
+    //   drops   (the drop list of that window, with a click on its tab)
+    //   rewards=part of a thieving target's name | rewards=first | rewards=heist | rewards=longest   (the target's
+    //     rewards button, among the targets on the Thieving page's screen; the log lists them)
+    //   show=Rope | show=first | show=sure | show=completion   (scrolls the open drop window to that drop, enemy or
+    //     thieving: an item's id or part of its name; the first chance with this mod's tooltip, or the first chance
+    //     when none has one, with a line that says why; the first this mod counts as always; a heist's first
+    //     completion reward, one with this mod's tooltip if there is one)
+    //   point=lootchance:<the same>   (on that drop's chance) | point=loottag   (on the count beside the name)
+    //   close   (closes the drop windows, and the areas menu if a request opened it, with their close buttons)
     //   free   (the real pointer again; it also comes back after the last line)
-    // "item.done" is written after the last line.
+    // "item.done" is written after the last line. A step that cannot be done stops the request with one line,
+    // "Dev: STOPPED at ...", so no picture is taken of a window that is not there.
     Vector2? _devPointer;
     Queue<string> _devSteps = new();
     ulong _devStepAt;
     string _devGlide = "";
 
+    // A step whose window is still opening is asked again, every quarter of a second, for about two seconds.
+    const int DevTries = 8;
+    const ulong DevTryMs = 250;
+    int _devTries;
+    // The game's control a step aimed at, to be pressed with a player's click (see DevPressAimed).
+    Control? _devAim;
+    Rect2 _devAimRect;
+    string _devAimName = "";
+
+    // A drop window step. One that goes wrong stops the request (DevStop); it never stops the mod as a real fault
+    // would. What it asks to press is pressed by the next two steps, _aim and _press.
+    void DevDropStep(string command, Func<DropWindows, DropWindows.DevStep> step)
+    {
+        if (_dropsFailed || _game == null) { DevStop(command, "the drop windows are switched off"); return; }
+        DropWindows.DevStep done;
+        try { done = step(_drops ??= new DropWindows(_game, _style, _ctx.Log)); }
+        catch (DropWindows.DevNotYet e) { DevAgain(command, e.Message); return; }
+        catch (Exception e) { DevStop(command, e is DropWindows.DevFailed ? e.Message : $"{e.GetType().Name}: {e.Message}"); return; }
+        _devTries = 0;
+        _ctx.Log($"Dev: {command}: {done.Said}");
+        var next = new List<string>();
+        if (done.Press is { } press)
+        {
+            _devAim = press;
+            _devAimRect = done.Spot;
+            _devAimName = done.Said;
+            next.Add("_aim");
+            next.Add("_press");
+        }
+        if (done.Then != null) next.AddRange(done.Then);
+        if (next.Count > 0) _devSteps = new Queue<string>(next.Concat(_devSteps));
+    }
+
+    void DevAgain(string command, string why)
+    {
+        if (++_devTries >= DevTries) { DevStop(command, why); return; }
+        _devSteps = new Queue<string>(_devSteps.Prepend(command));
+        _devStepAt = Time.GetTicksMsec() + DevTryMs;
+    }
+
+    // One line, and the rest of the request is left out: the pictures after a failed step would show nothing.
+    void DevStop(string command, string why)
+    {
+        _ctx.Log($"Dev: STOPPED at '{command}', {_devSteps.Count} steps left out: {why.ReplaceLineEndings(" ")}");
+        _devSteps.Clear();
+        _devTries = 0;
+        _devAim = null;
+    }
+
+    // Where a step puts the pointer. A spot that cannot be found stops the request.
+    bool DevSpotOrStop(string command, string what, out Vector2 spot)
+    {
+        spot = default;
+        try
+        {
+            if (DevSpot(what) is { } found)
+            {
+                spot = found;
+                _devTries = 0;
+                return true;
+            }
+            DevStop(command, $"nothing called '{what}' to point at");
+        }
+        catch (DropWindows.DevNotYet e) { DevAgain(command, e.Message); }
+        catch (Exception e) { DevStop(command, e.Message); }
+        return false;
+    }
+
+    // Where the aimed control's spot is on the screen now, if it is still there.
+    Vector2? DevAimed()
+    {
+        if (_devAim is not { } target || !GodotObject.IsInstanceValid(target) || !target.IsVisibleInTree()) return null;
+        Vector2 spot = target.GetGlobalTransformWithCanvas() * _devAimRect.GetCenter();
+        return _ctx.Tree.Root.GetVisibleRect().HasPoint(spot) ? spot : null;
+    }
+
+    // A player's click on the control a step aimed at, sent only when the game itself says the pointer is on that
+    // control, or on a part of it that hands the click on: it can never land on another button beside it, such
+    // as a Fight button. While the control still moves (a window opening), it is aimed at again.
+    void DevPressAimed(string command)
+    {
+        if (DevAimed() is not { } spot || _devAim is not { } target) { DevStop(command, $"{_devAimName}: it is not on the screen"); return; }
+        Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
+        Rect2 onScreen = target.GetGlobalTransformWithCanvas() * _devAimRect;
+        if (_devPointer is not { } at || at.DistanceTo(spot) >= 1 || !onScreen.HasPoint(at) || !DevReaches(over, target))
+        {
+            DevPoint(spot);
+            DevAgain(command, $"the pointer at {spot} is on {DevName(over)}, not on {_devAimName}: nothing was pressed");
+            return;
+        }
+        _devTries = 0;
+        Vector2 there = _ctx.Tree.Root.GetFinalTransform() * at;
+        Input.ParseInputEvent(new InputEventMouseButton { Position = there, GlobalPosition = there, ButtonIndex = MouseButton.Left, Pressed = true, ButtonMask = MouseButtonMask.Left });
+        Input.ParseInputEvent(new InputEventMouseButton { Position = there, GlobalPosition = there, ButtonIndex = MouseButton.Left, Pressed = false });
+        _ctx.Log($"Dev: pressed {_devAimName} at {at}, a player's click on {DevName(over)}");
+        _devAim = null;
+    }
+
+    // Whether a click on this control reaches the target: it is the target, or lies in it with nothing between that
+    // keeps the click to itself (MouseFilter.Stop).
+    static bool DevReaches(Control? over, Control target)
+    {
+        for (Control? control = over; control != null; control = control.GetParent() as Control)
+        {
+            if (control == target) return true;
+            if (control.MouseFilter == Control.MouseFilterEnum.Stop) return false;
+        }
+        return false;
+    }
+
+    static string DevName(Control? control) => control == null ? "nothing"
+        : $"{control.GetType().Name}:{control.Name}" + (control is Label label ? $" '{label.Text}'" : control is Button { Text: not "" } button ? $" '{button.Text}'" : "");
+
     Vector2? DevSpot(string what)
     {
+        if (what.StartsWith("lootchance:", StringComparison.Ordinal))
+            return (_drops ?? throw new DropWindows.DevFailed("no drop window has been read yet")).DevChancePosition(what["lootchance:".Length..]);
+        if (what == "loottag") return (_drops ?? throw new DropWindows.DevFailed("no drop window has been read yet")).DevTagPosition();
         ItemInfoPanel? panel = _pinPanel != null && GodotObject.IsInstanceValid(_pinPanel) ? _pinPanel
             : _panels.FirstOrDefault(p => GodotObject.IsInstanceValid(p) && p.IsVisibleInTree() && !ReferenceEquals(p, _gameTipPanel) && ItemOf(p) != null);
         Rect2? found = panel != null && FoundRowOf(panel) is { } f && f.IsVisibleInTree() ? f.GetGlobalRect() : null;
@@ -693,6 +856,9 @@ public partial class ItemSourcesMod : IMod
             foreach (string line in File.ReadAllLines(steps)) if (line.Trim() != "") _devSteps.Enqueue(line.Trim());
             File.Delete(steps);
             _devStepAt = Time.GetTicksMsec() + 200;
+            _devTries = 0;
+            _devAim = null;
+            _drops?.DevNewRequest();
             return;
         }
         if (Time.GetTicksMsec() < _devStepAt) return;
@@ -724,14 +890,29 @@ public partial class ItemSourcesMod : IMod
                          $"the game's tooltip shows {(GameTipItem(out Item? shown, out _) ? shown!.DisplayName.GetPluralText(1) : "nothing")}");
                 break;
             case "bank": GameAccess.FindGameView()?.OpenBank(); break;
+            case "page": DevDropStep(command, d => d.DevPage(value)); _devStepAt += 1200; break;
+            case "enemy": DevDropStep(command, d => d.DevEnemy(value)); break;
+            case "_areas": DevDropStep(command, d => d.DevAreasButton()); break;
+            case "_category": DevDropStep(command, d => d.DevCategoryButton(value)); break;
+            case "_area": DevDropStep(command, d => d.DevAreaButton(value)); break;
+            case "_stats": DevDropStep(command, d => d.DevViewStats(value)); break;
+            case "_shows": DevDropStep(command, d => d.DevShows(value)); break;
+            case "drops": DevDropStep(command, d => d.DevDropsTab()); break;
+            case "rewards": DevDropStep(command, d => d.DevOpenRewards(value)); break;
+            case "show": DevDropStep(command, d => d.DevShow(value)); break;
+            case "close": DevDropStep(command, d => d.DevClose()); break;
+            case "_aim":
+                if (DevAimed() is { } aim) DevPoint(aim);
+                else DevStop(command, $"{_devAimName}: it is not on the screen");
+                break;
+            case "_press": DevPressAimed(command); break;
             case "free": _devPointer = null; break;
             case "wait": break;
             case "point":
-                if (DevSpot(value) is { } spot) { DevPoint(spot); _ctx.Log($"Dev: pointer on {value} at {spot}"); }
-                else _ctx.Log($"Dev: nothing called '{value}' to point at");
+                if (DevSpotOrStop(command, value, out Vector2 spot)) { DevPoint(spot); _ctx.Log($"Dev: pointer on {value} at {spot}"); }
                 break;
             case "click":
-                if (DevSpot(value) is { } press)
+                if (DevSpotOrStop(command, value, out Vector2 press))
                 {
                     DevPoint(press);
                     Vector2 there = _ctx.Tree.Root.GetFinalTransform() * press;
@@ -739,10 +920,9 @@ public partial class ItemSourcesMod : IMod
                     Input.ParseInputEvent(new InputEventMouseButton { Position = there, GlobalPosition = there, ButtonIndex = MouseButton.Left, Pressed = false });
                     _ctx.Log($"Dev: clicked {value} at {press}");
                 }
-                else _ctx.Log($"Dev: nothing called '{value}' to click");
                 break;
             case "glide":
-                if (DevSpot(value) is { } target)
+                if (DevSpotOrStop(command, value, out Vector2 target))
                 {
                     Vector2 from = _devPointer ?? target;
                     const int moves = 14;
@@ -751,7 +931,6 @@ public partial class ItemSourcesMod : IMod
                     _devGlide = "";
                     _ctx.Log($"Dev: gliding from {from} to {value} at {target}");
                 }
-                else _ctx.Log($"Dev: nothing called '{value}' to glide to");
                 break;
             case "_to":
                 _devGlide += listUp ? "1" : "0";
@@ -765,9 +944,10 @@ public partial class ItemSourcesMod : IMod
                 Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
                 Rect2? card = _pinCard != null && GodotObject.IsInstanceValid(_pinCard) ? _pinCard.GetGlobalRect() : null;
                 _ctx.Log($"Dev: shot-{value}.png; pointer {_devPointer}; list {(listUp ? "up" : "gone")} for '{_shown}' at {(listUp && _tip != null ? _tip.GetGlobalRect() : default)}; kept tooltip at {card}; " +
-                         $"the pointer is on {(over == null ? "nothing" : over.GetType().Name + ":" + over.Name + (over is Label label ? " '" + label.Text + "'" : ""))}; tooltip: {GameStyle.DevTooltips(_ctx.Tree.Root)}");
+                         $"the pointer is on {(over == null ? "nothing" : over.GetType().Name + ":" + over.Name + (over is Label label ? " '" + label.Text + "'" : ""))}; tooltip: {GameStyle.DevTooltips(_ctx.Tree.Root)}; " +
+                         $"the game's item tooltip shows {(GameTipItem(out Item? tipItem, out _) ? tipItem!.DisplayName.GetPluralText(1) : "nothing")}");
                 break;
-            default: _ctx.Log("Dev: unknown step " + command); break;
+            default: DevStop(command, "there is no such step"); break;
         }
         if (_devSteps.Count == 0)
         {

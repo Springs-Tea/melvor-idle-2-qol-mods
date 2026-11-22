@@ -72,17 +72,23 @@ sealed class ItemLines(Game game)
         }
     }
 
-    public static string? Luck(ItemLine line)
+    public static string? Luck(ItemLine line) => line.Ref.Owner switch
     {
-        if (line.Chance is not (> 0 and < 0.9995)) return null;
-        int half = Tries(line.Chance, 0.5), nineInTen = Tries(line.Chance, 0.9);
+        Enemy => Luck(line.Chance, "kill", "kills"),
+        Dungeon => Luck(line.Chance, "run", "runs"),
+        _ => Luck(line.Chance, "try", "tries"),
+    };
+
+    /// <summary>
+    /// What a chance each time means in times: "Half the time within 9 kills. 9 times in 10 within 30." Nothing
+    /// for a sure thing ("always") or for a count too large to write.
+    /// </summary>
+    public static string? Luck(double chance, string one, string many)
+    {
+        if (chance is not (> 0 and < 0.9995)) return null;
+        int half = Tries(chance, 0.5), nineInTen = Tries(chance, 0.9);
         if (half == 0 || nineInTen == 0) return null;
-        string Count(int n) => line.Ref.Owner switch
-        {
-            Enemy => n == 1 ? "1 kill" : $"{n:N0} kills",
-            Dungeon => n == 1 ? "1 run" : $"{n:N0} runs",
-            _ => n == 1 ? "1 try" : $"{n:N0} tries",
-        };
+        string Count(int n) => n == 1 ? $"1 {one}" : $"{n:N0} {many}";
         // A coin toss or better: "half the time within 1 try" would say less than the chance itself.
         return half == 1 ? $"9 times in 10 within {Count(nineInTen)}."
             : $"Half the time within {Count(half)}. 9 times in 10 within {nineInTen:N0}.";

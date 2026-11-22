@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Item Sources**: the game's drop lists, in View Enemy Stats (Drops) and on a thieving target's View
+  Possible Rewards, get the tooltip of "Found in" on each chance: how many kills or tries it usually takes.
+  A thieving target also gets a tag with your successful tries beside its name.
 - **Combat Simulator**: each enemy's card in the game's combat areas menu gets a small tag with your newest
   scan of that enemy: Safe or Risky, then XP and deaths per hour. It is grey and says "Other setup" when that
   scan was made with other equipment, stance, spell, food or prayers; a click opens the scan in the simulator.
