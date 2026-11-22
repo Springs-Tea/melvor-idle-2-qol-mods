@@ -27,16 +27,21 @@ have stops.
 - [Reading a line](#reading-a-line)
 - [Setting a goal](#setting-a-goal)
 - [What the rate is measured over](#what-the-rate-is-measured-over)
-- [Moving and resizing](#moving-and-resizing)
+- [Moving, resizing and folding](#moving-resizing-and-folding)
 - [While skilling](#while-skilling)
 - [Good to know](#good-to-know)
 - [When something is off](#when-something-is-off)
 
 ## Opening it
 
-Start a fight. The window appears by itself in the bottom right corner, and a round button with the combat
-icon appears in the strip of round buttons on the right edge of the screen. That button, or **F10**, hides
-the window and shows it again. Outside combat the window and the button are not there.
+Start a fight. The window appears by itself in the bottom right corner, above the game's bottom bar, and a
+round button with the combat icon appears in the strip of round buttons on the right edge of the screen.
+That button, or **F10**, closes the window and opens it again; the red X at its top right closes it too.
+Outside combat the window and the button are not there.
+
+**To put it aside without closing it**, press the small button beside the X. The window folds down to its
+title, which you can drag wherever it is out of the way. The same button, F10 or the round button opens it
+again where the title is.
 
 For the first ten seconds of a fight the window says "Waiting for combat XP...": a rate needs a little
 history.
@@ -66,9 +71,10 @@ next level by itself.
 
 ## What the rate is measured over
 
-The box at the top of the window chooses how much recent play the rate is averaged over: 1, 5, 10 or 30
-minutes. A short period follows changes quickly but jumps around, because XP arrives hit by hit. A long one
-is steady but slow to notice that you changed something. Ten minutes is the default.
+The box with the clock at the top right of the window, just under the X, picks the period, like the footer's
+own: the rate is averaged over the last 1, 5, 10 or 30 minutes of play. A short period follows changes
+quickly but jumps around, because XP arrives hit by hit. A long one is steady but slow to notice that you
+changed something. Ten minutes is the default.
 
 The rate is always that of **the fight you are in**:
 
@@ -78,15 +84,19 @@ The rate is always that of **the fight you are in**:
 - After the game was paused or closed, the measurement starts again too: XP gained offline did not arrive at
   a rate anyone could measure.
 
-## Moving and resizing
+## Moving, resizing and folding
 
 | | |
 | --- | --- |
 | Move | Drag the window from any empty spot. |
 | Resize | Drag its bottom right corner, from 70% to 200%. Text and icons are redrawn sharp at the new size. |
-| Hide | The eye in its top right corner, the round button, or F10. |
+| Fold | The button beside the X folds the window down to its title, where it stands; the same button opens it again. |
+| Close | The X, the round button, or F10. The round button or F10 opens it again. On a folded window they open it up rather than close it. |
 
-The place, the size, the period and whether it is hidden are remembered.
+The window stays above the game's bottom bar: when new lines would reach the bar, the window moves up, and it
+stays there when they go. A window taller than the room above the bar (a large size on a small screen) sits
+at the top of the screen instead, and its lower part lies over the bar. Its place, its size, the period, and
+whether it is folded or closed are remembered.
 
 ## While skilling
 
@@ -119,7 +129,8 @@ narrow game window), it is left out. The window is for combat: it does not open 
 | You see | What it means |
 | --- | --- |
 | "Waiting for combat XP..." that does not go away | No combat skill has gained XP in the last period: you are not hitting, or every skill being trained is at its cap. |
-| No window in combat | It is hidden: press F10 or the round button. |
+| No window in combat | It is closed: press F10 or the round button. |
+| Only the window's title in combat | It is folded: the button beside the X, F10 or the round button opens it. |
 | No window while skilling | The window is for combat. While skilling, look at the end of the footer. |
 | No time at the end of the footer while skilling | It needs a stop set in one of the skills listed at the top, and about ten seconds of progress towards it. It is only there while the footer shows the action's name, and only when the footer has room left at its end: in a narrow game window it is left out. |
 | A time without the stop's words in its tooltip | The words come from the stop panel on the skill's page: open that page once. |

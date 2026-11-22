@@ -189,7 +189,7 @@ static partial class Dev
                     EndShot();
                     return;
                 }
-                s_mod.SetPictureScale(shot == "combat-max" ? 1 : -1);
+                s_mod.SetPicture(shot == "combat-max" ? CombatGoalsMod.MaxScale : CombatGoalsMod.MinScale);
                 break;
             default:
                 Shot($"shot-{shot}.png");
@@ -201,7 +201,7 @@ static partial class Dev
 
     static void EndShot()
     {
-        s_mod.SetPictureScale(null);   // nothing happens when the window is at the player's size
+        s_mod.SetPicture();   // nothing happens when the window is as the player has it
         s_shotName = null;
         s_shotStep = 0;
         SkillingAction.HideForPicture = false;

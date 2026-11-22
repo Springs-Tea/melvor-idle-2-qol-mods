@@ -16,6 +16,7 @@ namespace MelvorMods.Shared;
 /// </summary>
 public sealed class GameWindow
 {
+    /// <summary>The sizes the corner reaches, unless a window is made with others.</summary>
     public const float MinScale = 0.6f, MaxScale = 1.6f;
 
     public GameStyle Style { get; }
@@ -34,6 +35,11 @@ public sealed class GameWindow
     public event Action<bool>? MinimisedChanged;
     /// <summary>Only the title is showing.</summary>
     public bool Minimised { get; private set; }
+    /// <summary>
+    /// The corner is held: until it is let go the window is only scaled, from the size it had when the corner was
+    /// taken. An owner that changes what the window holds waits until then.
+    /// </summary>
+    public bool Resizing => _resizing;
 
     readonly Control _grip, _balance;
     readonly Label _title;
@@ -41,7 +47,8 @@ public sealed class GameWindow
     readonly float _paperWidth;
     readonly Button? _fold;
     readonly Vector2? _startAt;
-    readonly float _bottomInset;
+    readonly float _minScale, _maxScale;
+    float _bottomInset;
     bool _dragging, _resizing, _placed;
     Vector2 _resizeFrom;
     float _resizeTo;
@@ -51,10 +58,13 @@ public sealed class GameWindow
     float _titleRoom;
 
     // foldedRight: for a window that opens folded and whose title changes, the right edge its strip was left at.
+    // minScale, maxScale: for a window whose corner reaches other sizes than MinScale to MaxScale.
     public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105, bool canMinimise = false, bool minimised = false,
-        float bottomInset = 0, float? foldedRight = null)
+        float bottomInset = 0, float? foldedRight = null, float minScale = MinScale, float maxScale = MaxScale)
     {
-        Style = new GameStyle(Math.Clamp(scale, MinScale, MaxScale));
+        _minScale = minScale;
+        _maxScale = maxScale;
+        Style = new GameStyle(Math.Clamp(scale, minScale, maxScale));
         _startAt = position;
         _foldedRight = canMinimise && minimised ? foldedRight : null;
         _bottomInset = bottomInset;
@@ -243,6 +253,29 @@ public sealed class GameWindow
         KeepOnScreen();
     }
 
+    /// <summary>
+    /// Puts the window here, as if it had been dragged here: from now on it stays where it is while its content
+    /// grows and shrinks, only kept on the screen, instead of going back to the place it was made with. A folded
+    /// strip that holds its right edge (foldedRight) holds it where it is now, as after a drag; that edge is read
+    /// from the strip's laid-out width, which arrives a moment after the window is made, so move such a strip only
+    /// once it is laid out, never straight after the constructor. Moved is not raised.
+    /// </summary>
+    public void MoveTo(Vector2 position)
+    {
+        _placed = true;
+        Root.Position = position.Round();
+        KeepOnScreen();
+        if (Minimised && _foldedRight.HasValue) _foldedRight = Root.Position.X + Root.Size.X;
+    }
+
+    /// <summary>The game's bar along the bottom of the screen has a new height: the window is kept above it.</summary>
+    public void KeepAbove(float bottomInset)
+    {
+        if (bottomInset == _bottomInset) return;
+        _bottomInset = bottomInset;
+        KeepOnScreen();
+    }
+
     public void KeepOnScreen()
     {
         Vector2 screen = Root.GetViewportRect().Size, size = Root.Size * Root.Scale;
@@ -323,7 +356,7 @@ public sealed class GameWindow
             // Follow whichever direction was dragged further, keeping the window's proportions.
             Vector2 moved = motion.GlobalPosition - _resizeFrom, size = Root.Size;
             float factor = Math.Max((size.X + moved.X) / size.X, (size.Y + moved.Y) / size.Y);
-            _resizeTo = Math.Clamp(Style.Scale * factor, MinScale, MaxScale);
+            _resizeTo = Math.Clamp(Style.Scale * factor, _minScale, _maxScale);
             Root.Scale = Vector2.One * (_resizeTo / Style.Scale);
             PlaceGrip();
         }

@@ -7,10 +7,14 @@ combat skill you are training and shows the time left to a level goal you set fo
 
   - Only skills that are gaining XP are listed.
   - Type a goal level per skill. Goals are remembered per character.
-  - The rate is the average of the current fight over the last 1, 5, 10 or 30 minutes. Leaving
-    combat, or fighting something else, starts the measurement again.
+  - The rate is the average of the current fight over the last 1, 5, 10 or 30 minutes, as
+    chosen in the box with the clock at the top right, like the footer's own. Leaving combat,
+    or fighting something else, starts the measurement again.
   - Drag the window anywhere. Drag its bottom right corner for another size.
-  - A round button on the right edge of the screen, and F10, show and hide it.
+  - The button beside the red X folds it down to its title, to put it aside without closing
+    it; the X closes it.
+  - A round button on the right edge of the screen, and F10, open and close it. On a folded
+    window they open it up again.
 
 WHILE SKILLING
   Smithing, Crafting, Fletching, Runecrafting, Beastcrafting, Cooking and Herblore have stops.

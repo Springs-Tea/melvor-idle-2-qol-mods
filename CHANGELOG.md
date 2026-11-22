@@ -17,6 +17,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   skill, dungeon runs and more), with presets; more than fit scroll sideways inside the window. The first click on
   a column now puts the best fights on top, so Food sorts the least first, and a small arrow after the column's
   name shows the direction.
+- **Combat Goals**: the window has the game's large pop-up frame, like the Item Encyclopedia and the Combat
+  Simulator: its name on the paper title, a button beside the red X that folds it down to its title (remembered),
+  and the X to close it where the eye was. The time period box, with the footer's clock, sits just under the title
+  bar.
 
 ## 0.5.0
 

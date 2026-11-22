@@ -18,11 +18,14 @@ namespace CombatGoals;
 /// <summary>
 /// Level goals for combat skills. The game's footer shows "time left to level N" for one skill; combat trains
 /// several at once, so this window measures each combat skill's XP rate and shows the time left to a target
-/// level you enter per skill. Only skills that are gaining XP are listed. Drag the window anywhere, drag its
-/// corner for another size; F10 hides it.
+/// level you enter per skill. Only skills that are gaining XP are listed. The window has the frame of the other
+/// mods' windows (GameWindow): drag it anywhere, drag its corner for another size, fold it down to its title or
+/// close it with its X; F10 and a round button by the game's widgets open it again.
 /// </summary>
 public class CombatGoalsMod : IMod
 {
+    internal const string Title = "Combat Goals";
+
     static readonly string[] SkillIds =
     {
         "MelvorBase:Attack", "MelvorBase:Strength", "MelvorBase:Defence", "MelvorBase:Hitpoints",
@@ -36,7 +39,8 @@ public class CombatGoalsMod : IMod
     // A longer gap between samples means the game was paused or computed offline progress: that XP did not
     // arrive at a rate we can measure, so the history starts again.
     internal const ulong GapResetMs = 5000;
-    const float MinScale = 0.7f, MaxScale = 2f;
+    // The sizes its corner reaches: this window's own, kept from before it had the shared frame.
+    internal const float MinScale = 0.7f, MaxScale = 2f;
     // The first time, the window keeps this far from the screen's right edge and from the game's bottom bar.
     const float FirstPlaceGap = 60;
 
@@ -57,6 +61,8 @@ public class CombatGoalsMod : IMod
         public float? X { get; set; }
         public float? Y { get; set; }
         public bool Hidden { get; set; }
+        /// <summary>The window is folded down to its title.</summary>
+        public bool Minimised { get; set; }
         public int Period { get; set; } = 2;
         /// <summary>Window size: 1 is the game's own size.</summary>
         public float Scale { get; set; } = 1f;
@@ -69,17 +75,12 @@ public class CombatGoalsMod : IMod
     Game? _game, _failed;
     readonly List<Row> _rows = new();
     GameStyle _style = new();
-    CanvasLayer? _layer;
-    PanelContainer? _window;
-    Control? _grip;
+    GameWindow? _window;
     Label? _empty;
     Button? _stripButton;
-    bool _wasDown, _settingUp, _dragging, _placed, _resizing, _inCombat, _stripMissingLogged, _stopped, _unsaved, _guessing;
-    Vector2 _resizeFrom;
-    float _resizeTo = 1f;
+    bool _wasDown, _settingUp, _inCombat, _stripMissingLogged, _stopped, _unsaved, _guessing;
     readonly Tempo _sampling = new(SampleEveryMs);
     Control? _footer;
-    float _bottomInset;
     ulong _lastSample;
     int _shown = -1;
     object? _fight;
@@ -94,7 +95,7 @@ public class CombatGoalsMod : IMod
 #if DEVTOOLS
         Dev.Start(ctx, this);
 #endif
-        ctx.Log("Ready. F10 shows/hides the combat goals window.");
+        ctx.Log("Ready. F10 opens and closes the combat goals window.");
     }
 
     // Resolve optional game types inside the guarded call, even if a game update removes a type entirely.
@@ -105,14 +106,26 @@ public class CombatGoalsMod : IMod
     {
         if (_stopped) return;
         try { Step(); }
-        catch (Exception e)
-        {
-            // One line, then nothing: an error on every frame would bury the log and help nobody.
-            _stopped = true;
-            _ctx.Log("Stopped (the game was updated?): " + e);
-            FreeControl(_stripButton);
-            DropWindow();
-        }
+        catch (Exception e) { Stop(e); }
+    }
+
+    // One line, then nothing: an error on every frame would bury the log and help nobody.
+    void Stop(Exception e)
+    {
+        if (_stopped) return;
+        _stopped = true;
+        _ctx.Log("Stopped (the game was updated?): " + e);
+        FreeControl(_stripButton);
+        DropWindow();
+    }
+
+    // A click on the window or the round button is handled outside of OnFrame: a game member that is gone must
+    // end in the same one line there.
+    void Click(Action action)
+    {
+        if (_stopped) return;
+        try { action(); }
+        catch (Exception e) { Stop(e); }
     }
 
     // Cleanup still attempts the other controls if one is already being destroyed.
@@ -125,7 +138,7 @@ public class CombatGoalsMod : IMod
     void Step()
     {
         bool down = Input.IsKeyPressed(Key.F10);
-        if (down && !_wasDown) SetHidden(!_settings.Hidden);
+        if (down && !_wasDown) ToggleWindow();
         _wasDown = down;
 
         if (!_sampling.Due()) return;
@@ -148,46 +161,124 @@ public class CombatGoalsMod : IMod
         if (_inCombat) Sample(now, gap);
         Refresh(now);
         UpdateStripButton();
-#if DEVTOOLS
-        // Development: a file "scale.request" holding a number rebuilds the window at that size.
-        string request = Path.Combine(_ctx.Directory, "scale.request");
-        if (File.Exists(request))
-        {
-            string text = File.ReadAllText(request).Trim();
-            File.Delete(request);
-            if (float.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out float scale))
-            {
-                _settings.Scale = Math.Clamp(scale, MinScale, MaxScale);
-                SavePosition();
-                Rebuild();
-            }
-        }
-#endif
     }
 
 #if DEVTOOLS
-    // A development picture's size. It is never written to settings.json, and null puts the window back at
-    // the size the player chose.
+    // How a development picture builds the window: at another size, folded or not, at the first place as if no
+    // place were saved. None of it is ever written to settings.json; SetPicture() with nothing builds the window
+    // as the player has it again.
     float? _pictureScale;
+    bool? _pictureFolded;
+    bool _pictureFirstPlace, _devLogBuild;
+    string _devBuild = "-";
+    ulong _devBuiltAt;
+
     float WindowScale => _pictureScale ?? _settings.Scale;
+    // A picture beside a window at 60% or 65% needs this one at that size too; the player's corner stops at 70%.
+    float SmallestScale => Math.Min(MinScale, _pictureScale ?? MinScale);
+    bool WindowFolded => _pictureFolded ?? _settings.Minimised;
+    Vector2? SavedPlace => _pictureFirstPlace ? null : PlaceIn(_settings);
 
-    internal bool WindowUp => _layer?.Visible == true && _window != null;
+    internal GameWindow? Window => _window is { IsAlive: true } ? _window : null;
+    internal bool WindowUp => _window is { IsAlive: true, Visible: true };
+    internal bool InFight => _inCombat;
+    internal int Lines => _shown;
+    internal bool? StripButtonLit => GodotObject.IsInstanceValid(_stripButton) ? _stripButton!.ButtonPressed : null;
 
-    /// <summary>A positive number: the largest size; a negative one: the smallest; null: the player's.</summary>
-    internal void SetPictureScale(float? largest)
+    /// <summary>What F10 and the round button do: a closed window opens, a folded one opens up, an open one closes.</summary>
+    internal void DevToggle() => Click(ToggleWindow);
+
+    /// <summary>The window built again for a picture; nothing given: as the player has it.</summary>
+    internal void SetPicture(float? scale = null, bool? folded = null, bool firstPlace = false)
     {
-        float? scale = largest is { } big ? (big > 0 ? MaxScale : MinScale) : null;
-        if (scale == _pictureScale) return;
-        _pictureScale = scale;
+        if (scale == _pictureScale && folded == _pictureFolded && firstPlace == _pictureFirstPlace) return;
+        (_pictureScale, _pictureFolded, _pictureFirstPlace) = (scale, folded, firstPlace);
         Rebuild();
     }
 
-    internal string WindowReading => _window == null ? "no combat window"
-        : $"combat rows={_shown}, scale={_style.Scale:P0} (saved {_settings.Scale:P0}), window={_window.GetGlobalRect()}, " +
-          $"screen={_window.GetViewportRect().Size}, bottom bar height={_bottomInset}";
+    /// <summary>The window put somewhere else for a picture. MoveTo raises no Moved: the place is not saved.</summary>
+    internal void DevMoveTo(Vector2 position) => Window?.MoveTo(position);
+
+    /// <summary>What a development request may change of this mod, to put it back exactly.</summary>
+    internal readonly record struct DevState(bool Hidden, bool Minimised, float? X, float? Y, Vector2? OnScreen);
+
+    internal DevState DevNow => new(_settings.Hidden, _settings.Minimised, _settings.X, _settings.Y, Window?.Position);
+
+    /// <summary>Closed or open, folded or not and the place as they were, in settings.json too, at the player's size.</summary>
+    internal void DevPutBack(DevState before)
+    {
+        (_pictureScale, _pictureFolded, _pictureFirstPlace) = (null, null, false);
+        (_settings.Hidden, _settings.Minimised, _settings.X, _settings.Y) = (before.Hidden, before.Minimised, before.X, before.Y);
+        WriteSettings();
+        Rebuild();
+        // Where it stood on the screen, which lines may have pushed away from the saved place.
+        if (before.OnScreen is { } at) Window?.MoveTo(at);
+        UpdateStripButton();
+    }
+
+    /// <summary>The values a settings.json holds, whatever its layout and whichever keys it already had.</summary>
+    internal static string DevSettingsValues(string? json) =>
+        JsonSerializer.Serialize(json == null ? new Settings() : JsonSerializer.Deserialize<Settings>(json) ?? new Settings());
+
+    /// <summary>How the window was last built: its size with no lines and where it was put.</summary>
+    internal string DevBuildReading => _devBuild;
+
+    internal string WindowReading => _window is not { IsAlive: true } window ? "no combat window"
+        : $"combat rows={_shown}, scale={window.Style.Scale:P0} (saved {_settings.Scale:P0}), folded={window.Minimised} (saved {_settings.Minimised}), " +
+          $"closed={_settings.Hidden}, visible={window.Visible}, window={window.Root.GetGlobalRect()}, {Gaps(window)}, " +
+          $"screen={window.Root.GetViewportRect().Size}, bottom bar height={FooterHeight()}, layer={window.Layer.Layer}, " +
+          $"saved place={_settings.X},{_settings.Y}, round button lit={StripButtonLit?.ToString() ?? "no round button"}";
+
+    // How far the window is from the screen's right edge and from the top of the bottom bar.
+    string Gaps(GameWindow window)
+    {
+        Rect2 at = window.Root.GetGlobalRect();
+        Vector2 screen = window.Root.GetViewportRect().Size;
+        return $"{screen.X - at.End.X:0} from the right edge, {screen.Y - FooterHeight() - at.End.Y:0} above the bottom bar";
+    }
+
+    // Where the window was put when it was built, and the least room it has had since: the screen less its size, and
+    // less the bottom bar under it. From the two, where the place rule has it now (DevRulePlace).
+    Vector2 _devPut, _devRoom;
+
+    /// <summary>
+    /// Where the place rule has the window now: where it was put when it was built, pushed up and left only as far as
+    /// the screen and the bottom bar have needed since (KeepOnScreen clamps, and a clamp never lets it back down). A
+    /// window anywhere else was moved by something else: a drag, or the fold button, which keeps its right edge.
+    /// </summary>
+    internal Vector2 DevRulePlace()
+    {
+        if (Window is { } window) NoteRoom(window);
+        return new Vector2(Math.Clamp(_devPut.X, Math.Min(0, _devRoom.X), Math.Max(0, _devRoom.X)),
+            Math.Clamp(_devPut.Y, 0, Math.Max(0, _devRoom.Y)));
+    }
+
+    void NoteRoom(GameWindow window)
+    {
+        if (window.Resizing) return;   // only scaled until the corner is let go; then it is built again
+        Vector2 room = window.Root.GetViewportRect().Size - window.Root.Size - new Vector2(0, FooterHeight());
+        _devRoom = new Vector2(Math.Min(_devRoom.X, room.X), Math.Min(_devRoom.Y, room.Y));
+    }
+
+    // A second after the window was built at a character's load: what it was built as next to what it is now, and
+    // whether it is where the place rule has it.
+    void LogBuild(GameWindow window, ulong now, int shown)
+    {
+        if (!_devLogBuild || now < _devBuiltAt + 1000) return;
+        _devLogBuild = false;
+        Vector2 rule = DevRulePlace(), at = window.Position;
+        _ctx.Log($"Dev: combat window at the character's load: {_devBuild}; a second later: {window.Root.GetGlobalRect()}, {Gaps(window)}, " +
+                 $"{shown} lines, waiting text shown={_empty?.Visible}, visible={window.Visible}; the place rule has it at {rule}: " +
+                 (at.DistanceTo(rule) < 1 ? "it is there" : $"it is NOT THERE, {at.X - rule.X:0.#} across and {at.Y - rule.Y:0.#} down from it"));
+    }
 #else
     float WindowScale => _settings.Scale;
+    float SmallestScale => MinScale;
+    bool WindowFolded => _settings.Minimised;
+    Vector2? SavedPlace => PlaceIn(_settings);
 #endif
+
+    static Vector2? PlaceIn(Settings settings) => settings is { X: { } x, Y: { } y } ? new Vector2(x, y) : null;
 
     // CurrentGame is null on the main menu and a new object for every character that is opened.
     void TrackCharacter()
@@ -205,7 +296,6 @@ public class CombatGoalsMod : IMod
         FreeControl(_stripButton);
         _stripButton = null;
         _footer = null;
-        _bottomInset = 0;
         DropWindow();
         if (now == null) return;
         try
@@ -214,6 +304,9 @@ public class CombatGoalsMod : IMod
             if (_footer == null) _ctx.Log("The game's bottom bar was not found. The combat window may overlap it.");
             BuildRows(now);
             BuildWindow(now);
+#if DEVTOOLS
+            _devLogBuild = true;
+#endif
             _ctx.Log($"Character opened, tracking {_rows.Count} combat skills.");
         }
         catch (Exception e)
@@ -239,28 +332,75 @@ public class CombatGoalsMod : IMod
 
     // ---- the window -------------------------------------------------------------------------------------
 
+    // The frame, title bar, fold button, X and resize corner are the shared window's (GameWindow), as in the Item
+    // Encyclopedia and the Combat Simulator; this mod fills its body.
     void BuildWindow(Game game)
     {
         _settingUp = true;
-        _placed = false;
         _shown = -1;
-        _style = new GameStyle(Math.Clamp(WindowScale, MinScale, MaxScale));
-        _layer = new CanvasLayer { Layer = 100, Visible = false };
+        try
+        {
+            // The game's bar along the bottom stays in sight: the window is placed, and kept, above it.
+            float footer = FooterHeight();
+            // At the size the player chose, from 70% to 200% as before the shared frame. A window larger than the
+            // room above the bottom bar keeps its title bar on the screen (GameWindow.KeepOnScreen), as before.
+            var window = _window = new GameWindow(_ctx.Tree, Title, WindowScale, null, canMinimise: true, minimised: WindowFolded,
+                bottomInset: footer, minScale: SmallestScale, maxScale: MaxScale);
+            _style = window.Style;
+            BuildBody(window, game);
 
-        _window = new PanelContainer { MouseDefaultCursorShape = Control.CursorShape.Move };
-        _window.AddThemeStyleboxOverride("panel", _style.WindowPanel());
-        _window.Theme = _style.TooltipTheme();
-        _window.GuiInput += OnWindowInput;
-        _window.Resized += KeepOnScreen;
-        _layer.AddChild(_window);
+            window.CloseRequested += () => Click(() => SetHidden(true));
+            window.MinimisedChanged += folded => Click(() => Folded(folded));
+            window.Moved += position => Click(() =>
+            {
+                _settings.X = position.X;
+                _settings.Y = position.Y;
+                WriteSettings();
+            });
+            window.ResizeRequested += size => Click(() => Resize(window, size));
+            // The resize corner is the frame's sibling: its tooltip on the game's panel too, as AstrologyOverviewMod does.
+            foreach (Control control in window.Layer.GetChildren().OfType<Control>()) control.Theme = window.Root.Theme;
+            // Where the player left it, or the first time the bottom right corner. From there it stays where it is,
+            // as it did before the shared frame: lines that would reach the bottom bar push it up, and it stays there
+            // when they go.
+            Vector2? saved = SavedPlace;
+            window.MoveTo(saved ?? FirstPlace(window, footer));
+#if DEVTOOLS
+            Vector2 built = window.Root.GetCombinedMinimumSize();
+            _devBuild = $"built at {window.Style.Scale:P0}{(window.Minimised ? ", folded" : "")}, {built.X:0}x{built.Y:0} with no lines, put at " +
+                        (saved is { } place ? $"the saved place {place}" : $"the first place, {FirstPlaceGap} from the right edge and above the bottom bar ({footer:0} high)") +
+                        $": {window.Position}";
+            _devBuiltAt = Time.GetTicksMsec();
+            _devPut = window.Position;
+            _devRoom = window.Root.GetViewportRect().Size - built - new Vector2(0, footer);
+#endif
+        }
+        finally { _settingUp = false; }
+    }
 
-        var column = _style.Spaced(new VBoxContainer(), 8);
-        _window.AddChild(column);
-        column.AddChild(BuildTitleBar());
+    // Under the title bar, at the top right where the time period has always been: the footer's own period part, its
+    // clock and its box as the footer draws them (its TimePeriodContainer: the clock at 16, then the box, 8 apart), with
+    // no words of ours. The other windows' title bars hold only the title and their two buttons.
+    void BuildBody(GameWindow window, Game game)
+    {
+        var top = _style.Spaced(new HBoxContainer { Name = "Period", Alignment = BoxContainer.AlignmentMode.End, MouseFilter = Control.MouseFilterEnum.Pass }, 8);
+        top.AddChild(_style.Picture(GameStyle.Icon("TimeInterval_48"), 16));
+        OptionButton period = _style.Dropdown();
+        period.TooltipText = "XP rates are averaged over this much recent play";
+        foreach (var p in Periods) period.AddItem(p.Label);
+        period.Selected = Math.Clamp(_settings.Period, 0, Periods.Length - 1);
+        period.ItemSelected += index => Click(() =>
+        {
+            _settings.Period = (int)index;
+            WriteSettings();
+            Refresh(Time.GetTicksMsec());
+        });
+        top.AddChild(period);
+        window.Body.AddChild(top);
 
         var inner = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         inner.AddThemeStyleboxOverride("panel", _style.InnerPanel());
-        column.AddChild(inner);
+        window.Body.AddChild(inner);
         var list = _style.Spaced(new VBoxContainer { CustomMinimumSize = new Vector2(_style.Px(430), 0) }, 2);
         inner.AddChild(list);
 
@@ -271,18 +411,12 @@ public class CombatGoalsMod : IMod
 
         var saved = _settings.Targets.TryGetValue(game.CharacterName, out var mine) ? mine : new();
         foreach (Row row in _rows) list.AddChild(BuildRow(row, saved));
-
-        _layer.AddChild(BuildGrip());
-        _window.ItemRectChanged += PlaceGrip;
-        _ctx.Tree.Root.AddChild(_layer);
-        _settingUp = false;
     }
 
     void DropWindow()
     {
-        FreeControl(_layer);
-        _layer = null; _window = null; _grip = null;
-        _dragging = _resizing = false;
+        _window?.Free();
+        _window = null;
     }
 
     // The same window again at another size. What was measured so far is kept.
@@ -294,41 +428,34 @@ public class CombatGoalsMod : IMod
         Refresh(Time.GetTicksMsec());
     }
 
-    Control BuildTitleBar()
+    // The first time, the bottom right corner, clear of the screen's edge and of the game's bottom bar, measured
+    // with no lines ("Waiting for combat XP...").
+    Vector2 FirstPlace(GameWindow window, float footer)
     {
-        var bar = _style.Spaced(new HBoxContainer(), 6);
-        bar.AddChild(_style.Picture(GameStyle.Icon("Combat"), 20));
-        var title = _style.Text("Combat Goals", GameStyle.TextWhite, 16, GameStyle.Bold);
-        title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        bar.AddChild(title);
+        Vector2 screen = window.Root.GetViewportRect().Size, size = window.Root.GetCombinedMinimumSize();
+        return new Vector2(screen.X - size.X - FirstPlaceGap, screen.Y - size.Y - footer - FirstPlaceGap);
+    }
 
-        bar.AddChild(_style.Picture(GameStyle.Icon("TimeInterval_48"), 16));
-        OptionButton period = _style.Dropdown();
-        period.TooltipText = "XP rates are averaged over this much recent play";
-        foreach (var p in Periods) period.AddItem(p.Label);
-        period.Selected = Math.Clamp(_settings.Period, 0, Periods.Length - 1);
-        period.ItemSelected += index =>
-        {
-            _settings.Period = (int)index;
-            WriteSettings();
-            Refresh(Time.GetTicksMsec());
-        };
-        bar.AddChild(period);
+    // How high the game's bar along the bottom of the screen is (CombatSimMod.FooterHeight). The bar is looked
+    // for once per character, in TrackCharacter.
+    float FooterHeight() => GodotObject.IsInstanceValid(_footer) && _footer!.IsVisibleInTree() ? _footer.GetGlobalRect().Size.Y : 0;
 
-        var hide = new TextureButton
-        {
-            TextureNormal = GameStyle.Icon("eye"),
-            IgnoreTextureSize = true,
-            StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
-            CustomMinimumSize = new Vector2(_style.Px(18), _style.Px(18)),
-            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            TooltipText = "Hide (F10 shows it again)",
-            MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-            Modulate = new Color(1, 1, 1, 0.75f),
-        };
-        hide.Pressed += () => SetHidden(true);
-        bar.AddChild(hide);
-        return bar;
+    // GameWindow raises Moved next, which saves the place the fold left the window at.
+    void Folded(bool folded)
+    {
+        _settings.Minimised = folded;
+        WriteSettings();
+        UpdateStripButton();
+    }
+
+    // The corner was let go: the same window again at that size (GameWindow gives it in steps of 5%, from 70% to 200%).
+    void Resize(GameWindow window, float size)
+    {
+        _settings.Scale = size;
+        _settings.X = window.Position.X;
+        _settings.Y = window.Position.Y;
+        WriteSettings();
+        Rebuild();
     }
 
     // [icon] Hitpoints  28      1,271 /hr              1m 56s  left to [ 29 ]
@@ -384,9 +511,12 @@ public class CombatGoalsMod : IMod
         row.Target.ValueChanged += _ =>
         {
             if (_settingUp) return;
-            row.UserSetTarget = true;
-            SaveTargets();
-            Refresh(Time.GetTicksMsec());
+            Click(() =>
+            {
+                row.UserSetTarget = true;
+                SaveTargets();
+                Refresh(Time.GetTicksMsec());
+            });
         };
         line.AddChild(row.Target);
 
@@ -395,110 +525,23 @@ public class CombatGoalsMod : IMod
         return panel;
     }
 
-    // Drag from anywhere on the window that is not a control of its own.
-    void OnWindowInput(InputEvent e)
-    {
-        if (_window == null) return;
-        if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
-        {
-            _dragging = button.Pressed;
-            if (!_dragging) SavePosition();
-        }
-        else if (e is InputEventMouseMotion motion && _dragging)
-        {
-            _window.Position += motion.Relative;
-            KeepOnScreen();
-        }
-    }
-
-    void SavePosition()
-    {
-        if (_window == null) return;
-        _settings.X = _window.Position.X;
-        _settings.Y = _window.Position.Y;
-        WriteSettings();
-    }
-
-    // The corner to drag for another size. While dragging, the window is only stretched (cheap, slightly
-    // soft); on release it is built again at the new size, so text and icons are sharp at every size.
-    Control BuildGrip()
-    {
-        int size = _style.Px(14);
-        var grip = new Control
-        {
-            CustomMinimumSize = new Vector2(size, size), Size = new Vector2(size, size),
-            MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
-            TooltipText = "Drag to resize",
-        };
-        grip.Theme = _window!.Theme;   // the grip is a sibling of the window
-        grip.Draw += () =>
-        {
-            var color = new Color(GameStyle.TextGrey, 0.7f);
-            float width = Math.Max(1f, _style.Scale);
-            for (int i = 1; i <= 3; i++)
-            {
-                float d = size * i / 4f;
-                grip.DrawLine(new Vector2(size - d, size), new Vector2(size, size - d), color, width);
-            }
-        };
-        grip.GuiInput += OnGripInput;
-        return _grip = grip;
-    }
-
-    void PlaceGrip()
-    {
-        if (_window == null || _grip == null || !GodotObject.IsInstanceValid(_grip)) return;
-        float inset = _style.Px(4) * _window.Scale.X;
-        _grip.Scale = _window.Scale;
-        _grip.Position = _window.Position + _window.Size * _window.Scale - _grip.Size * _grip.Scale - new Vector2(inset, inset);
-    }
-
-    void OnGripInput(InputEvent e)
-    {
-        if (_window == null) return;
-        if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
-        {
-            if (button.Pressed)
-            {
-                _resizing = true;
-                _resizeFrom = button.GlobalPosition;
-                _resizeTo = _style.Scale;
-            }
-            else if (_resizing)
-            {
-                _resizing = false;
-                _settings.Scale = MathF.Round(_resizeTo * 20f) / 20f;   // steps of 5%
-                SavePosition();
-                Rebuild();
-            }
-        }
-        else if (e is InputEventMouseMotion motion && _resizing)
-        {
-            // Follow whichever direction was dragged further, keeping the window's proportions.
-            Vector2 moved = motion.GlobalPosition - _resizeFrom, size = _window.Size;
-            float factor = Math.Max((size.X + moved.X) / size.X, (size.Y + moved.Y) / size.Y);
-            _resizeTo = Math.Clamp(_style.Scale * factor, MinScale, MaxScale);
-            _window.Scale = Vector2.One * (_resizeTo / _style.Scale);
-            PlaceGrip();
-        }
-    }
-
-    void KeepOnScreen()
-    {
-        if (_window == null || !_placed || !_window.IsInsideTree()) return;
-        Vector2 screen = _window.GetViewportRect().Size, size = _window.Size * _window.Scale;
-        _window.Position = new Vector2(
-            Math.Clamp(_window.Position.X, 0, Math.Max(0, screen.X - size.X)),
-            Math.Clamp(_window.Position.Y, 0, Math.Max(0, screen.Y - _bottomInset - size.Y)));
-        PlaceGrip();
-    }
-
     void SetHidden(bool hidden)
     {
         _settings.Hidden = hidden;
         WriteSettings();
         Refresh(Time.GetTicksMsec());
         UpdateStripButton();
+    }
+
+    // F10 and the round button: a closed window opens, a folded one opens up, an open one closes, as the Combat
+    // Simulator's ToggleWindow and the Item Encyclopedia's key do. Decided by what the window is, not by whether it is
+    // on the screen: outside combat, where it is not shown, F10 opens a folded window up for the next fight instead of
+    // closing it.
+    void ToggleWindow()
+    {
+        if (_settings.Hidden) SetHidden(false);
+        else if (_window is { IsAlive: true, Minimised: true }) _window.SetMinimised(false);
+        else SetHidden(true);
     }
 
     // The window is for combat: outside it, it stays out of the way.
@@ -563,7 +606,7 @@ public class CombatGoalsMod : IMod
                 Theme = new GameStyle().TooltipTheme(),
                 TooltipText = "Combat Goals: time left to a level goal for each combat skill (F10)",
             };
-            _stripButton.Toggled += open => { if (open == _settings.Hidden) SetHidden(!open); };
+            _stripButton.Pressed += () => Click(ToggleWindow);
             strip.AddChild(_stripButton);
             // The style's own "pressed" look is a wider circle that is cut off at this size. While the window
             // is open, use the resting shape (same size and roundness as the neighbours) in the game's green.
@@ -576,7 +619,8 @@ public class CombatGoalsMod : IMod
             }
         }
         _stripButton.Visible = _inCombat;
-        _stripButton.SetPressedNoSignal(!_settings.Hidden);
+        // Lit while the window is open, not while it is closed or folded down to its title (CombatSimMod.SyncStripButton).
+        _stripButton.SetPressedNoSignal(!_settings.Hidden && _window?.Minimised != true);
     }
 
     // ---- measuring --------------------------------------------------------------------------------------
@@ -594,7 +638,9 @@ public class CombatGoalsMod : IMod
 
     void Refresh(ulong now)
     {
-        if (_layer == null || _window == null || !GodotObject.IsInstanceValid(_layer) || _resizing) return;
+        // While its corner is held the window is only scaled from the size it had: lines that come or go wait until
+        // it is let go, as before the shared frame.
+        if (_window is not { IsAlive: true, Resizing: false } window) return;
         _settingUp = true;
         int shown = 0;
         try
@@ -629,31 +675,19 @@ public class CombatGoalsMod : IMod
         _empty!.Visible = shown == 0;
         bool resized = shown != _shown;
         _shown = shown;
-        _layer.Visible = WindowWanted;
-        float footer = GodotObject.IsInstanceValid(_footer) && _footer!.IsVisibleInTree() ? _footer.GetGlobalRect().Size.Y : 0;
-        bool footerChanged = _bottomInset != footer;
-        _bottomInset = footer;
-        if (resized || !_placed)
+        window.Visible = WindowWanted;
+        // The bottom bar may have been folded or opened since the last look.
+        window.KeepAbove(FooterHeight());
+        if (resized)
         {
-            _window.ResetSize();   // shrink to the rows that are left
-            Place();
+            // Shrunk to the lines that are left: the window is in no container, so it only ever grows by itself.
+            window.Root.ResetSize();
+            window.KeepOnScreen();
         }
-        else if (footerChanged) KeepOnScreen();
-    }
-
-    // Where the player left it; the first time, the bottom right corner, clear of the game's footer.
-    void Place()
-    {
-        if (_window == null) return;
-        if (!_placed)
-        {
-            _placed = true;
-            Vector2 screen = _window.GetViewportRect().Size, size = _window.GetCombinedMinimumSize();
-            _window.Position = _settings is { X: { } x, Y: { } y }
-                ? new Vector2(x, y)
-                : new Vector2(screen.X - size.X - FirstPlaceGap, screen.Y - size.Y - _bottomInset - FirstPlaceGap);
-        }
-        KeepOnScreen();
+#if DEVTOOLS
+        NoteRoom(window);
+        LogBuild(window, now, shown);
+#endif
     }
 
     static string FormatTime(double seconds)

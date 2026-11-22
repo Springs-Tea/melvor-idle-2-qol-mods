@@ -23,11 +23,11 @@ The game's footer tells you how long a skill needs to reach a level you type in,
 
 [size=4][b]Using it[/b][/size]
 [list]
-[*]Start a fight: the window appears by itself, and a round button for it appears in the strip on the right edge of the screen. The button, or [b]F10[/b], hides and shows it.
+[*]Start a fight: the window appears by itself, and a round button for it appears in the strip on the right edge of the screen. That button, or [b]F10[/b], closes the window and opens it again; the red X on the window closes it too.
 [*]Each line is a skill: your level, its XP per hour, and the time left to the level in the box at the end.
 [*]Type your own [b]goal[/b] into that box. It is remembered per character; when you reach it, it moves on to the next level.
-[*]The box at the top chooses what the rate is averaged over: 1, 5, 10 or 30 minutes.
-[*]Drag the window anywhere; drag its bottom right corner for another size.
+[*]The box with the clock at the top right picks the period, like the footer's own: the rate is averaged over the last 1, 5, 10 or 30 minutes.
+[*]Drag the window anywhere; drag its bottom right corner for another size. The button beside the X folds it down to its title, to put it aside without closing it; the same button opens it again.
 [/list]
 
 [size=4][b]While skilling[/b][/size]

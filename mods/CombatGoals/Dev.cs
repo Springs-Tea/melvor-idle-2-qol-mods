@@ -83,6 +83,7 @@ static partial class Dev
                 }
             }
             StopShotRequest();
+            WindowRequest();
             AreasRequest(now);
             ProbeRequest();
             string request = Path.Combine(s_ctx.Directory, "shot.request");
