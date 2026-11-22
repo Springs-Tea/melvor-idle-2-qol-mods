@@ -6,6 +6,10 @@ Writes dist/nexus/headers/<Mod>.png (1300x372, the size Nexus asks for): the mod
 dark panel colour, with the question the mod answers under it. Pack.png, for the page of the zip with all the
 mods, is the banner of the main README.
 
+Also writes docs/img/social-preview.png (1280x640, the size GitHub asks for): the same banner on a plain dark
+ground, the picture shown where a link to the repository is shared. GitHub does not read it from the
+repository: when it has changed, upload it by hand under Settings > General > Social preview.
+
 Nexus writes the mod's name and its counters over the lower 40% of a header, so everything is drawn in the
 upper 60%. The drawing is done by a browser without a window (Edge or Chrome), found in the usual places. The
 picture is asked for through the browser's DevTools protocol: its --screenshot switch stopped writing files
@@ -27,6 +31,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 ART = os.path.join(ROOT, 'docs', 'img', 'art')
 OUT = os.path.join(ROOT, 'dist', 'nexus', 'headers')
 WIDTH, HEIGHT = 1300, 372
+SOCIAL = os.path.join(ROOT, 'docs', 'img', 'social-preview.png')
+SOCIAL_WIDTH, SOCIAL_HEIGHT = 1280, 640
+SOCIAL_BANNER, SOCIAL_GROUND = 1160, '#12100e'
 
 HEADERS = {
     'CombatSim': ('h-combat-simulator.svg', 'What does an hour of this fight give me, what does it cost, and will I die?'),
@@ -51,17 +58,29 @@ def browser():
     return found
 
 
-def page(name, file, line):
+def art(file, size):
     svg = re.sub(r'<\?xml[^>]*\?>', '', open(os.path.join(ART, file), encoding='utf-8').read())
+    return svg.replace('<svg ', f'<svg style="{size};display:block" ', 1)
+
+
+def page(name, file, line):
     size, top = ('height:208px;width:auto', 12) if name == 'Pack' else ('width:1000px;height:auto', 44)
-    svg = svg.replace('<svg ', f'<svg style="{size};display:block" ', 1)
     text = (f'<div style="margin-top:20px;font:italic 28px Segoe UI,Arial,sans-serif;color:#edbf59;text-align:center">'
             f'{line}</div>') if line else ''
     return ('<!doctype html><meta charset="utf-8">'
             f'<body style="margin:0;width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;box-sizing:border-box;'
             'background:radial-gradient(ellipse at 50% 35%,#2a2420 0%,#14110f 75%);display:flex;'
             f'flex-direction:column;align-items:center;justify-content:flex-start;padding-top:{top}px">'
-            + svg + text + '</body>')
+            + art(file, size) + text + '</body>')
+
+
+def social_page():
+    # The whole banner in the middle of a plain dark ground. Sites that show the picture cut it to their own
+    # shape, so the banner keeps at least 60 pixels away from every edge.
+    return ('<!doctype html><meta charset="utf-8">'
+            f'<body style="margin:0;width:{SOCIAL_WIDTH}px;height:{SOCIAL_HEIGHT}px;overflow:hidden;'
+            f'background:{SOCIAL_GROUND};display:flex;align-items:center;justify-content:center">'
+            + art('banner.svg', f'width:{SOCIAL_BANNER}px;height:auto') + '</body>')
 
 
 class DevTools:
@@ -117,6 +136,23 @@ class DevTools:
                 return answer.get('result', {})
 
 
+def shoot(tools, html, png, width, height):
+    """Draws one page at the given size and writes the picture."""
+    file = os.path.join(OUT, 'page.html')
+    with open(file, 'w', encoding='utf-8') as f:
+        f.write(html)
+    try:
+        tools.call('Emulation.setDeviceMetricsOverride', width=width, height=height, deviceScaleFactor=1, mobile=False)
+        tools.call('Page.navigate', url='file:///' + os.path.abspath(file).replace('\\', '/'))
+        time.sleep(1.5)
+        shot = tools.call('Page.captureScreenshot', format='png',
+                          clip={'x': 0, 'y': 0, 'width': width, 'height': height, 'scale': 1})
+        with open(png, 'wb') as f:
+            f.write(base64.b64decode(shot['data']))
+    finally:
+        os.remove(file)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     profile = tempfile.mkdtemp(prefix='nexus-headers-')
@@ -135,20 +171,11 @@ def main():
         port = open(port_file).read().split()[0]
         pages = json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/list'))
         tools = DevTools(next(p for p in pages if p['type'] == 'page')['webSocketDebuggerUrl'])
-        tools.call('Emulation.setDeviceMetricsOverride', width=WIDTH, height=HEIGHT, deviceScaleFactor=1, mobile=False)
         for name, (file, line) in HEADERS.items():
-            html = os.path.abspath(os.path.join(OUT, name + '.html'))
-            png = os.path.abspath(os.path.join(OUT, name + '.png'))
-            with open(html, 'w', encoding='utf-8') as f:
-                f.write(page(name, file, line))
-            tools.call('Page.navigate', url='file:///' + html.replace('\\', '/'))
-            time.sleep(1.5)
-            shot = tools.call('Page.captureScreenshot', format='png',
-                              clip={'x': 0, 'y': 0, 'width': WIDTH, 'height': HEIGHT, 'scale': 1})
-            with open(png, 'wb') as f:
-                f.write(base64.b64decode(shot['data']))
-            os.remove(html)
+            shoot(tools, page(name, file, line), os.path.join(OUT, name + '.png'), WIDTH, HEIGHT)
             print(name + '.png')
+        shoot(tools, social_page(), SOCIAL, SOCIAL_WIDTH, SOCIAL_HEIGHT)
+        print('docs/img/social-preview.png')
     finally:
         process.kill()
         process.wait()
