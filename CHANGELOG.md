@@ -2,7 +2,9 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
-## Unreleased
+## 0.4.1
+
+For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer (tried with 0.2.0).
 
 - **Combat Simulator**: a long scan with many deaths no longer crashes the game. A simulated fight reached
   into the running game's music each time it started or the copy died; a From bank scan of several hours

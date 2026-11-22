@@ -12,7 +12,7 @@
 
   <PropertyGroup>
     <!-- One version for all the mods: a release is the repository at a tag. -->
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
 
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>$(MSBuildProjectName)</AssemblyName>
