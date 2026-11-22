@@ -20,7 +20,7 @@ namespace ItemSources;
 /// lists what is behind them: which enemy drops the item, where that enemy lives, how many and how likely;
 /// which recipe makes it; which chest holds it; and every recipe, upgrade or purchase that uses it.
 /// </summary>
-public class ItemSourcesMod : IMod
+public partial class ItemSourcesMod : IMod
 {
     // The item a panel shows, and its two rows of icons, are private to the game's view. A panel is given
     // either an item (tooltips) or a stack of them (the bank's selected item): only one of the two is set.
@@ -42,7 +42,7 @@ public class ItemSourcesMod : IMod
     static extern HBoxContainer? UsedRowOf(ItemInfoPanel panel);
 
     // A long group (an item fifteen enemies drop) must not push the others off the tooltip.
-    const int MaxLines = 24, MaxPerGroup = 8;
+    internal const int MaxLines = 24, MaxPerGroup = 8;
     const int TipGap = 8;
     // The way from "Found in" to its list, for a pointer that has stopped moving along it: how long the list
     // stays up over it, and (much shorter) how long a row that lies in the way is passed over.
@@ -97,7 +97,11 @@ public class ItemSourcesMod : IMod
             Game? game = GameAccess.CurrentGame;
             if (game is not { IsSaveLoaded: true }) { _game = null; Hide(); Unpin(); return; }
             if (!ReferenceEquals(game, _game)) Open(game);
-            if (_lookForPanels.Due()) FindPanels();
+            if (_lookForPanels.Due())
+            {
+                FindPanels();
+                if (_pinCard != null) RefreshMakeBox();
+            }
             Pinning();
 #if DEVTOOLS
             DevRequests();
@@ -127,6 +131,10 @@ public class ItemSourcesMod : IMod
         _index = null;
         _indexFailed = false;
         _lines = new ItemLines(game);
+        _recipes = null;
+#if DEVTOOLS
+        FinishMakeCase();
+#endif
         _panels.Clear();
         _gameTip = null;
         _gameTipPanel = null;
@@ -187,6 +195,8 @@ public class ItemSourcesMod : IMod
             if (_devHoverUntil > _frame && (_devHoverFound ? FoundRowOf(panel) : UsedRowOf(panel)) is { } pretend)
                 mouse = pretend.GetGlobalRect().GetCenter();
 #endif
+            // A row on the screen behind the open plan cannot be hovered through it.
+            if (panel != _pinPanel && _makeScroll is { Visible: true } && _pinCard!.GetGlobalRect().HasPoint(mouse)) continue;
             foreach (var (row, found) in new[] { (FoundRowOf(panel), true), (UsedRowOf(panel), false) })
             {
                 if (row == null || !row.IsVisibleInTree() || !row.GetGlobalRect().HasPoint(mouse)) continue;
@@ -280,6 +290,14 @@ public class ItemSourcesMod : IMod
         _tip.Position = new Vector2(MathF.Round(Math.Max(0, x)), MathF.Round(y));
     }
 
+    internal static List<ItemLine> SortedLines(IEnumerable<ItemRef> refs, ItemLines names)
+    {
+        // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group.
+        return refs.Select(names.Describe)
+            .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     // Laid out like the game's own item tooltip: the name, a small tag, the fading line, then the lines.
     PanelContainer Build(Item item, bool found, ItemIndex? index)
     {
@@ -307,10 +325,7 @@ public class ItemSourcesMod : IMod
             return tip;
         }
 
-        // Combat first (what people ask about), then the rest by name; the likeliest on top inside a group.
-        var lines = refs.Select(_lines!.Describe)
-            .OrderBy(l => l.Group == "Combat" ? 0 : 1).ThenBy(l => l.Group, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(l => l.Chance).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var lines = SortedLines(refs, _lines!);
         bool chances = lines.Any(l => l.Chance < 0.9995), quantities = lines.Any(l => l.Quantity != "");
         var counts = lines.GroupBy(l => l.Group).ToDictionary(g => g.Key, g => g.Count());
         string group = "";
@@ -324,19 +339,8 @@ public class ItemSourcesMod : IMod
                 group = line.Group;
                 inGroup = 0;
                 int total = counts[group];
-                // "[skill] Thieving", in the grey of the game's own "Found in:".
                 groupIcon = GameStyle.Icon(group.Replace(" ", ""));
-                var title = _style.Spaced(new HBoxContainer { CustomMinimumSize = new Vector2(0, _style.Px(written == 0 ? 20 : 26)), Alignment = BoxContainer.AlignmentMode.Begin }, 6);
-                if (groupIcon != null)
-                {
-                    TextureRect picture = _style.Picture(groupIcon, 16);
-                    picture.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
-                    title.AddChild(picture);
-                }
-                Label name = _style.Text(total > MaxPerGroup ? $"{group}  ({total})" : group, GameStyle.TextDim, 14, GameStyle.Bold);
-                name.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
-                title.AddChild(name);
-                column.AddChild(title);
+                column.AddChild(GroupTitle(total > MaxPerGroup ? $"{group}  ({total})" : group, groupIcon, written == 0));
             }
             if (++inGroup > MaxPerGroup)
             {
@@ -382,6 +386,23 @@ public class ItemSourcesMod : IMod
         return tip;
     }
 
+    // "[skill] Thieving", in the grey of the game's own "Found in:". The first heading sits right under the line
+    // above it; the next ones leave a little room after the group before them.
+    HBoxContainer GroupTitle(string text, Texture2D? icon, bool first)
+    {
+        var title = _style.Spaced(new HBoxContainer { CustomMinimumSize = new Vector2(0, _style.Px(first ? 20 : 26)), Alignment = BoxContainer.AlignmentMode.Begin }, 6);
+        if (icon != null)
+        {
+            TextureRect picture = _style.Picture(icon, 16);
+            picture.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
+            title.AddChild(picture);
+        }
+        Label name = _style.Text(text, GameStyle.TextDim, 14, GameStyle.Bold);
+        name.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
+        title.AddChild(name);
+        return title;
+    }
+
     // ---- pinning the game's item tooltip --------------------------------------------------------------------
 
     // The game shows one tooltip for whatever item the pointer is on, anywhere: the bank, a recipe's materials,
@@ -412,7 +433,7 @@ public class ItemSourcesMod : IMod
         Vector2 mouse = Pointer(_pinCard!);
         bool onList = ReferenceEquals(_listPanel, _pinPanel) && _tip != null && GodotObject.IsInstanceValid(_tip) && _layer is { Visible: true } && _tip.GetGlobalRect().HasPoint(mouse);
         if (Input.IsKeyPressed(Key.Escape) || (clicked && !onList && !_pinCard!.GetGlobalRect().HasPoint(mouse))) Unpin();
-        else KeepOnScreen(_pinCard!);
+        else KeepOnScreen(_pinCard!, _makeButton is { Visible: true } ? FooterHeight() : 0);
     }
 
     /// <summary>The item the game's tooltip is showing right now, and the card it is drawn on.</summary>
@@ -500,20 +521,34 @@ public class ItemSourcesMod : IMod
         card.Position = gameCard.GlobalPosition;
         // Bound once it is in the scene: the panel builds itself when it is ready.
         if (InventoryOf(original) is { } inventory) copy.Bind(item, inventory); else copy.Bind(item);
+        _makeItem = item;
+        RefreshMakeBox();
     }
 
     void Unpin()
     {
+        try { ReleaseRequirementViews(); } catch { }
+        _makeItem = null;
+        _makeButton = null;
+        _inputs = null;
+        _makeScroll = null;
+        _rows = null;
+        _headCells = null;
+        _quantity = null;
+        _footer = null;
+#if DEVTOOLS
+        _stepSpots.Clear();
+#endif
         if (_pinPanel != null && GodotObject.IsInstanceValid(_pinPanel)) { try { _pinPanel.Unbind(); } catch { } }
         if (_pinCard != null && GodotObject.IsInstanceValid(_pinCard)) _pinCard.QueueFree();
         _pinCard = null;
         _pinPanel = null;
     }
 
-    static void KeepOnScreen(Control card)
+    static void KeepOnScreen(Control card, float footer = 0)
     {
         Vector2 screen = card.GetViewportRect().Size, size = card.Size;
-        Vector2 at = new(Math.Clamp(card.Position.X, 0, Math.Max(0, screen.X - size.X)), Math.Clamp(card.Position.Y, 0, Math.Max(0, screen.Y - size.Y)));
+        Vector2 at = new(Math.Clamp(card.Position.X, 0, Math.Max(0, screen.X - size.X)), Math.Clamp(card.Position.Y, 0, Math.Max(0, screen.Y - footer - size.Y)));
         if (at != card.Position) card.Position = at;
     }
 
@@ -601,10 +636,13 @@ public class ItemSourcesMod : IMod
     // (the words on a chance) follow.
     //   pin=part of an item's name   (as "item.pin"; "pin=Bones@0.02,0.3" puts it there, in parts of the screen) | unpin
     //   bank   (the game's bank, for the panel of its selected item) | alt   (the Alt key, down and up, as a player's)
-    //   point=found | used | list | chance1 (the first chance that says more; chance0 is the last) | between | away | 640,360
+    //   point=make | quantity | time (the plan's Time heading) | found | used | list | chance1 (the first chance that says more; chance0 is the last) | between | away | 640,360
     //   glide=the same   (there in small moves, a hand crossing; the log says where the list was up on the way)
     //   click=the same   (the left button, down and up, there: selects an item in the bank)
     //   wait=600 | shot=name   (shot-name.png, and to the log: the list, what the pointer is on, the tooltip's words)
+    //   make=100 | make=closed | scroll=top | scroll=bottom | scroll=locked | scroll=currency | scroll=cycle | scroll=rate
+    //   case=arrow | covered | locked | multiple | long | plain | empty | currency | cycle | overflow | wide | rate | crop
+    //   Cases find a matching item on this character and pin it; an absent case cancels the remaining shots.
     //   free   (the real pointer again; it also comes back after the last line)
     // "item.done" is written after the last line.
     Vector2? _devPointer;
@@ -619,6 +657,9 @@ public class ItemSourcesMod : IMod
         Rect2? found = panel != null && FoundRowOf(panel) is { } f && f.IsVisibleInTree() ? f.GetGlobalRect() : null;
         Rect2? list = _tip != null && GodotObject.IsInstanceValid(_tip) && _layer is { Visible: true } ? _tip.GetGlobalRect() : null;
         Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
+        if (what == "make" && _makeButton is { Visible: true } button) return button.GetGlobalRect().GetCenter();
+        if (what == "quantity" && _quantity is { Visible: true } box) return box.GetLineEdit().GetGlobalRect().GetCenter();
+        if (what == "time" && _headCells is { Length: > 0 } head && head[^1].IsVisibleInTree()) return head[^1].GetGlobalRect().GetCenter();
         if (what == "found") return found?.GetCenter();
         if (what == "used") return panel != null && UsedRowOf(panel) is { } u && u.IsVisibleInTree() ? u.GetGlobalRect().GetCenter() : null;
         if (what == "list") return list?.GetCenter();
@@ -644,6 +685,7 @@ public class ItemSourcesMod : IMod
 
     void DevSteps()
     {
+        if (AdvanceMakeCase()) return;
         string steps = Path.Combine(_ctx.Directory, "item.steps");
         if (_devSteps.Count == 0)
         {
@@ -662,6 +704,12 @@ public class ItemSourcesMod : IMod
         switch (verb)
         {
             case "pin": File.WriteAllText(Path.Combine(_ctx.Directory, "item.pin"), value); _devStepAt += 900; break;
+            case "case":
+                if (_devSteps.Count == 0) _devSteps.Enqueue("wait"); // finish item.done after the search
+                StartMakeCase(value);
+                return;
+            case "make": DevMake(value); break;
+            case "scroll": DevScroll(value); break;
             case "unpin": Unpin(); break;
             case "alt":
                 Input.ParseInputEvent(new InputEventKey { Keycode = Key.Alt, PhysicalKeycode = Key.Alt, Pressed = true });

@@ -14,7 +14,7 @@ PICTURES
 docs/img/item-sources.png (main), item-sources-used.png, item-sources-pin.png, item-sources-chance.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it. Press Alt on any item tooltip, anywhere in the game, to keep it open and do the same there.
+Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it. Press Alt on any item tooltip, anywhere in the game, to keep it open and do the same there. Its Make button says what it takes to make a number of it.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -33,6 +33,17 @@ The game shows the same small tooltip for an item wherever the pointer is on one
 [*]Alt again, Esc, or a click somewhere else closes it.
 [/list]
 So while you look at a recipe: point at the material you are short of, press Alt, and see where it comes from.
+
+[size=4][b]Planning a quantity[/b][/size]
+What do I need for a hundred of these? Keep the tooltip of a bar, an arrow, a potion or anything else a skill makes from materials open with Alt, and click [b]Make[/b]. Enter how many you want in the bank and press Enter; the box starts at 100. The list goes from the first material down to the item: how many are needed, how many are in the bank, how many are still to make or get, and the time at your current rate. A row your bank already covers is greyed. Make again folds the list away.
+[list]
+[*]Chances to save materials, double items or skip steps are not counted, so it may take less.
+[*]Requirements you do not meet yet are under their step, the way the game shows them on its recipes.
+[*]With several recipes, the plan uses the one you have selected in its skill, and says so.
+[*]A crop's time is for one plot, one harvest after another.
+[*]Gathering and drop times come from the rate the bottom bar shows; "No rate" means it has none for that item right now.
+[*]A material no recipe makes lists where it comes from. Make only reads: it never starts, selects or buys anything.
+[/list]
 
 [size=4][b]Reading the list[/b][/size]
 [list]

@@ -4,6 +4,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Item Sources**: a tooltip kept open with Alt has a Make button for anything a skill makes from materials.
+  Enter how many you want and it lists every step down to what you gather or find, under its skill: how many
+  are needed, what your bank already covers, what is still to make or get, and how long each step takes at
+  your current rate.
 - **Astrology Overview**, a new mod: on the Astrology page, a round button opens one list of your
   constellations. Node choices ready to make come first, then the shortest study time to the next unlock,
   with what that unlock needs and, for a locked constellation, what it still misses. Click a row to open it.

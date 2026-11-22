@@ -24,6 +24,7 @@ shop purchase. It works in the bank, and on any item's tooltip anywhere in the g
 
 - [In the bank](#in-the-bank)
 - [Anywhere else: Alt](#anywhere-else-alt)
+- [Planning a quantity](#planning-a-quantity)
 - [Reading the list](#reading-the-list)
 - [Questions it answers](#questions-it-answers)
 - [How it works](#how-it-works)
@@ -55,6 +56,34 @@ So while you look at a recipe: point at the material you are short of, press Alt
 from. The game's tooltip gets one quiet line at its foot, "Alt: keep this open", as a reminder.
 
 Alt together with another key (Alt+Tab, Alt+Enter) is not this key, and neither is AltGr.
+
+## Planning a quantity
+
+What do I need for a hundred of these? Keep the tooltip of a bar, an arrow, a potion or anything else a
+skill makes from materials open with **Alt**, and click **Make** beside its close hint. Enter how many you
+want in the bank and press **Enter**; the box starts at 100. **Make** again folds the list away.
+
+The list goes from the first material down to the item itself, under the skill of each step. Each row has
+how many are needed, how many are in the bank, how many are still to make or get, and how long that takes
+at your current rate. A row your bank already covers is greyed, with a dash where nothing is left. A
+material that two steps need is taken from the bank once. A long chain scrolls, and the list follows your
+bank while it is open.
+
+- **The most it takes.** Chances to save materials, double items or skip steps are not counted, so it may
+  take less. A recipe that can fail, or does not always give the item, is not planned, and its row says so.
+- **Requirements** you do not meet yet are under their step, the way the game shows them on its recipes.
+- **Several recipes:** the plan uses the one you have selected in its skill, and says so. With none of them
+  selected it uses one of them and says how many there are: select the one you want and the plan follows.
+- **Crops:** the plan uses a plot that has the crop selected or planted. The time is for that one plot, one
+  harvest after another; regrowth is not counted. A crop no plot has is not planned.
+- **Gathering and drops:** the time for an ore, a log, a fish or a drop comes from the rate the bottom bar
+  shows for it. "No rate" means the bar has none for it right now, for example while you do something else.
+  Ores, logs and fish have no Make of their own: they are steps of what is made from them.
+- A material no recipe makes lists where it comes from, as "Found in" does.
+
+Make only reads: it never starts, selects or buys anything.
+
+![Iron Arrows kept open with Make at 100: the steps by skill, the ones the bank covers greyed](../../docs/img/item-sources-make.png)
 
 ## Reading the list
 
@@ -91,6 +120,7 @@ kept open with Alt. The game's own tooltip follows the pointer, so its list cann
 
 - **Where do I farm this?** Found in > Combat: enemy, area, chance. Compare the chances and pick.
 - **What needs this material?** Used in. Useful before you sell a pile of something.
+- **How much ore am I short for a stack of bars?** Pin the bar, click Make and enter the stack size.
 - **Can I buy it?** If a shop sells it, there is a Shop line.
 - **Which chest has it?** Found in > Opening names the chest and the chance per chest.
 
@@ -118,7 +148,8 @@ flowchart LR
 
 ## Good to know
 
-- The chances are the base ones from the game's data. Bonuses to drop chance or doubling are not applied.
+- "Found in" shows the base chances from the game's data. Bonuses to drop chance or doubling are not
+  applied. Make leaves chances out too: to save materials, double items or skip steps.
 - A few relations are left out on purpose, because they neither give nor take the item: quest steps and
   Mastery Guild tasks that only ask you to have it, and the pieces of an equipment set.
 - The mod has no settings and writes no files.
@@ -131,6 +162,7 @@ flowchart LR
 | "Nothing in the game's data gives this item." | No source is recorded in the game's content: a starting item, or something not obtainable yet. |
 | "The game's data could not be read" | A game update changed the content in a way the mod cannot walk. The log says where; the mod needs an update. |
 | Alt does nothing | The item's tooltip must be up when you let go of Alt. If the log says "Keeping a tooltip open with Alt is switched off", a game update changed the item panel; the bank rows still work. |
+| "Make is switched off" in the log | The planner could not read the game. The pinned item and its two source and use rows are still available. |
 
 ## Install
 
