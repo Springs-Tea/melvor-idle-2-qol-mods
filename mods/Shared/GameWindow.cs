@@ -37,14 +37,17 @@ public sealed class GameWindow
     readonly Control _grip, _balance;
     readonly Button? _fold;
     readonly Vector2? _startAt;
+    readonly float _bottomInset;
     bool _dragging, _resizing, _placed;
     Vector2 _resizeFrom;
     float _resizeTo;
 
-    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105, bool canMinimise = false, bool minimised = false)
+    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105, bool canMinimise = false, bool minimised = false,
+        float bottomInset = 0)
     {
         Style = new GameStyle(Math.Clamp(scale, MinScale, MaxScale));
         _startAt = position;
+        _bottomInset = bottomInset;
         _resizeTo = Style.Scale;
         Layer = new CanvasLayer { Layer = layer, Visible = false };
 
@@ -159,6 +162,7 @@ public sealed class GameWindow
         if (!_placed)
         {
             Vector2 screen = Root.GetViewportRect().Size;
+            if (_bottomInset > 0) screen.Y -= _bottomInset;
             Root.Position = _startAt ?? ((screen - Root.Size) / 2).Round();
         }
         KeepOnScreen();
@@ -167,6 +171,7 @@ public sealed class GameWindow
     public void KeepOnScreen()
     {
         Vector2 screen = Root.GetViewportRect().Size, size = Root.Size * Root.Scale;
+        if (_bottomInset > 0) screen.Y -= _bottomInset;
         // Entirely on the screen when it fits; a window larger than the screen keeps its title bar reachable.
         Root.Position = new Vector2(
             Math.Clamp(Root.Position.X, Math.Min(0, screen.X - size.X), Math.Max(0, screen.X - size.X)),

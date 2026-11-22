@@ -8,6 +8,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   your food last longest, and the first click on the column puts it on top. Details add food and healing per
   kill and how many kills the food in your bank is enough for, and "Compared with" says how food per kill
   changed. A From bank fight now says when the food ran out, and how many kills it had made by then.
+- **Combat Simulator**: the first click on Deaths puts the fights you survive on top. A long note under
+  "Other stances" keeps its beginning: it is written on two lines. The window stays above the game's bar
+  along the bottom of the screen and is never larger than the room above it.
 - **Combat Simulator**: fights with the same number in the sorted column stand with the better XP first, and
   a fight that could not be simulated stays at the bottom whichever way the list is sorted.
 

@@ -39,7 +39,8 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 
 A round button with a chart on it sits in the strip of round buttons on the right edge of the screen. It
 opens and closes the window. The window can be dragged from any empty spot and resized from its bottom
-right corner; it remembers its place and size.
+right corner; it remembers its place and size. It stays above the game's bar along the bottom of the screen,
+and is never larger than the room above that bar.
 
 The window has three columns: **Setup** on the left (what to simulate), **Results, per hour** in the middle
 (one line per fight) and **Details** on the right (everything about the line you clicked).
@@ -67,7 +68,7 @@ Every number is **per hour of game time**, whatever length you simulated.
 | **Gold** | Coins dropped plus what the dropped items sell for. |
 | **Food** | Pieces of food eaten per hour. |
 | **Food/kill** | Pieces of food eaten per kill: the fight where your food lasts longest has the smallest number. The first click on it sorts the smallest to the top. A fight without a kill shows `-`. |
-| **Deaths** | Times you die per hour. Grey 0 is what you want; anything else is red. |
+| **Deaths** | Times you die per hour. Grey 0 is what you want; anything else is red. The first click on it sorts the fewest to the top. |
 | **Low HP** | The lowest your hitpoints got, as a share of the maximum. Gold under 35%, red under 15% or when you died. |
 
 Click a column's name to sort by it, again to turn the order around. Fights with the same number, like all

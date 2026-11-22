@@ -185,7 +185,7 @@ sealed class SimView
         new("Food/kill", "Food eaten per kill: the less, the longer your food lasts", 66, r => r.FoodPerKill,
             r => r.Kills > 0 ? PerKill(r.FoodPerKill) : "-", r => r.Kills > 0 ? GameStyle.TextWhite : GameStyle.TextDim, LessIsBetter: true),
         new("Deaths", "Times you die per hour", 60, r => r.DeathsPerHour, r => r.Deaths == 0 ? "0" : Fmt(r.DeathsPerHour),
-            r => r.Deaths == 0 ? GameStyle.TextDim : Bad),
+            r => r.Deaths == 0 ? GameStyle.TextDim : Bad, LessIsBetter: true),
         new("Low HP", "The lowest your hitpoints got, as a share of the maximum", 62, r => r.LowestHpFraction, r => r.LowestHpFraction.ToString("P0"),
             r => r.Deaths > 0 || r.LowestHpFraction < 0.15 ? Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite),
     };
@@ -1168,8 +1168,13 @@ sealed class SimView
         {
             _details.AddChild(_s.Section("Other stances"));
             foreach (SimResult other in stances.OrderByDescending(_state.Xp))
+            {
+                // Three skills do not fit on one line, and a line that wraps by itself may part a skill from its
+                // number: two to a line.
+                var skills = other.Xp.OrderByDescending(x => x.Value).Take(3).Select(x => $"{_lookup.Skill(x.Key).Name} {Fmt(other.PerHour(x.Value))}");
                 _details.AddChild(Stat(other.Target.StanceName, Fmt(_state.Xp(other)), null,
-                    string.Join("  ·  ", other.Xp.OrderByDescending(x => x.Value).Take(3).Select(x => $"{_lookup.Skill(x.Key).Name} {Fmt(other.PerHour(x.Value))}"))));
+                    string.Join("\n", skills.Chunk(2).Select(line => string.Join("  ·  ", line)))));
+            }
         }
 
         // The same fight with other equipment, when it was simulated: this one against each of them.
@@ -1302,7 +1307,8 @@ sealed class SimView
         {
             Label small = _s.Text(note, GameStyle.TextGrey, 11);
             small.HorizontalAlignment = HorizontalAlignment.Right;
-            small.ClipText = true;
+            // Wrapped, not cut: cut, a note that is too long lost its beginning, being right-aligned.
+            small.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             rows.AddChild(small);
         }
         panel.AddChild(rows);

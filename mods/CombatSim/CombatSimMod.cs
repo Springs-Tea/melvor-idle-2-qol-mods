@@ -362,13 +362,15 @@ public class CombatSimMod : IMod, ISimLookup
     {
         _window?.Free();
         Vector2? at = _settings is { X: { } x, Y: { } y } ? new Vector2(x, y) : null;
-        _window = new GameWindow(_ctx.Tree, "Combat Simulator", _settings.Scale, at);
+        // The game's bar along the bottom stays in sight: the window is placed, and kept, above it.
+        float footer = FooterHeight();
+        _window = new GameWindow(_ctx.Tree, "Combat Simulator", Math.Min(_settings.Scale, LargestScale(footer)), at, bottomInset: footer);
         _window.CloseRequested += Close;
         _window.Moved += position => { _settings.X = position.X; _settings.Y = position.Y; WriteSettings(); };
         _window.ResizeRequested += scale =>
         {
             // The same window again at another size; what was simulated so far is kept.
-            _settings.Scale = scale;
+            _settings.Scale = Math.Min(scale, LargestScale(FooterHeight()));
             _settings.X = _window!.Position.X;
             _settings.Y = _window.Position.Y;
             WriteSettings();
@@ -376,6 +378,31 @@ public class CombatSimMod : IMod, ISimLookup
             _window!.Visible = true;
         };
         _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, () => { Build(); _window!.Visible = true; }, Fight, _history.Clear);
+    }
+
+    // How high the game's bar along the bottom of the screen is (levels, rates, the music button).
+    float FooterHeight()
+    {
+        if (GameAccess.FindGameView()?.FindChild("Footer", true, false) is Control footer)
+            return footer.IsVisibleInTree() ? footer.GetGlobalRect().Size.Y : 0;
+
+        const string missing = "The game's bottom bar was not found (the game was updated?): the simulator's window may lie over it.";
+        if (_reported.Add(missing)) _ctx.Log(missing);
+        return 0;
+    }
+
+    // At full size the window is at most 1408 wide (Best for, with a stance on every line) and 889 high (Best
+    // for, with the Train and the Spell box); at other sizes a few pixels more or less than that in proportion,
+    // every length being rounded on its own. It is never larger than the screen above the game's bottom bar,
+    // whatever size was chosen on another screen or dragged to: the largest size that fits, in the same steps
+    // of 5% the corner resizes in.
+    const float FullWidth = 1414, FullHeight = 895;
+
+    float LargestScale(float footer)
+    {
+        Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
+        float fits = Math.Min(screen.X / FullWidth, (screen.Y - footer) / FullHeight);
+        return Math.Clamp(MathF.Floor(fits * 20f) / 20f, GameWindow.MinScale, GameWindow.MaxScale);
     }
 
     void SaveChoices()
@@ -666,6 +693,11 @@ public class CombatSimMod : IMod, ISimLookup
             foreach (Node child in _window.Layer.GetChildren())
                 if (child is PanelContainer { Visible: true } panel && panel != _window.Root) frame = frame.Merge(panel.GetGlobalRect());
             _ctx.Log($"Dev: rect = {(int)frame.Position.X},{(int)frame.Position.Y},{(int)frame.End.X},{(int)frame.End.Y}");
+            // The sizes LargestScale goes by must cover the window as it really is.
+            Vector2 full = _window.Root.Size / _window.Style.Scale, screen = _ctx.Tree.Root.GetVisibleRect().Size;
+            float bar = FooterHeight();
+            _ctx.Log($"Dev: window {_window.Root.Size.X:0}x{_window.Root.Size.Y:0} at size {_window.Style.Scale:0.##} (chosen {_settings.Scale:0.##}, largest {LargestScale(bar):0.##}), {full.X:0}x{full.Y:0} at full size" +
+                     $"{(full.X > FullWidth || full.Y > FullHeight ? $"  LARGER THAN THE {FullWidth}x{FullHeight} LargestScale GOES BY" : "")}; screen {screen.X:0}x{screen.Y:0}, bottom bar {bar:0}, window bottom at {_window.Root.GetGlobalRect().End.Y:0}");
             foreach (SimResult r in _state.Results.Values.OrderByDescending(r => r.XpPerHour))
                 _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name + " " + r.Target.StanceName,-30} {string.Join(" ", r.Xp.Select(x => x.Key.Replace("MelvorBase:", "") + "=" + (x.Value / Math.Max(r.Hours, 1e-9)).ToString("N0")))} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
                          $"eaten {r.FoodEaten} / killed {r.Kills} = {r.FoodPerKill:0.####}  healed {r.Healed}  food gone {(r.FoodGoneSeconds < 0 ? "-" : $"{r.FoodGoneSeconds:0}s, {r.FoodGoneKills} kills")}  " +
