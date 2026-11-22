@@ -10,6 +10,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   changed. A From bank fight now says when the food ran out, and how many kills it had made by then.
 - **Combat Simulator**: fights with the same number in the sorted column stand with the better XP first, and
   a fight that could not be simulated stays at the bottom whichever way the list is sorted.
+- **Item Sources** and **Item Encyclopedia**: rest the pointer on a chance under "Found in" and a small
+  tooltip says what it means in kills or tries: "Half the time within 1,386 kills. 9 times in 10 within
+  4,605." In Item Sources the list now stays open while you move from "Found in" onto it, in the bank and on
+  a tooltip kept open with Alt.
+- The small tooltips in the mods' windows (the words that appear when the pointer rests on a button or a
+  name) now sit on the game's dark tooltip panel. They were bare words on top of whatever was under them.
 
 ## 0.4.0
 

@@ -36,6 +36,9 @@ Select an item. In the panel on the right, under its description, are the two ro
 Put the pointer on either row: the list opens beside the panel and closes when you move away. Nothing to
 click, nothing to set up.
 
+The list of "Found in" also stays open while you move onto it, to rest the pointer on a chance: see
+[Reading the list](#reading-the-list).
+
 ## Anywhere else: Alt
 
 Wherever the pointer is on an item, the game shows the same small tooltip: on a recipe's materials, in a
@@ -67,6 +70,20 @@ likeliest source is on top.
 | `1-5` or `x2` in the middle | How many at a time: a range, or a fixed number. Nothing there means one. |
 | `6.41%`, `1 in 2,000`, `always` on the right | The chance each time (per kill, per pick, per chest). The column is only there when something in the list is not certain. |
 | `Combat  (15)` | The group has fifteen lines; the first eight are shown, then "and 7 more". |
+
+**What a chance means in kills.** Move the pointer from "Found in" onto its list and rest it on a chance.
+A small tooltip says how long that usually takes:
+
+![The pointer on a chance: "Half the time within 9 kills. 9 times in 10 within 30."](../../docs/img/item-sources-chance.png)
+
+- "Half the time within 9 kills": of everyone who goes for it, half have the item after 9 kills or fewer.
+- "9 times in 10 within 30": nine in ten have it after 30. One in ten is still waiting.
+- It counts kills for an enemy and tries for everything else: a pick, a chest, a catch. `always` has nothing
+  to add, and a chance of a half or better only gets the second sentence.
+
+The list stays open while the pointer is on it and on its way there, also when it crosses "Used in" on
+that way. It closes when you stop half way, or move somewhere else. This works in the bank and on a tooltip
+kept open with Alt. The game's own tooltip follows the pointer, so its list cannot be reached: press Alt.
 
 "Used in" reads the same way, with the amount the recipe or purchase takes.
 

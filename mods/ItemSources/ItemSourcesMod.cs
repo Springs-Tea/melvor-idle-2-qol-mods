@@ -43,7 +43,10 @@ public class ItemSourcesMod : IMod
 
     // A long group (an item fifteen enemies drop) must not push the others off the tooltip.
     const int MaxLines = 24, MaxPerGroup = 8;
-
+    const int TipGap = 8;
+    // The way from "Found in" to its list, for a pointer that has stopped moving along it: how long the list
+    // stays up over it, and (much shorter) how long a row that lies in the way is passed over.
+    const int WayOpenMs = 700, WayAcrossMs = 150;
 
     ModContext _ctx = null!;
     readonly GameStyle _style = new();
@@ -58,6 +61,15 @@ public class ItemSourcesMod : IMod
     CanvasLayer? _layer;
     PanelContainer? _tip;
     string _shown = "";
+    // The list that is up has chances to rest the pointer on: the panel whose "Found in" row opened it, so the
+    // pointer can leave that row for the list; where between the two the pointer was last (0 at the row, 1 at
+    // the list), and when it last moved along that way.
+    bool _tipHasMore;
+    ItemInfoPanel? _listPanel;
+    float _wayAt;
+    ulong _wayMovedAt;
+
+    enum Way { None, Moving, Resting, OnList }
 
     // The game's one item tooltip (it follows the pointer everywhere), and the copy of it that Alt pins.
     Control? _gameTip;
@@ -160,12 +172,16 @@ public class ItemSourcesMod : IMod
 
     void Hover()
     {
+        // A list the pointer rests on comes first: it lies on top of whatever is under it.
+        Way way = WayToTheList();
+        if (way == Way.OnList) return;
+
         // The pinned copy first: it lies on top of whatever else is there.
         IEnumerable<ItemInfoPanel> panels = _pinPanel != null && GodotObject.IsInstanceValid(_pinPanel) ? _panels.Prepend(_pinPanel) : _panels;
         foreach (ItemInfoPanel panel in panels)
         {
             if (!GodotObject.IsInstanceValid(panel) || !panel.IsVisibleInTree() || ItemOf(panel) is not { } item) continue;
-            Vector2 mouse = panel.GetGlobalMousePosition();
+            Vector2 mouse = Pointer(panel);
 #if DEVTOOLS
             // Development: as if the pointer were on the row, to take a picture of the real thing.
             if (_devHoverUntil > _frame && (_devHoverFound ? FoundRowOf(panel) : UsedRowOf(panel)) is { } pretend)
@@ -174,19 +190,60 @@ public class ItemSourcesMod : IMod
             foreach (var (row, found) in new[] { (FoundRowOf(panel), true), (UsedRowOf(panel), false) })
             {
                 if (row == null || !row.IsVisibleInTree() || !row.GetGlobalRect().HasPoint(mouse)) continue;
+                // "Used in" lies right under "Found in": a pointer going from that row down to a line of its list
+                // crosses it. While it keeps moving, the row it crosses waits.
+                bool own = found && ReferenceEquals(panel, _listPanel);
+                if (!own && way == Way.Moving) return;
                 Rect2 beside = ReferenceEquals(panel, _pinPanel) && _pinCard != null ? _pinCard.GetGlobalRect() : panel.GetGlobalRect();
                 Rect2 line = row.GetGlobalRect();
                 Show(item, found, new Rect2(beside.Position.X, line.Position.Y, beside.Size.X, line.Size.Y));
+                // The game's own tooltip follows the pointer: its list can never be reached, and stays as it was.
+                _listPanel = found && _tipHasMore && !ReferenceEquals(panel, _gameTipPanel) ? panel : null;
+                _wayMovedAt = Time.GetTicksMsec();
                 return;
             }
         }
-        Hide();
+        if (way == Way.None) Hide();
+    }
+
+    // Where the pointer is, for a list that can be reached: on it; on the way between its "Found in" row and it
+    // (anywhere a straight line from the row to a line of the list can pass), moving or come to rest; or
+    // neither, which also is a pointer that rested on the way for too long.
+    Way WayToTheList()
+    {
+        if (_listPanel == null || !GodotObject.IsInstanceValid(_listPanel) || !_listPanel.IsVisibleInTree()
+            || _tip == null || !GodotObject.IsInstanceValid(_tip) || _layer is not { Visible: true }
+            || ItemOf(_listPanel) is not { } item || !_shown.StartsWith(item.Id + "<", StringComparison.Ordinal)
+            || FoundRowOf(_listPanel) is not { } found) return Way.None;
+        Vector2 mouse = Pointer(_tip);
+        Rect2 list = _tip.GetGlobalRect(), row = found.GetGlobalRect();
+        ulong now = Time.GetTicksMsec();
+        if (list.HasPoint(mouse)) { _wayMovedAt = now; return Way.OnList; }
+        // From the far end of the row to the near side of the list, as high as the row there and as the list here.
+        bool listOnTheLeft = list.GetCenter().X < row.GetCenter().X;
+        float from = listOnTheLeft ? row.End.X : row.Position.X, to = listOnTheLeft ? list.End.X : list.Position.X;
+        if (Math.Abs(to - from) < 1) return Way.None;
+        float along = (mouse.X - from) / (to - from);
+        if (along is < 0 or > 1) return Way.None;
+        if (mouse.Y < Mathf.Lerp(row.Position.Y, list.Position.Y, along) - 2 || mouse.Y > Mathf.Lerp(row.End.Y, list.End.Y, along) + 2) return Way.None;
+        if (Math.Abs(along - _wayAt) > 0.01f) { _wayAt = along; _wayMovedAt = now; }
+        ulong still = now - _wayMovedAt;
+        return still <= WayAcrossMs ? Way.Moving : still <= WayOpenMs ? Way.Resting : Way.None;
+    }
+
+    Vector2 Pointer(Control seenFrom)
+    {
+#if DEVTOOLS
+        if (_devPointer is { } made) return made;
+#endif
+        return seenFrom.GetGlobalMousePosition();
     }
 
     // ---- the tooltip ------------------------------------------------------------------------------------------
 
     void Hide()
     {
+        _listPanel = null;
         if (_layer != null && GodotObject.IsInstanceValid(_layer)) _layer.Visible = false;
         _shown = "";
     }
@@ -217,8 +274,8 @@ public class ItemSourcesMod : IMod
         if (_tip == null) return;
         Vector2 size = _tip.GetCombinedMinimumSize(), screen = _tip.GetViewportRect().Size;
         _tip.Size = size;
-        float x = near.Position.X - size.X - 8;
-        if (x < 0) x = Math.Min(near.End.X + 8, screen.X - size.X);
+        float x = near.Position.X - size.X - TipGap;
+        if (x < 0) x = Math.Min(near.End.X + TipGap, screen.X - size.X);
         float y = Math.Clamp(near.Position.Y - 12, 0, Math.Max(0, screen.Y - size.Y));
         _tip.Position = new Vector2(MathF.Round(Math.Max(0, x)), MathF.Round(y));
     }
@@ -226,6 +283,7 @@ public class ItemSourcesMod : IMod
     // Laid out like the game's own item tooltip: the name, a small tag, the fading line, then the lines.
     PanelContainer Build(Item item, bool found, ItemIndex? index)
     {
+        _tipHasMore = false;
         var tip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(_style.Px(280), 0) };
         tip.AddThemeStyleboxOverride("panel", _style.TooltipPanel());
         var column = _style.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 4);
@@ -304,11 +362,23 @@ public class ItemSourcesMod : IMod
                 Label chance = _style.Text(ItemLines.Percent(line.Chance), always ? GameStyle.TextDim : GameStyle.TextWhite, always ? 13 : 14, always ? null : GameStyle.Bold);
                 chance.HorizontalAlignment = HorizontalAlignment.Right;
                 chance.CustomMinimumSize = new Vector2(_style.Px(52), 0);
+                if (found && ItemLines.Luck(line) is string luck)
+                {
+                    chance.TooltipText = luck;
+                    chance.MouseFilter = Control.MouseFilterEnum.Pass;
+                    _tipHasMore = true;
+                }
                 row.AddChild(chance);
             }
             column.AddChild(row);
         }
         if (leftOut > 0) column.AddChild(_style.Text($"and {leftOut} more elsewhere", GameStyle.TextDim, 12));
+        // A list the pointer can rest on is in the way of what lies under it, like any window.
+        if (_tipHasMore)
+        {
+            tip.MouseFilter = Control.MouseFilterEnum.Stop;
+            tip.Theme = _style.TooltipTheme();
+        }
         return tip;
     }
 
@@ -338,7 +408,10 @@ public class ItemSourcesMod : IMod
             return;
         }
         if (!pinned) return;
-        if (Input.IsKeyPressed(Key.Escape) || (clicked && !_pinCard!.GetGlobalRect().HasPoint(_pinCard.GetGlobalMousePosition()))) Unpin();
+        // A click on the list that belongs to the kept tooltip is not a click somewhere else.
+        Vector2 mouse = Pointer(_pinCard!);
+        bool onList = ReferenceEquals(_listPanel, _pinPanel) && _tip != null && GodotObject.IsInstanceValid(_tip) && _layer is { Visible: true } && _tip.GetGlobalRect().HasPoint(mouse);
+        if (Input.IsKeyPressed(Key.Escape) || (clicked && !onList && !_pinCard!.GetGlobalRect().HasPoint(mouse))) Unpin();
         else KeepOnScreen(_pinCard!);
     }
 
@@ -523,15 +596,150 @@ public class ItemSourcesMod : IMod
     Item? _devItem;
     bool _devFound = true;
 
+    // Development: a file "item.steps", one command per line, with a pointer that is made, not moved: the mod
+    // reads it instead of the real one, and the game gets a mouse motion at the same spot, so its own tooltips
+    // (the words on a chance) follow.
+    //   pin=part of an item's name   (as "item.pin"; "pin=Bones@0.02,0.3" puts it there, in parts of the screen) | unpin
+    //   bank   (the game's bank, for the panel of its selected item) | alt   (the Alt key, down and up, as a player's)
+    //   point=found | used | list | chance1 (the first chance that says more; chance0 is the last) | between | away | 640,360
+    //   glide=the same   (there in small moves, a hand crossing; the log says where the list was up on the way)
+    //   click=the same   (the left button, down and up, there: selects an item in the bank)
+    //   wait=600 | shot=name   (shot-name.png, and to the log: the list, what the pointer is on, the tooltip's words)
+    //   free   (the real pointer again; it also comes back after the last line)
+    // "item.done" is written after the last line.
+    Vector2? _devPointer;
+    Queue<string> _devSteps = new();
+    ulong _devStepAt;
+    string _devGlide = "";
+
+    Vector2? DevSpot(string what)
+    {
+        ItemInfoPanel? panel = _pinPanel != null && GodotObject.IsInstanceValid(_pinPanel) ? _pinPanel
+            : _panels.FirstOrDefault(p => GodotObject.IsInstanceValid(p) && p.IsVisibleInTree() && !ReferenceEquals(p, _gameTipPanel) && ItemOf(p) != null);
+        Rect2? found = panel != null && FoundRowOf(panel) is { } f && f.IsVisibleInTree() ? f.GetGlobalRect() : null;
+        Rect2? list = _tip != null && GodotObject.IsInstanceValid(_tip) && _layer is { Visible: true } ? _tip.GetGlobalRect() : null;
+        Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
+        if (what == "found") return found?.GetCenter();
+        if (what == "used") return panel != null && UsedRowOf(panel) is { } u && u.IsVisibleInTree() ? u.GetGlobalRect().GetCenter() : null;
+        if (what == "list") return list?.GetCenter();
+        if (what == "away") return new Vector2(screen.X * 0.04f, screen.Y * 0.92f);
+        if (what == "between" && found is { } r && list is { } l)
+            return new Vector2((l.GetCenter().X < r.GetCenter().X ? l.End.X + r.Position.X : l.Position.X + r.End.X) / 2, r.GetCenter().Y);
+        if (what.StartsWith("chance", StringComparison.Ordinal) && int.TryParse(what[6..], out int n) && list != null)
+        {
+            var chances = _tip!.FindChildren("*", "Label", true, false).OfType<Label>().Where(c => c.TooltipText != "").ToList();
+            return chances.Count == 0 ? null : (n <= 0 || n > chances.Count ? chances[^1] : chances[n - 1]).GetGlobalRect().GetCenter();
+        }
+        string[] xy = what.Split(',');
+        return xy.Length == 2 && float.TryParse(xy[0], System.Globalization.CultureInfo.InvariantCulture, out float x) && float.TryParse(xy[1], System.Globalization.CultureInfo.InvariantCulture, out float y)
+            ? new Vector2(x, y) : null;
+    }
+
+    void DevPoint(Vector2 at)
+    {
+        _devPointer = at;
+        Vector2 spot = _ctx.Tree.Root.GetFinalTransform() * at;
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = spot, GlobalPosition = spot });
+    }
+
+    void DevSteps()
+    {
+        string steps = Path.Combine(_ctx.Directory, "item.steps");
+        if (_devSteps.Count == 0)
+        {
+            if (_frame % 20 != 0 || !File.Exists(steps)) return;
+            foreach (string line in File.ReadAllLines(steps)) if (line.Trim() != "") _devSteps.Enqueue(line.Trim());
+            File.Delete(steps);
+            _devStepAt = Time.GetTicksMsec() + 200;
+            return;
+        }
+        if (Time.GetTicksMsec() < _devStepAt) return;
+        string command = _devSteps.Dequeue();
+        int cut = command.IndexOf('=');
+        string verb = cut < 0 ? command : command[..cut], value = cut < 0 ? "" : command[(cut + 1)..];
+        _devStepAt = Time.GetTicksMsec() + (ulong)(verb == "wait" && int.TryParse(value, out int ms) ? ms : verb == "_to" ? 35 : 300);
+        bool listUp = _layer is { Visible: true };
+        switch (verb)
+        {
+            case "pin": File.WriteAllText(Path.Combine(_ctx.Directory, "item.pin"), value); _devStepAt += 900; break;
+            case "unpin": Unpin(); break;
+            case "alt":
+                Input.ParseInputEvent(new InputEventKey { Keycode = Key.Alt, PhysicalKeycode = Key.Alt, Pressed = true });
+                _devSteps = new Queue<string>(_devSteps.Prepend("_altup"));
+                break;
+            case "_altup":
+                Input.ParseInputEvent(new InputEventKey { Keycode = Key.Alt, PhysicalKeycode = Key.Alt, Pressed = false });
+                _devSteps = new Queue<string>(_devSteps.Prepend("_alted"));
+                break;
+            case "_alted":
+                _ctx.Log($"Dev: Alt pressed -> a tooltip is kept open = {_pinCard != null && GodotObject.IsInstanceValid(_pinCard)}; the game's window has the keyboard = {DisplayServer.WindowIsFocused()}; " +
+                         $"the game's tooltip shows {(GameTipItem(out Item? shown, out _) ? shown!.DisplayName.GetPluralText(1) : "nothing")}");
+                break;
+            case "bank": GameAccess.FindGameView()?.OpenBank(); break;
+            case "free": _devPointer = null; break;
+            case "wait": break;
+            case "point":
+                if (DevSpot(value) is { } spot) { DevPoint(spot); _ctx.Log($"Dev: pointer on {value} at {spot}"); }
+                else _ctx.Log($"Dev: nothing called '{value}' to point at");
+                break;
+            case "click":
+                if (DevSpot(value) is { } press)
+                {
+                    DevPoint(press);
+                    Vector2 there = _ctx.Tree.Root.GetFinalTransform() * press;
+                    Input.ParseInputEvent(new InputEventMouseButton { Position = there, GlobalPosition = there, ButtonIndex = MouseButton.Left, Pressed = true, ButtonMask = MouseButtonMask.Left });
+                    Input.ParseInputEvent(new InputEventMouseButton { Position = there, GlobalPosition = there, ButtonIndex = MouseButton.Left, Pressed = false });
+                    _ctx.Log($"Dev: clicked {value} at {press}");
+                }
+                else _ctx.Log($"Dev: nothing called '{value}' to click");
+                break;
+            case "glide":
+                if (DevSpot(value) is { } target)
+                {
+                    Vector2 from = _devPointer ?? target;
+                    const int moves = 14;
+                    var way = Enumerable.Range(1, moves).Select(i => FormattableString.Invariant($"_to={from.X + (target.X - from.X) * i / moves},{from.Y + (target.Y - from.Y) * i / moves}"));
+                    _devSteps = new Queue<string>(way.Append("_glided=" + value).Concat(_devSteps));
+                    _devGlide = "";
+                    _ctx.Log($"Dev: gliding from {from} to {value} at {target}");
+                }
+                else _ctx.Log($"Dev: nothing called '{value}' to glide to");
+                break;
+            case "_to":
+                _devGlide += listUp ? "1" : "0";
+                if (DevSpot(value) is { } next) DevPoint(next);
+                break;
+            case "_glided":
+                _ctx.Log($"Dev: on the way to {value} the list was {_devGlide} (1 up, 0 gone), and is {(listUp ? "up" : "gone")} now");
+                break;
+            case "shot":
+                _ctx.Tree.Root.GetTexture().GetImage().SavePng(Path.Combine(_ctx.Directory, $"shot-{value}.png"));
+                Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
+                Rect2? card = _pinCard != null && GodotObject.IsInstanceValid(_pinCard) ? _pinCard.GetGlobalRect() : null;
+                _ctx.Log($"Dev: shot-{value}.png; pointer {_devPointer}; list {(listUp ? "up" : "gone")} for '{_shown}' at {(listUp && _tip != null ? _tip.GetGlobalRect() : default)}; kept tooltip at {card}; " +
+                         $"the pointer is on {(over == null ? "nothing" : over.GetType().Name + ":" + over.Name + (over is Label label ? " '" + label.Text + "'" : ""))}; tooltip: {GameStyle.DevTooltips(_ctx.Tree.Root)}");
+                break;
+            default: _ctx.Log("Dev: unknown step " + command); break;
+        }
+        if (_devSteps.Count == 0)
+        {
+            _devPointer = null;
+            File.WriteAllText(Path.Combine(_ctx.Directory, "item.done"), DateTime.Now.ToString("O"));
+        }
+    }
+
     void DevRequests()
     {
+        DevSteps();
         string request = Path.Combine(_ctx.Directory, "item.request");
         string dump = Path.Combine(_ctx.Directory, "item.dump");
         // "item.pin" holding part of an item's name: as if Alt were pressed with the pointer on that item.
         string pin = Path.Combine(_ctx.Directory, "item.pin");
         if (_frame % 30 == 0 && File.Exists(pin) && _game != null)
         {
-            string wanted = File.ReadAllText(pin).Trim();
+            string[] asked = File.ReadAllText(pin).Trim().Split('@');
+            string wanted = asked[0].Trim();
+            float[] place = asked.Length > 1 ? asked[1].Split(',').Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : new[] { 0.45f, 0.3f };
             File.Delete(pin);
             GameTipItem(out _, out _);
             Item? pick = _game.Data.GetDataRegistryOutput<Item>().GetAllObjects().FirstOrDefault(i => i.DisplayName.GetPluralText(1).Contains(wanted, StringComparison.OrdinalIgnoreCase));
@@ -540,7 +748,7 @@ public class ItemSourcesMod : IMod
             {
                 Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
                 Pin(pick, GameTipCard());
-                if (_pinCard != null) _pinCard.Position = new Vector2(screen.X * 0.45f, screen.Y * 0.3f);
+                if (_pinCard != null) _pinCard.Position = new Vector2(screen.X * place[0], screen.Y * place[1]);
                 _ctx.Log($"Dev: pinned = {_pinCard != null}, failed = {_pinFailed}");
             }
         }

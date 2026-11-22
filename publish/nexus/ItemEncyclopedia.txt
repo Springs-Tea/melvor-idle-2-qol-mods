@@ -43,7 +43,7 @@ Tick several to combine them: Ranged and Torso for a ranger's body armour, Cooki
 [list]
 [*]The game's own item panel: picture, name, price, stats, bonuses and requirements, in the game's words.
 [*]How many you have, in the bank and equipped.
-[*][b]Found in[/b]: every enemy that drops it with its level, area, amount and chance; every recipe with its level and ingredients; chests, thieving targets, shop purchases, quests.
+[*][b]Found in[/b]: every enemy that drops it with its level, area, amount and chance; every recipe with its level and ingredients; chests, thieving targets, shop purchases, quests. Rest the pointer on a chance for what it means: "Half the time within 9 kills. 9 times in 10 within 30."
 [*][b]Used in[/b]: every recipe, upgrade and purchase that takes it, and what comes out.
 [*]Click any ingredient or product to open that item. Back takes you to where you came from.
 [/list]

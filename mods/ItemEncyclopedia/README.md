@@ -111,6 +111,8 @@ and numbers. Under it:
 - **Found in**: every place it comes from, under the skill or kind of place. An enemy with its level, the
   areas it lives in, how many it drops and the chance per kill. A recipe with the level it asks for and
   what it is made from. A chest, a thieving target, a shop purchase with its price, a quest.
+  Rest the pointer on a chance and a small tooltip says what it means in kills (tries for a pick, a chest
+  or a catch): "Half the time within 9 kills. 9 times in 10 within 30."
 - **Used in**: every recipe, upgrade and purchase that takes it, how many, and what comes out.
 
 Every item named in there, an ingredient, a product, a chest, is a small tag with its picture. Click it and

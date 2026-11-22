@@ -50,6 +50,7 @@ public sealed class GameWindow
 
         Root = new PanelContainer { MouseDefaultCursorShape = Control.CursorShape.Move };
         Root.AddThemeStyleboxOverride("panel", Style.ModalPanel());
+        Root.Theme = Style.TooltipTheme();
         Root.GuiInput += OnRootInput;
         Root.Resized += OnResized;
         Root.ItemRectChanged += PlaceGrip;

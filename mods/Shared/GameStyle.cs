@@ -51,6 +51,20 @@ public sealed class GameStyle(float scale = 1f)
     public StyleBox TooltipPanel() =>
         Textured("res://Assets/UI/Textures/Tooltips/TEX_Tooltip_Dark_Large.png", 12, 8, 12, 16, Colors.White, new Color("2f2314"), new Color("524943"));
 
+    /// <summary>
+    /// The look of Godot's small tooltips (a control's TooltipText) for everything under the control this is
+    /// set on. The game draws its own tooltips and leaves these bare: words with nothing behind them, on top
+    /// of whatever is there. This puts them on the dark panel of the game's tooltips.
+    /// </summary>
+    public Theme TooltipTheme()
+    {
+        var theme = new Theme();
+        theme.SetStylebox("panel", "TooltipPanel", TooltipPanel());
+        theme.SetColor("font_color", "TooltipLabel", TextWhite);
+        theme.SetFontSize("font_size", "TooltipLabel", Px(13));
+        return theme;
+    }
+
     /// <summary>A small dark tag with a thin grey border: the one the item tooltip shows a price in.</summary>
     public PanelContainer NoteTag(string text)
     {
@@ -400,4 +414,27 @@ public sealed class GameStyle(float scale = 1f)
             catch { }   // keeps the unscaled arrow
         }
     }
+
+#if DEVTOOLS
+    /// <summary>Development: the words of every Godot tooltip that is up, what is drawn behind them, and where.</summary>
+    public static string DevTooltips(Node root)
+    {
+        var up = new System.Collections.Generic.List<string>();
+        void Walk(Node node)
+        {
+            if (node is PopupPanel { Visible: true } popup)
+            {
+                var words = new System.Collections.Generic.List<string>();
+                foreach (Node label in popup.FindChildren("*", "Label", true, false)) words.Add(((Label)label).Text);
+                StyleBox? box = popup.GetThemeStylebox("panel");
+                up.Add($"'{string.Join(" ", words)}' on {box?.GetType().Name ?? "nothing"} {(box as StyleBoxTexture)?.Texture?.ResourcePath}, {popup.Size.X}x{popup.Size.Y} at {popup.Position}");
+            }
+            foreach (Node child in node.GetChildren(true)) Walk(child);
+        }
+        Walk(root);
+        Theme? game = ThemeDB.GetProjectTheme();
+        string bare = game == null ? "no project theme" : game.HasStylebox("panel", "TooltipPanel") ? "the game's theme draws them on a " + game.GetStylebox("panel", "TooltipPanel").GetType().Name : "the game's theme has no panel for them";
+        return (up.Count == 0 ? "(no tooltip)" : string.Join(" / ", up)) + $"  [{bare}]";
+    }
+#endif
 }

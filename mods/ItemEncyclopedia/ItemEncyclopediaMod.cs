@@ -347,6 +347,7 @@ public class ItemEncyclopediaMod : IMod
     //   key   (F9 down and up) | button   (the round button in the strip) | minimise   (the button beside the X)
     //   click=row5 | click=search | click=Filters
     //   wheel=row5 | type=bow | drag=window,-200,60 | drag=corner,-150,-90
+    //   hover=chance1   (rests on the first chance of the details that says more when hovered; the log has the tooltip's words)
     // When the last line is done, "enc.done" is written.
     Queue<string> _devQueue = new();
     readonly Tempo _devLook = new(300);
@@ -452,6 +453,29 @@ public class ItemEncyclopediaMod : IMod
                 rebuild = false;
                 if (_stripButton != null && GodotObject.IsInstanceValid(_stripButton)) DevMouse(_stripButton.GetGlobalRect().GetCenter(), MouseButton.Left, "strip button");
                 else _ctx.Log("Dev: no strip button");
+                break;
+            // The pointer comes to rest there, and nothing is pressed: what a tooltip waits for.
+            case "hover":
+                rebuild = false;
+                // Asked twice: the first time scrolls it into sight, and the place is right once that is laid out.
+                _view?.DevWhere(value);
+                _devQueue = new Queue<string>(_devQueue.Prepend("_rest=" + value));
+                break;
+            case "_rest":
+                rebuild = false;
+                if (_view?.DevWhere(value) is { } rest)
+                {
+                    Vector2 over = _ctx.Tree.Root.GetFinalTransform() * rest;
+                    Input.ParseInputEvent(new InputEventMouseMotion { Position = over, GlobalPosition = over });
+                    _devQueue = new Queue<string>(_devQueue.Prepend("_hovered=" + value));
+                    _devNext = Time.GetTicksMsec() + 1100;
+                }
+                else _ctx.Log($"Dev: nothing called '{value}' to hover");
+                break;
+            case "_hovered":
+                rebuild = false;
+                Control? under = _ctx.Tree.Root.GuiGetHoveredControl();
+                _ctx.Log($"Dev: hover {value} -> the pointer is on {(under == null ? "nothing" : under.GetType().Name + (under is Label label ? " '" + label.Text + "'" : ""))}; tooltip: {GameStyle.DevTooltips(_ctx.Tree.Root)}");
                 break;
             case "click" or "wheel":
                 rebuild = false;

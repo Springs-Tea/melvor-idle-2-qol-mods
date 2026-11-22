@@ -54,6 +54,40 @@ sealed class ItemLines(Game game)
         chance >= 0.9995 ? "always" : chance >= 0.1 ? chance.ToString("0.#%") : chance >= 0.001 ? chance.ToString("0.##%")
         : chance > 0 ? $"1 in {1 / chance:N0}" : "-";
 
+    // A guaranteed drop takes one try. Zero means no count fits: the target is unreachable or too large.
+    public static int Tries(double chance, double share)
+    {
+        if (share <= 0) return 1;
+        if (chance <= 0 || share > 1) return 0;
+        if (chance >= share) return 1;
+        if (share == 1) return 0;
+        double count = Math.Ceiling(LogMiss(share) / LogMiss(chance));
+        return count <= int.MaxValue ? (int)count : 0;
+
+        // For rare drops, recover the precision lost when subtracting the probability from one.
+        static double LogMiss(double p)
+        {
+            double miss = 1 - p;
+            return miss == 1 ? -p : Math.Log(miss) * (p / (1 - miss));
+        }
+    }
+
+    public static string? Luck(ItemLine line)
+    {
+        if (line.Chance is not (> 0 and < 0.9995)) return null;
+        int half = Tries(line.Chance, 0.5), nineInTen = Tries(line.Chance, 0.9);
+        if (half == 0 || nineInTen == 0) return null;
+        string Count(int n) => line.Ref.Owner switch
+        {
+            Enemy => n == 1 ? "1 kill" : $"{n:N0} kills",
+            Dungeon => n == 1 ? "1 run" : $"{n:N0} runs",
+            _ => n == 1 ? "1 try" : $"{n:N0} tries",
+        };
+        // A coin toss or better: "half the time within 1 try" would say less than the chance itself.
+        return half == 1 ? $"9 times in 10 within {Count(nineInTen)}."
+            : $"Half the time within {Count(half)}. 9 times in 10 within {nineInTen:N0}.";
+    }
+
     public static string NameOf(object owner)
     {
         object? name = owner.GetType().GetProperty("DisplayName")?.GetValue(owner);

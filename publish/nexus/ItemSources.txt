@@ -11,7 +11,7 @@ REQUIREMENT
 Melvor Mod Loader, 0.1.3 or newer
 
 PICTURES
-docs/img/item-sources.png (main), item-sources-used.png, item-sources-pin.png
+docs/img/item-sources.png (main), item-sources-used.png, item-sources-pin.png, item-sources-chance.png
 
 SUMMARY (the short line under the name, at most 350 characters)
 Hover "Found in" or "Used in" on an item: which enemy drops it and where, how many and how likely, and every recipe, chest, thieving target or shop purchase that gives or uses it. Press Alt on any item tooltip, anywhere in the game, to keep it open and do the same there.
@@ -40,6 +40,7 @@ So while you look at a recipe: point at the material you are short of, press Alt
 [*][b]A skill's name[/b]: the thieving target, hunting animal or recipe that gives or uses the item.
 [*][b]Opening, Shop, Quests[/b]: chests, purchases, rewards.
 [*]"1-5" or "x2" is how many at a time; "6.41%" or "always" is the chance each time.
+[*]Move from "Found in" onto its list and rest the pointer on a chance: "Half the time within 9 kills. 9 times in 10 within 30."
 [*]A long group shows its first eight lines and says how many more there are.
 [/list]
 

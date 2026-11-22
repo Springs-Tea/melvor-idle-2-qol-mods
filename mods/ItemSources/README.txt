@@ -13,6 +13,11 @@ Anywhere in the game: press Alt while an item's tooltip is up (on a recipe's mat
 on loot) and the tooltip stays open, so you can move onto its two rows. Alt again, Esc or a click
 somewhere else closes it.
 
+What a chance means in kills: move the pointer from "Found in" onto its list (it stays open on
+the way) and rest it on a chance. A small tooltip says, for example, "Half the time within 9 kills.
+9 times in 10 within 30." Kills for an enemy, tries for a pick, a chest or a catch. This works in
+the bank and on a tooltip kept open with Alt.
+
 The chances are worked out from the game's own drop tables. The list is read from the game's
 data when a character is opened, so items and enemies a game update adds show up by themselves.
 

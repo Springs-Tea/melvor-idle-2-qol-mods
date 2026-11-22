@@ -844,6 +844,11 @@ sealed class EncyclopediaView
             Label chance = _s.Text(ItemLines.Percent(line.Chance), always ? GameStyle.TextDim : GameStyle.TextWhite, always ? 13 : 14, always ? null : GameStyle.Bold);
             chance.HorizontalAlignment = HorizontalAlignment.Right;
             chance.CustomMinimumSize = new Vector2(_s.Px(54), 0);
+            if (ItemLines.Luck(line) is string luck)
+            {
+                chance.TooltipText = luck;
+                chance.MouseFilter = Control.MouseFilterEnum.Pass;
+            }
             top.AddChild(chance);
         }
 
@@ -1049,6 +1054,15 @@ sealed class EncyclopediaView
     public Vector2? DevWhere(string what)
     {
         if (what == "search") return _search.GetGlobalRect().GetCenter();
+        if (what.StartsWith("chance", StringComparison.Ordinal) && int.TryParse(what[6..], out int nth))
+        {
+            // The chances of "Found in" that say more when hovered, scrolled into sight first.
+            var chances = _details.FindChildren("*", "Label", true, false).OfType<Label>().Where(l => l.TooltipText.Contains("times in 10 within", StringComparison.Ordinal)).ToList();
+            if (chances.Count == 0) return null;
+            Label chance = nth <= 0 || nth > chances.Count ? chances[^1] : chances[nth - 1];
+            _detailsScroll.EnsureControlVisible(chance);
+            return chance.GetGlobalRect().GetCenter();
+        }
         if (what.StartsWith("row", StringComparison.Ordinal) && int.TryParse(what[3..], out int row) && row < _pool.Count) return _pool[row].Button.GetGlobalRect().GetCenter();
         Button? Find(Node node)
         {

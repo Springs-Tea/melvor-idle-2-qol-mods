@@ -20,6 +20,8 @@ and the shop; F9 works everywhere.)
              have; every enemy that drops it with its area, amount and chance; every recipe that
              makes it with its level and ingredients; chests, thieving targets, shop purchases,
              quests; and everything it is used in. Click an ingredient to open it, Back to return.
+             Rest the pointer on a chance under "Found in" and a small tooltip says what it
+             means in kills or tries: "Half the time within 9 kills. 9 times in 10 within 30."
 
 Drag the window from any empty spot, and its bottom right corner to resize it. The small button
 beside the X folds it down to its title, to put it aside without closing it; the same button or
