@@ -42,6 +42,18 @@ opens and closes the window. The window can be dragged from any empty spot and r
 right corner; it remembers its place and size. It stays above the game's bar along the bottom of the screen,
 and is never larger than the room above that bar.
 
+Click the button beside the red X to fold the window down to its title. Until you run a scan after loading
+your character, it says **Combat Simulator**. During a scan it counts the finished fights,
+**Simulator · 4 of 12**, and at the end it says **Simulator · Done: 12 fights**. A scan you cancel says
+**Simulator · Stopped: 4 of 12**. **Simulator · Error** means the window has a message for you: open it to
+read it.
+
+Click the fold button again or the round chart button to return to the same tab, list, sort order and
+selected fight. The red X closes the window even when folded. A scan keeps running while the window is
+folded or closed. If you close it folded, it opens folded next time.
+
+![The Combat Simulator folded down to its title during a scan: Simulator · 4 of 38](../../docs/img/combat-simulator-folded.png)
+
 The window has three columns: **Setup** on the left (what to simulate), **Results, per hour** in the middle
 (one line per fight) and **Details** on the right (everything about the line you clicked).
 
@@ -216,9 +228,9 @@ own ten minute average for the same fight. That is one point, not a proof. Tell 
 
 Everything is in `mods\CombatSim`:
 
-- `settings.json`: the window's place and size and your last choices. `"Workers"` sets how many fights run
-  side by side, 1 to 8 (0 lets the mod choose: half of the processor, four at most). Lower it if the game
-  stutters during a scan.
+- `settings.json`: the window's place, size and folded state, and your last choices. `"Workers"` sets how
+  many fights run side by side, 1 to 8 (0 lets the mod choose: half of the processor, four at most).
+  Lower it if the game stutters during a scan.
 - `history\<character>\`: the earlier scans. Delete the folder, or press Clear in History, to forget them.
 
 ## When something is off

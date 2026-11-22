@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 
 namespace MelvorMods.Shared;
@@ -35,18 +36,27 @@ public sealed class GameWindow
     public bool Minimised { get; private set; }
 
     readonly Control _grip, _balance;
+    readonly Label _title;
+    readonly PanelContainer _paper;
+    readonly float _paperWidth;
     readonly Button? _fold;
     readonly Vector2? _startAt;
     readonly float _bottomInset;
     bool _dragging, _resizing, _placed;
     Vector2 _resizeFrom;
     float _resizeTo;
+    // Only for a window whose title changes while it is folded (SetTitle, KeepRoomForTitles): the right edge of
+    // the folded strip, where its buttons are, and the width its paper is held at.
+    float? _foldedRight;
+    float _titleRoom;
 
+    // foldedRight: for a window that opens folded and whose title changes, the right edge its strip was left at.
     public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105, bool canMinimise = false, bool minimised = false,
-        float bottomInset = 0)
+        float bottomInset = 0, float? foldedRight = null)
     {
         Style = new GameStyle(Math.Clamp(scale, MinScale, MaxScale));
         _startAt = position;
+        _foldedRight = canMinimise && minimised ? foldedRight : null;
         _bottomInset = bottomInset;
         _resizeTo = Style.Scale;
         Layer = new CanvasLayer { Layer = layer, Visible = false };
@@ -56,6 +66,12 @@ public sealed class GameWindow
         Root.Theme = Style.TooltipTheme();
         Root.GuiInput += OnRootInput;
         Root.Resized += OnResized;
+        Root.MinimumSizeChanged += () =>
+        {
+            // Godot reports a new minimum size a moment after the change (deferred): fitted again from the same
+            // right edge, which leaves a strip already fitted where it is.
+            if (Minimised && _foldedRight is { } right) FitFolded(right);
+        };
         Root.ItemRectChanged += PlaceGrip;
         Layer.AddChild(Root);
 
@@ -68,7 +84,9 @@ public sealed class GameWindow
         _balance = new Control { CustomMinimumSize = new Vector2(canMinimise ? closeSize * 2 + Style.Px(4) : closeSize, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
         bar.AddChild(_balance);
         var centre = new CenterContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
-        centre.AddChild(Style.PaperTag(title, 18, 220));
+        _paper = Style.PaperTag(title, out _title, 18, 220);
+        _paperWidth = _paper.CustomMinimumSize.X;
+        centre.AddChild(_paper);
         bar.AddChild(centre);
         if (canMinimise)
         {
@@ -113,13 +131,47 @@ public sealed class GameWindow
     }
 
     /// <summary>
+    /// Changes the title on the paper. Folded, the strip is fitted to the new title with its right edge, where
+    /// the buttons are, kept in place.
+    /// </summary>
+    public void SetTitle(string title)
+    {
+        if (_title.Text == title) return;
+        float? right = HoldFoldedRight();
+        _title.Text = title;
+        if (right is { } edge) FitFolded(edge);
+    }
+
+    /// <summary>
+    /// Holds the folded title's paper as wide as the widest of these titles, so the strip and its buttons stay
+    /// where they are while the title changes among them. With no titles the paper fits its title again.
+    /// </summary>
+    public void KeepRoomForTitles(IEnumerable<string> titles)
+    {
+        Font font = _title.GetThemeFont("font");
+        int size = _title.GetThemeFontSize("font_size");
+        // What the label and the paper add around the text, as their own minimum sizes do.
+        float margins = _title.GetThemeStylebox("normal").GetMinimumSize().X + _paper.GetThemeStylebox("panel").GetMinimumSize().X;
+        float widest = 0;
+        foreach (string text in titles)
+            widest = Math.Max(widest, MathF.Ceiling(font.GetStringSize(text, fontSize: size).X + margins));
+        if (widest == _titleRoom) return;
+        float? right = HoldFoldedRight();
+        _titleRoom = widest;
+        SizePaper();
+        if (right is { } edge) FitFolded(edge);
+    }
+
+    /// <summary>
     /// Folds the window down to its title, or opens it up again. Its top right corner, where the button is,
     /// stays where it is, so the same spot opens it again.
     /// </summary>
     public void SetMinimised(bool minimised)
     {
         if (_fold == null || minimised == Minimised) return;
-        float right = Root.Position.X + Root.Size.X;
+        // A folded strip whose title changed opens from the edge it held (HoldFoldedRight).
+        float right = _foldedRight ?? Root.Position.X + Root.Size.X;
+        _foldedRight = null;
         // Where it goes is decided here from now on, not by where it was first put.
         _placed = true;
         Fold(minimised);
@@ -130,9 +182,24 @@ public sealed class GameWindow
         Moved?.Invoke(Root.Position);
     }
 
+    // Folded, the first change of title fixes the strip's right edge; every later fit starts from that same
+    // edge, so rounding the position to whole pixels cannot add up.
+    float? HoldFoldedRight() => Minimised ? _foldedRight ??= Root.Position.X + Root.Size.X : null;
+
+    void FitFolded(float right)
+    {
+        Root.ResetSize();
+        Root.Position = new Vector2(MathF.Round(right - Root.Size.X), Root.Position.Y);
+        KeepOnScreen();
+    }
+
+    // Folded, the paper may be held wider than its title (KeepRoomForTitles); open, it is as it was made.
+    void SizePaper() => _paper.CustomMinimumSize = new Vector2(Minimised ? Math.Max(_paperWidth, _titleRoom) : _paperWidth, 0);
+
     void Fold(bool minimised)
     {
         Minimised = minimised;
+        SizePaper();
         Body.Visible = !minimised;
         // Folded, the title needs nothing to balance the buttons: the bar is as short as it can be.
         _balance.Visible = !minimised;
@@ -150,6 +217,11 @@ public sealed class GameWindow
     public Vector2 Position => Root.Position;
     public bool IsAlive => GodotObject.IsInstanceValid(Layer);
 
+#if DEVTOOLS
+    internal string DevTitleLayout => $"paper = {_paper.GetGlobalRect()}, held at = {_titleRoom}, text = {_title.GetMinimumSize()}, " +
+        $"folded right = {_foldedRight?.ToString() ?? "-"}, fold button = {_fold?.GetGlobalRect()}";
+#endif
+
     public void Free()
     {
         if (GodotObject.IsInstanceValid(Layer)) Layer.QueueFree();
@@ -166,6 +238,8 @@ public sealed class GameWindow
             if (_bottomInset > 0) screen.Y -= _bottomInset;
             Root.Position = _startAt ?? ((screen - Root.Size) / 2).Round();
         }
+        if (Minimised && _foldedRight is { } right)
+            Root.Position = new Vector2(MathF.Round(right - Root.Size.X), Root.Position.Y);
         KeepOnScreen();
     }
 
@@ -191,6 +265,7 @@ public sealed class GameWindow
         {
             Root.Position += motion.Relative;
             KeepOnScreen();
+            if (Minimised && _foldedRight.HasValue) _foldedRight = Root.Position.X + Root.Size.X;
         }
     }
 

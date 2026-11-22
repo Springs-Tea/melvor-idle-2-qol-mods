@@ -203,11 +203,15 @@ public sealed class GameStyle(float scale = 1f)
         Textured("res://Assets/UI/Textures/Crafting/TEX_Crafting_0.png", sideMargin, 5, sideMargin, 6, Colors.White, new Color("e2dbcd"), new Color("8a8170"));
 
     /// <summary>A title on paper: dark bold text, like "Task Categories" over a column.</summary>
-    public PanelContainer PaperTag(string text, int size = 14, float minWidth = 150)
+    public PanelContainer PaperTag(string text, int size = 14, float minWidth = 150) =>
+        PaperTag(text, out _, size, minWidth);
+
+    /// <summary>A paper title whose label can be updated in place.</summary>
+    public PanelContainer PaperTag(string text, out Label label, int size, float minWidth)
     {
         var tag = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(Px(minWidth), 0) };
         tag.AddThemeStyleboxOverride("panel", Paper());
-        Label label = Text(text, new Color("111110"), size, Bold);
+        label = Text(text, new Color("111110"), size, Bold);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         tag.AddChild(label);
         return tag;

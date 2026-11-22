@@ -29,11 +29,16 @@ namespace CombatSim;
 /// </summary>
 public class CombatSimMod : IMod, ISimLookup
 {
+    const string WindowTitle = "Combat Simulator";
+    const string StatusPrefix = "Simulator · ";
+
     sealed class Settings
     {
         public float? X { get; set; }
         public float? Y { get; set; }
         public float Scale { get; set; } = 1f;
+        public bool Minimised { get; set; }
+        public float? FoldedRight { get; set; }
         /// <summary>Before areas could be ticked: the one area that was chosen.</summary>
         public string Scope { get; set; } = "";
         public List<string> Areas { get; set; } = new();
@@ -69,8 +74,9 @@ public class CombatSimMod : IMod, ISimLookup
     SimView? _view;
     Button? _stripButton;
     readonly Dictionary<string, Texture2D?> _targetIcons = new();
-    int _frame;
-    bool _stripMissingLogged, _wasRunning, _loadoutsUnreadable;
+    readonly Tempo _tick = new(250), _search = new(1000);
+    bool _stripMissingLogged, _refreshOnUnfold, _loadoutsUnreadable;
+    string _title = WindowTitle;
     readonly HashSet<string> _reported = new();
 
     public void OnLoad(ModContext ctx)
@@ -94,12 +100,15 @@ public class CombatSimMod : IMod, ISimLookup
 
     void OnFrame()
     {
-        if (++_frame % 10 != 0) return;
         try
         {
-            TrackCharacter();
+            if (_search.Due())
+            {
+                TrackCharacter();
+                if (_game != null) UpdateStripButton();
+            }
             if (_game == null) return;
-            if (_frame % 60 == 0) UpdateStripButton();
+            if (!_tick.Due()) return;
             Pump();
 #if DEVTOOLS
             DevRequests();
@@ -107,7 +116,7 @@ public class CombatSimMod : IMod, ISimLookup
         }
         catch (Exception e)
         {
-            // Whatever keeps going wrong would otherwise be written six times a second.
+            // Whatever keeps going wrong would otherwise be written four times a second.
             if (_reported.Add(e.GetType().Name + e.Message)) _ctx.Log("Error: " + e);
         }
     }
@@ -131,11 +140,17 @@ public class CombatSimMod : IMod, ISimLookup
         _state.Selected = null;
         _state.Viewing = null;
         _state.Done = _state.Total = 0;
+        _state.Running = false;
+        _state.Current = "";
         _state.Overrides.Clear();
         _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = "";
         _history.Close();
         _historyRead = false;
         _run = null;
+#if DEVTOOLS
+        _devCommands.Clear();
+        _devShotAt = _devPickerAt = -1;
+#endif
         if (now == null) return;
         _combat = now.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? c) ? c as CombatEntity : null;
         _bank = now.Entities.TryGetObjectById("MelvorBase:Bank", out GameEntity? b) ? b as BankEntity : null;
@@ -332,12 +347,19 @@ public class CombatSimMod : IMod, ISimLookup
 
     // ---- the window ---------------------------------------------------------------------------------------
 
+    void ToggleWindow()
+    {
+        if (_window is not { IsAlive: true, Visible: true }) Open();
+        else if (_window.Minimised) _window.SetMinimised(false);
+        else Close();
+    }
+
     void Open()
     {
         if (_game == null) return;
         // Unlocks, equipment, food and levels may have changed since last time: the window is built again
         // from them. During a run it is left alone.
-        bool refreshed = !_engine.Running;
+        bool refreshed = _run == null || !_engine.Running;
         if (refreshed) BuildCatalog();
         if (!_historyRead)
         {
@@ -348,6 +370,7 @@ public class CombatSimMod : IMod, ISimLookup
         }
         if (refreshed || _window is not { IsAlive: true }) Build();
         _window!.Visible = true;
+        UpdateTitle();
         _view!.Refresh();
         SyncStripButton();
     }
@@ -364,9 +387,34 @@ public class CombatSimMod : IMod, ISimLookup
         Vector2? at = _settings is { X: { } x, Y: { } y } ? new Vector2(x, y) : null;
         // The game's bar along the bottom stays in sight: the window is placed, and kept, above it.
         float footer = FooterHeight();
-        _window = new GameWindow(_ctx.Tree, "Combat Simulator", Math.Min(_settings.Scale, LargestScale(footer)), at, bottomInset: footer);
+        _title = Title(_settings.Minimised);
+        _refreshOnUnfold = false;
+        _window = new GameWindow(_ctx.Tree, _title, Math.Min(_settings.Scale, LargestScale(footer)), at,
+            canMinimise: true, minimised: _settings.Minimised, bottomInset: footer, foldedRight: _settings.FoldedRight);
         _window.CloseRequested += Close;
-        _window.Moved += position => { _settings.X = position.X; _settings.Y = position.Y; WriteSettings(); };
+        _window.MinimisedChanged += minimised =>
+        {
+            // GameWindow raises Moved next, which saves the fold state and its matching position together.
+            _settings.Minimised = minimised;
+            KeepTitleRoom();
+            UpdateTitle();
+            if (!minimised && _refreshOnUnfold)
+            {
+                _view!.Refresh();
+                _refreshOnUnfold = false;
+            }
+            SyncStripButton();
+#if DEVTOOLS
+            LogFold();
+#endif
+        };
+        _window.Moved += position =>
+        {
+            _settings.X = position.X;
+            _settings.Y = position.Y;
+            _settings.FoldedRight = _window.Minimised ? _window.Root.GetRect().End.X : null;
+            WriteSettings();
+        };
         _window.ResizeRequested += scale =>
         {
             // The same window again at another size; what was simulated so far is kept.
@@ -378,6 +426,46 @@ public class CombatSimMod : IMod, ISimLookup
             _window!.Visible = true;
         };
         _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, () => { Build(); _window!.Visible = true; }, Fight, _history.Clear);
+        KeepTitleRoom();
+#if DEVTOOLS
+        LogFold();
+#endif
+    }
+
+    string Title(bool folded) => folded && _state.ScanStatus is { Length: > 0 } status
+        ? StatusPrefix + status : WindowTitle;
+
+    // The folded title keeps one width from a scan's first count to its end, so the strip and its buttons stay
+    // where they are. It fits its title again once the window has been opened after the scan.
+    void KeepTitleRoom()
+    {
+        if (_window is not { IsAlive: true }) return;
+        if (_state.Running) _window.KeepRoomForTitles(ScanTitles());
+        else if (!_window.Minimised) _window.KeepRoomForTitles(Array.Empty<string>());
+    }
+
+    // Every title the folded window can show during this scan and at its end: the count, with each digit as
+    // often as the total has digits (so no digit has to be the widest), Done and Error. Not Stopped: a scan is
+    // cancelled in the open window, and that is where the paper fits its title again.
+    IEnumerable<string> ScanTitles()
+    {
+        yield return StatusPrefix + _state.DoneText;
+        yield return StatusPrefix + SimState.ErrorText;
+        int digits = _state.Total.ToString().Length;
+        for (char digit = '0'; digit <= '9'; digit++)
+            yield return StatusPrefix + _state.CountText(new string(digit, digits));
+    }
+
+    void UpdateTitle()
+    {
+        string title = Title(_window!.Minimised);
+        if (title == _title) return;
+        _window.SetTitle(title);
+        _title = title;
+#if DEVTOOLS
+        _ctx.Log($"Dev: simulator title = {title}, running = {_state.Running}, fights = {_state.FightCount}, folded = {_window.Minimised}, " +
+                 $"position = {_window.Position}, size = {_window.Root.Size}, {_window.DevTitleLayout}");
+#endif
     }
 
     // How high the game's bar along the bottom of the screen is (levels, rates, the music button).
@@ -509,27 +597,43 @@ public class CombatSimMod : IMod, ISimLookup
     {
         bool changed = force;
         // Asked first: once the engine says it stopped, everything it made is already in the queue.
-        bool running = _engine.Running;
+        bool running = _engine.Running && _run != null;
         while (_engine.Finished.TryDequeue(out SimResult? result))
         {
             if (_run == null) continue;   // left over from a run that was dropped (another character was opened)
             _state.Results[result.Key] = result;
             changed = true;
         }
-        if (running != _state.Running || _state.Done != _engine.Done || _state.Current != _engine.Current) changed = true;
+        bool runningChanged = running != _state.Running;
+        if (runningChanged) changed = true;
         _state.Running = running;
-        _state.Done = _engine.Done;
-        _state.Total = _engine.Total;
-        _state.Current = _engine.Current;
-        if (_wasRunning && !running)
+        // The engine keeps its last counters after a character switch. Only take this character's run.
+        if (_run != null)
         {
-            _ctx.Log($"Simulation finished: {_state.Done} of {_state.Total} fights in {_runClock.Elapsed.TotalSeconds:0.0}s.");
-            KeepScan();
-            if (_engine.Problem != "") _state.Message = _engine.Problem;
-            changed = true;
+            int done = _engine.Done;
+            string current = _engine.Current;
+            if (_state.Done != done || _state.Current != current) changed = true;
+            _state.Done = done;
+            _state.Total = _engine.Total;
+            _state.Current = current;
+            if (!running)
+            {
+                _ctx.Log($"Simulation finished: {_state.FightCount} fights in {_runClock.Elapsed.TotalSeconds:0.0}s.");
+                KeepScan();
+                if (_engine.Problem != "") _state.Message = _engine.Problem;
+                changed = true;
+            }
         }
-        _wasRunning = running;
-        if (changed && _window is { IsAlive: true, Visible: true }) _view?.Refresh();
+        if (runningChanged) KeepTitleRoom();
+        if (changed && _window is { IsAlive: true, Visible: true })
+        {
+            if (_window.Minimised)
+            {
+                _refreshOnUnfold = true;
+                UpdateTitle();
+            }
+            else _view?.Refresh();
+        }
     }
 
     // A run that brought at least one result goes into the history, also when it was stopped half way.
@@ -568,12 +672,7 @@ public class CombatSimMod : IMod, ISimLookup
             ToggleMode = true,
             TooltipText = "Combat Simulator: what an hour of each fight gives, uses and risks",
         };
-        _stripButton.Toggled += open =>
-        {
-            bool isOpen = _window is { IsAlive: true, Visible: true };
-            if (open && !isOpen) Open();
-            else if (!open && isOpen) Close();
-        };
+        _stripButton.Pressed += ToggleWindow;
         strip.AddChild(_stripButton);
         // The style's own "pressed" look is a wider circle that is cut off at this size: keep the resting shape.
         if (_stripButton.GetThemeStylebox("normal") is StyleBoxFlat resting)
@@ -589,7 +688,7 @@ public class CombatSimMod : IMod, ISimLookup
     void SyncStripButton()
     {
         if (_stripButton != null && GodotObject.IsInstanceValid(_stripButton))
-            _stripButton.SetPressedNoSignal(_window is { IsAlive: true, Visible: true });
+            _stripButton.SetPressedNoSignal(_window is { IsAlive: true, Visible: true, Minimised: false });
     }
 
     // ---- settings.json in the mod's folder ----------------------------------------------------------------
@@ -607,6 +706,17 @@ public class CombatSimMod : IMod, ISimLookup
     }
 
 #if DEVTOOLS
+    void LogFold(string? picture = null)
+    {
+        string state = $"simulator folded = {_window!.Minimised}, settings = {_settings.Minimised}, title = {_title}, " +
+            $"tab = {(_state.BestMode ? "Best for" : "Fights")}, list = {_state.Viewing?.Title ?? "current"}, " +
+            $"sort column = {_state.SortColumn}, descending = {_state.SortDescending}, selected = {_state.Selected ?? "-"}, pinned = {_state.Pinned}, " +
+            $"position = {_window.Position}, size = {_window.Root.Size}, right = {_window.Root.GetGlobalRect().End.X}, scale = {_window.Style.Scale}, " +
+            $"{_window.DevTitleLayout}, visible = {_window.Visible}, running = {_state.Running}, fights = {_state.FightCount}";
+        _ctx.Log(picture == null ? "Dev: " + state : $"Dev: saved {picture}: {state}");
+        if (picture != null) File.WriteAllText(Path.Combine(_ctx.Directory, Path.ChangeExtension(picture, ".txt")), state);
+    }
+
     // Development: a file "sim.request" opens the window and starts a run; when it is done, a picture of the
     // game goes into the mod's folder and the table into the log. The file holds
     //   <where>|<duration index>|<1 unlimited, 0 from bank>|<row to select>
@@ -614,24 +724,54 @@ public class CombatSimMod : IMod, ISimLookup
     // only open the window (with "where", "history" or "view" as the picker further on). Pickers are joined by
     // "+"; "sort=<column>" among them clicks that column's name, twice to turn the order around, and
     // "details=end" scrolls the details down.
-    int _devShotAt = -1;
+    long _devShotAt = -1;
     string? _devSelect, _devPicker;
-    bool _devNoRun;
-    int _devPickerAt = -1;
+    long _devPickerAt = -1;
+    readonly Queue<string> _devCommands = new();
+    // The settings as they were before the request; put back once its last line has run.
+    Settings? _devSettings;
 
     void DevRequests()
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
-        if (File.Exists(request))
+        if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1) DevPutBack();
+        if (_devCommands.Count == 0 && File.Exists(request))
         {
-            string[] parts = File.ReadAllText(request).Trim().Split('|');
+            _devSettings ??= JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(_settings));
+            foreach (string line in File.ReadAllLines(request))
+                if (line.Trim() != "") _devCommands.Enqueue(line.Trim());
             File.Delete(request);
+        }
+        long now = (long)Time.GetTicksMsec();
+        while (_devCommands.TryPeek(out string? command))
+        {
+            if (command == "wait=progress" && _state.Running && _state.Done == 0) return;
+            if (command == "wait=finished" && _state.Running) return;
+            _devCommands.Dequeue();
+            if (command == "wait=progress" && (!_state.Running || _state.Done == _state.Total))
+            {
+                _ctx.Log("Dev: no partial scan to photograph. Choose more fights.");
+                _devCommands.Clear();
+                return;
+            }
+            if (command is "wait=progress" or "wait=finished") continue;
+            if (command == "simulate") { Simulate(); continue; }
+            if (DevWindowCommand(command)) return;
+            bool prepare = command.StartsWith("setup=", StringComparison.Ordinal);
+            if (!prepare && !command.Contains('|'))
+            {
+                // A mistyped command would otherwise be read as area names that match nothing: a scan of everything.
+                _ctx.Log($"Dev: \"{command}\" is neither a command nor <where>|<duration>|...; the rest of the request is dropped.");
+                _devCommands.Clear();
+                return;
+            }
+            string[] parts = (prepare ? command[6..] : command).Split('|');
             Open();
             string where = parts[0].Trim();
             // "w1:<where>" runs the fights one at a time, "w4:" four side by side.
             if (where.Length > 2 && where[0] == 'w' && char.IsDigit(where[1]) && where[2] == ':') { _state.Workers = where[1] - '0'; where = where[3..]; }
-            _devNoRun = where.Equals("open", StringComparison.OrdinalIgnoreCase);
-            if (!_devNoRun)
+            bool noRun = where.Equals("open", StringComparison.OrdinalIgnoreCase);
+            if (!noRun)
             {
                 _state.BestMode = where.StartsWith("best", StringComparison.OrdinalIgnoreCase);
                 string areas = where;
@@ -667,28 +807,33 @@ public class CombatSimMod : IMod, ISimLookup
                      string.Join(", ", _state.Gear.Select(g => $"{g.SlotName}:{(g.ItemId == null ? "-" : g.ItemName)}{(g.Changed ? "*" : "")}")));
             Build();
             _window!.Visible = true;
-            if (!_devNoRun) Simulate();
+            _window.SetMinimised(false);
+            if (!prepare && !noRun) Simulate();
             _devSelect = parts.Length > 3 ? parts[3].Trim() : null;
-            _devShotAt = -2;   // armed
+            _devPickerAt = -1;
+            _devShotAt = prepare ? -1 : -2;
             _ctx.Log("Dev: areas = " + string.Join(" / ", _state.Areas.Select(a => $"{a.CategoryName}: {a.Name} ({a.Fights})")));
+            break;
         }
-        if (_devShotAt == -2 && !_engine.Running && (_devNoRun || _state.Done > 0))
+        if (_devShotAt == -2 && !_state.Running && !_engine.Running)
         {
+            if (_window is not { IsAlive: true, Visible: true }) Open();
+            _window!.SetMinimised(false);
             if (!string.IsNullOrEmpty(_devSelect) && _state.Results.Values.FirstOrDefault(r => r.Target.Name.Contains(_devSelect, StringComparison.OrdinalIgnoreCase)) is { } pick)
             { _state.Selected = pick.Target.Key; _state.Pinned = true; Build(); _window!.Visible = true; }
-            _devPickerAt = string.IsNullOrEmpty(_devPicker) ? -1 : _frame + 30;   // once the window is laid out
-            _devShotAt = _frame + 90;
+            // Once the window is laid out: the 30 and 90 frames these waits were, at 60 frames a second.
+            _devPickerAt = string.IsNullOrEmpty(_devPicker) ? -1 : now + 500;
+            _devShotAt = now + 1500;
         }
-        if (_devPickerAt > 0 && _frame >= _devPickerAt)
+        if (_devPickerAt > 0 && now >= _devPickerAt)
         {
             _devPickerAt = -1;
             foreach (string what in _devPicker!.Split('+')) _view?.DevOpenPicker(what);
         }
-        if (_devShotAt > 0 && _frame >= _devShotAt)
+        if (_devShotAt > 0 && now >= _devShotAt)
         {
             _devShotAt = -1;
-            _ctx.Tree.Root.GetTexture().GetImage().SavePng(Path.Combine(_ctx.Directory, "shot-sim.png"));
-            _ctx.Log("Dev: saved shot-sim.png");
+            DevShot("sim");
             Rect2 frame = _window!.Root.GetGlobalRect();
             foreach (Node child in _window.Layer.GetChildren())
                 if (child is PanelContainer { Visible: true } panel && panel != _window.Root) frame = frame.Merge(panel.GetGlobalRect());
@@ -703,6 +848,126 @@ public class CombatSimMod : IMod, ISimLookup
                          $"eaten {r.FoodEaten} / killed {r.Kills} = {r.FoodPerKill:0.####}  healed {r.Healed}  food gone {(r.FoodGoneSeconds < 0 ? "-" : $"{r.FoodGoneSeconds:0}s, {r.FoodGoneKills} kills")}  " +
                          $"lowHP {r.LowestHpFraction,4:P0}  {r.RealMilliseconds,5:N0} ms  {r.Note}");
         }
+    }
+
+    // Further lines in sim.request run one after another, also while the workers are running:
+    //   setup=<run request>   the setup of a run request, without starting it; "simulate" starts it
+    //   minimise, close, button   a click on the fold button, on the X, on the round button on the right edge
+    //   wait=progress, wait=finished   the next lines wait for the first finished fight, or for the end
+    //   cancel, select=first, sort=<column>, scale=min|max
+    //   shot=<name>   shot-<name>.png and crop-<name>.png once drawn, the window's state in shot-<name>.txt
+    // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
+    bool DevWindowCommand(string command)
+    {
+        switch (command)
+        {
+            case "minimise":
+            case "close":
+                _devShotAt = _devPickerAt = -1;
+                Button? button = _window?.Root.FindChildren("*", "Button", true, false).OfType<Button>()
+                    .FirstOrDefault(b => command == "close" ? b.TooltipText == "Close"
+                        : b.TooltipText is "Fold down to the title" or "Open the window again");
+                DevClick(button, command);
+                break;
+            case "button":
+                _devShotAt = _devPickerAt = -1;
+                DevClick(_stripButton, command);
+                break;
+            case "cancel": _engine.Cancel(); break;
+            case "select=first": DevClick(_view?.DevFirstRow, "first fight"); break;
+            case "scale=min":
+            case "scale=max":
+                _settings.Scale = command == "scale=min" ? GameWindow.MinScale : LargestScale(FooterHeight());
+                Build();
+                _window!.Visible = true;
+                break;
+            default:
+                if (command.StartsWith("sort=", StringComparison.Ordinal)) _view?.DevOpenPicker(command);
+                else if (command.StartsWith("shot=", StringComparison.Ordinal)) DevShot(command[5..]);
+                else return false;
+                break;
+        }
+        return true;
+    }
+
+    void DevShot(string name)
+    {
+        if (name.Length == 0 || !name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+        {
+            _ctx.Log("Dev: picture names take letters, numbers, hyphens and underscores.");
+            return;
+        }
+        GameWindow? window = _window;
+        void Capture()
+        {
+            RenderingServer.FramePostDraw -= Capture;
+            string file = $"shot-{name}.png";
+            if (window == null || window != _window || !window.IsAlive)
+            {
+                _ctx.Log($"Dev: {file} not taken: the window was built again, or the character changed, before it was drawn.");
+                return;
+            }
+            try
+            {
+                using Image image = _ctx.Tree.Root.GetTexture().GetImage();
+                Error saved = image.SavePng(Path.Combine(_ctx.Directory, file));
+                if (saved != Error.Ok) { _ctx.Log($"Dev: could not save {file}: {saved}"); return; }
+                LogFold(file);
+                // The window alone, as Item Encyclopedia's crop-*.png: the picture is in the screen's pixels, the
+                // window in the game's own, which the game stretches.
+                Rect2 frame = _ctx.Tree.Root.GetFinalTransform() * window.Root.GetGlobalRect().Grow(10);
+                var whole = new Rect2I(0, 0, image.GetWidth(), image.GetHeight());
+                Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(whole);
+                if (window.Visible && part.Size.X > 0 && part.Size.Y > 0)
+                {
+                    using Image crop = image.GetRegion(part);
+                    crop.SavePng(Path.Combine(_ctx.Directory, $"crop-{name}.png"));
+                    _ctx.Log($"Dev: crop-{name}.png is {part.Position.X},{part.Position.Y} {part.Size.X}x{part.Size.Y} of {image.GetWidth()}x{image.GetHeight()}");
+                }
+            }
+            catch (Exception e) { _ctx.Log($"Dev: could not capture {file}: {e.Message}"); }
+        }
+        RenderingServer.FramePostDraw += Capture;
+    }
+
+    // A request leaves the player's simulator as it was: settings.json (the window's fold, place and size, also
+    // after scale=min|max) and the Setup choices it holds go back to what they were before the first line.
+    void DevPutBack()
+    {
+        Settings before = _devSettings!;
+        _devSettings = null;
+        _ctx.Log($"Dev: request done. It left the window at {_settings.X},{_settings.Y}, scale {_settings.Scale}, folded {_settings.Minimised}, " +
+                 $"folded right {_settings.FoldedRight}; put back to {before.X},{before.Y}, scale {before.Scale}, folded {before.Minimised}, folded right {before.FoldedRight}.");
+        _settings = before;
+        WriteSettings();
+        // As OnLoad reads them.
+        _state.FightAreas = _settings.Areas.ToHashSet();
+        _state.BestAreas = _settings.BestAreas.ToHashSet();
+        _state.Duration = _settings.Duration;
+        _state.Unlimited = _settings.Unlimited;
+        _state.BestMode = _settings.BestMode;
+        _state.TrainSkillId = _settings.TrainSkill;
+        _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
+        if (_window is { IsAlive: true } window)
+        {
+            bool shown = window.Visible;
+            Build();
+            _window!.Visible = shown;
+            SyncStripButton();
+        }
+    }
+
+    void DevClick(Button? button, string name)
+    {
+        if (!GodotObject.IsInstanceValid(button) || !button!.IsVisibleInTree())
+        {
+            _ctx.Log($"Dev: no visible {name} button");
+            return;
+        }
+        Vector2 spot = _ctx.Tree.Root.GetFinalTransform() * button.GetGlobalRect().GetCenter();
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = spot, GlobalPosition = spot });
+        Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = true, ButtonMask = MouseButtonMask.Left });
+        Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = false });
     }
 #endif
 }

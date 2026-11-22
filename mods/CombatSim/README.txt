@@ -8,7 +8,16 @@ It does not re-create the game's combat formulas. It loads a copy of your charac
 invisible game and runs the game's own combat on it, in the background. An hour of fighting takes
 a fraction of a second; a copy of the character takes about one. Nothing the copy does is saved.
 
-  - A round button on the right edge of the screen opens the window.
+  - The round chart button on the right edge opens and closes the window. Click the button
+    beside the red X to fold it down to its title. Until you run a scan after loading your
+    character, it says "Combat Simulator". During a scan it counts the finished fights,
+    "Simulator · 4 of 12", and at the end it says "Simulator · Done: 12 fights". A scan you
+    cancel says "Simulator · Stopped: 4 of 12". "Simulator · Error" means the window has a
+    message for you: open it to read it.
+  - Click the fold button again or the round chart button to return to the same tab, list,
+    sort order and selected fight. The red X closes the window even when folded. A scan
+    keeps running while the window is folded or closed. The window remembers its place,
+    size and whether you left it folded.
   - Setup: where to fight, for how long, and whether supplies are unlimited or come from your
     bank. "Where" opens a list in which you tick one area, several, or none for everything
     (an area simulates every enemy in it, a dungeon is one fight).

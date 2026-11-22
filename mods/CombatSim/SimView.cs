@@ -72,6 +72,12 @@ sealed class SimState
     public string FoodName = "", FoodLoadoutId = "";
     public bool Running;
     public int Done, Total;
+    public const string ErrorText = "Error";
+    public string CountText(string done) => $"{done} of {Total}";
+    public string FightCount => CountText(Done.ToString());
+    public string DoneText => $"Done: {Total} {(Total == 1 ? "fight" : "fights")}";
+    public string ScanStatus => Message != "" ? ErrorText : Total == 0 ? "" : Running ? FightCount
+        : Done == Total ? DoneText : "Stopped: " + FightCount;
     public string Current = "", Message = "";
 
     public static readonly (string Label, double Hours)[] Durations =
@@ -979,11 +985,14 @@ sealed class SimView
         {
             _tableSignature = signature;
             foreach (Node old in _rows.GetChildren()) old.QueueFree();
-            if (!_state.Pinned || _state.Selected == null || ordered.All(r => r.Target.Key != _state.Selected))
-            {
-                _state.Selected = ordered.FirstOrDefault()?.Target.Key;
-                _state.Pinned = false;
-            }
+            // On Best for a fight has one line, its best stance so far. When a better stance of the fight you clicked
+            // replaces that line during a scan, the fight stays selected on its new line, open or folded.
+            SimTarget? pinned = _state.Pinned && _state.Selected is { } key
+                ? _state.ShownResults.GetValueOrDefault(SimResult.MakeKey(_state.ShownSetupKey, key))?.Target : null;
+            SimResult? match = pinned == null ? null : ordered.FirstOrDefault(r =>
+                r.Target.Key == pinned.Key || (_state.ShownBest && r.Target.FightKey == pinned.FightKey));
+            _state.Pinned = match != null;
+            _state.Selected = (match ?? ordered.FirstOrDefault())?.Target.Key;
             var group = new ButtonGroup();
             foreach (SimResult result in ordered) _rows.AddChild(BuildRow(result, group));
         }
@@ -1342,8 +1351,7 @@ sealed class SimView
         _progress.Value = _state.Total > 0 ? (double)_state.Done / _state.Total : 0;
         _progress.Modulate = _state.Running || _state.Done > 0 ? Colors.White : new Color(1, 1, 1, 0.35f);
         _status.Text = _state.Message != "" ? _state.Message
-            : _state.Running ? $"{_state.Done} of {_state.Total}  ·  {_state.Current}"
-            : _state.Total > 0 && _state.Done >= _state.Total ? $"Done: {_state.Total} {(_state.Total == 1 ? "fight" : "fights")}" : "";
+            : _state.Running && _state.Current != "" ? $"{_state.ScanStatus}  ·  {_state.Current}" : _state.ScanStatus;
         _status.AddThemeColorOverride("font_color", _state.Message != "" ? Bad : GameStyle.TextGrey);
 
         FillRows();
@@ -1351,6 +1359,8 @@ sealed class SimView
     }
 
 #if DEVTOOLS
+    public Button? DevFirstRow => _rows.GetChildren().OfType<Button>().FirstOrDefault(b => !b.IsQueuedForDeletion());
+
     /// <summary>
     /// Development: opens the areas, the earlier scans, the newest scan, or the item picker of a slot;
     /// "sort=Food/kill" is one click on that column's name, "details=end" scrolls the details to their last line.

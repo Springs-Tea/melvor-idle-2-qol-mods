@@ -2,6 +2,14 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
+## Unreleased
+
+- **Combat Simulator**: a button beside the X folds the window down to its title, as in the Item Encyclopedia,
+  and the window remembers it. Folded, the title follows a scan ("Simulator · 4 of 12", then "Simulator · Done:
+  12 fights"); opened again, the window has the same tab, list, sort and selected fight. After Cancel the window
+  says how far the scan got ("Stopped: 4 of 12"), and in Best for the fight you clicked stays selected when a
+  better stance of it comes in.
+
 ## 0.4.1
 
 For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer (tried with 0.2.0).

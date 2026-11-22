@@ -30,6 +30,7 @@ It does [b]not[/b] re-create the game's combat formulas. It loads a copy of your
 [*][b]Each fight lasts[/b]: 1 hour is a good start. That is game time, not waiting time.
 [*]Press [b]Simulate[/b]. The lines appear as they finish; click one for its details.
 [/list]
+The button beside the red X folds the window down to its title so you can follow a scan while you play. Click it again or press the round chart button to bring the results back.
 
 [size=4][b]What you get, per hour[/b][/size]
 [list]
