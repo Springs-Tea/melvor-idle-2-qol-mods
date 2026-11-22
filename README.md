@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: seven quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: eight quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -74,6 +74,16 @@ Take the ones you want. Each has a page of its own with pictures and details.
       XP per hour on every recipe of a skill's list, the best one in gold. In the XP tooltip the whole
       hour: XP, items made and used, what the products sell for, and how long your materials last.
       <br><a href="https://www.nexusmods.com/melvoridle2/mods/19">Also on Nexus Mods</a>
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/AstrologyOverview"><img src="docs/img/astrology-overview.png" alt="Astrology Overview"></a></td>
+    <td>
+      <h3><a href="mods/AstrologyOverview">Astrology Overview</a></h3>
+      Your constellations in one window, from a round button on the Astrology page: those with a node
+      choice ready first, then the shortest study time to the next unlock. Under each name the knowledge
+      of that unlock, the minor nodes the next major node needs and the bonus every minor node gives; a
+      locked one shows only what it still misses. Click a row to look at that constellation.
     </td>
   </tr>
   <tr>
@@ -187,9 +197,10 @@ flowchart TB
         M5["KillsInCombat"]
         M6["DungeonCompletions"]
         M7["ItemEncyclopedia"]
+        M8["AstrologyOverview"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

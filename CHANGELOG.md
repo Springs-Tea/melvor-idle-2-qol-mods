@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Astrology Overview**, a new mod: on the Astrology page, a round button opens one list of your
+  constellations. Node choices ready to make come first, then the shortest study time to the next unlock,
+  with what that unlock needs and, for a locked constellation, what it still misses. Click a row to open it.
 - **Combat Simulator**: a button beside the X folds the window down to its title, as in the Item Encyclopedia,
   and the window remembers it. Folded, the title follows a scan ("Simulator · 4 of 12", then "Simulator · Done:
   12 fights"); opened again, the window has the same tab, list, sort and selected fight. After Cancel the window

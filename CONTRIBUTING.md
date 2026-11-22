@@ -140,7 +140,9 @@ a direct push, a forced push and deleting it.
 - When you add a mod: a folder named like the mod with an empty project file of the same name, both
   readmes, a line in the table of the main `README.md`, a page text in `publish/nexus`, and its name in
   `tools/make-art.py` (the banner's list and the title of its page). `README.txt` and the page text say
-  `{version}` where the version goes.
+  `{version}` where the version goes. Also: its line in `publish/nexus/Pack.txt`, its entry in
+  `tools/nexus-headers.py` and in `PAGES` of `tools/nexus-pages.py` (`None` until its page exists), the mod
+  lists of the three forms in `.github/ISSUE_TEMPLATE`, and every place that counts the mods.
 
 The drawn pictures of the readmes (the banner, the paper titles, the buttons, the tags under the banner)
 come from `tools/make-art.py`; change a title or a version there and run it again rather than editing the

@@ -1,0 +1,55 @@
+NAME
+Astrology Overview
+
+VERSION
+{version}
+
+FILE
+dist/AstrologyOverview-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+docs/img/astrology-overview.png (main)
+
+SUMMARY (the short line under the name, at most 350 characters)
+Which constellation is closest to its next unlock? One list of your constellations: node choices ready first, then the shortest study time, with what the next unlock needs and what every minor node gives. Locked ones show what they still miss.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Astrology Overview[/b][/size]
+Open Astrology and press the round button with the star in the strip of round buttons on the right edge of the screen. The button is there only on the Astrology page, and it is lit while the overview is open. You can open the overview from the list of constellations or while looking at one of them.
+
+[size=4][b]Reading the list[/b][/size]
+[list]
+[*]Constellations with a minor or major node choice ready come first, with their names in gold. Their row says how many nodes are available to unlock, in the words of the game's constellation screen.
+[*]Then come the others, the shortest study time first. The time is on the right of the name. When no choice is ready, the name with the shortest time is in gold, and so are any with the same time.
+[*]Under the name: the knowledge of the next unlock as the constellation screen shows it, how many more minor nodes the next major node needs, and the bonus every minor node gives.
+[*]A locked constellation shows only the requirements it still misses, in the game's own requirement view. Constellations the game has not revealed yet are not listed. Finished constellations come last.
+[/list]
+The time counts whole studies at your current knowledge per study and study interval. For the constellation you are studying, it counts the time left on the current study. Random events and time spent meeting other requirements are left out.
+
+Click a row to look at that constellation in the game: it is the same as clicking its card in the game's list. The overview closes, so you see the constellation. The red X or the round button closes the overview too. Drag the lines in its bottom right corner to make it larger or smaller; it stays above the game's bar along the bottom of the screen.
+
+[size=4][b]Good to know[/b][/size]
+There are no settings and the mod writes no files. Opening a row cannot start, stop or switch a study, spend a node choice or change your save.
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]In Steam, right-click Melvor Idle 2 and choose Manage > Browse local files.
+[*]Extract the zip there. The file should be at [font=Courier New]mods\AstrologyOverview\AstrologyOverview.dll[/font].
+[*]Start the game. MelvorModLoader.log in the game folder has a line [font=Courier New]Mod loaded: AstrologyOverview[/font].
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\AstrologyOverview[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access. An update can break the mod until it is rebuilt. If a game member is missing, the mod switches itself off and says so in MelvorModLoader.log.
+It uses the game's own textures, fonts and colours. It gives no items, XP or bonuses.
+Open source (MIT). The full guide is in the [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/AstrologyOverview]mod folder[/url].
+Report problems and ideas on the [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]issues page[/url].
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.

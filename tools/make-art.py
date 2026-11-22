@@ -291,6 +291,7 @@ MODS = [   # the banner's list: name, what the mod adds to the screen
     ('Item Sources', 'tooltip'),
     ('Item Encyclopedia', 'window'),
     ('Recipe Rates', 'tooltip'),
+    ('Astrology Overview', 'window'),
     ('Combat Goals', 'window'),
     ('Kills in Combat', 'tag'),
     ('Dungeon Completions', 'tag'),
@@ -298,16 +299,19 @@ MODS = [   # the banner's list: name, what the mod adds to the screen
 
 
 def banner():
-    """The top of the readme as one of the game's windows: the list of the mods, and the details."""
-    w, h = 1000, 416
-    art = Art(w, h, "Melvor Idle 2 Mods: seven quality-of-life mods in the game's own look. Separate downloads. "
+    """The top of the readme as one of the game's windows: the list of the mods, and the details. The window
+    is as tall as the list needs, so a new mod gets a line of the same size as the others."""
+    line, gap = 29, 4.2                           # a line of the list, and the space between two lines
+    top = 112
+    bottom = round(top + 32 + len(MODS) * (line + gap) - gap + 12)
+    w, h = 1000, bottom + 32
+    art = Art(w, h, "Melvor Idle 2 Mods: eight quality-of-life mods in the game's own look. Separate downloads. "
                     'Your save is never changed.')
     frame(art, 0, 0, w, h)
     title = 'Melvor Idle 2 Mods'
     paper(art, w / 2, 22, paper_width(title, 38, 46), 52, title, 38, seed_of('banner'))
     close_button(art, w - 26 - 46, 24, 46)
 
-    top, bottom = 112, 384
     left_x, left_w, right_x, right_w = 22, 566, 604, 374
     column(art, left_x, top, left_w, bottom - top)
     column(art, right_x, top, right_w, bottom - top)
@@ -315,7 +319,7 @@ def banner():
     paper(art, right_x + right_w / 2, top - 17, 214, 31, 'Details', 20, seed_of('details'))
 
     # the list: the first line is the selected one, like a result that was clicked
-    x, y, line, gap, wide = left_x + 18, top + 32, 29, 4.2, left_w - 36 - 13
+    x, y, wide = left_x + 18, top + 32, left_w - 36 - 13
     art.add(rect(x + wide + 5, y, 8, len(MODS) * (line + gap) - gap, '#262321'), rect(x + wide + 5, y, 8, 150, SCROLL))
     for i, (name, kind) in enumerate(MODS):
         row(art, x, y, wide, line, selected=i == 0)
@@ -387,6 +391,7 @@ WINDOWS = {   # the title of each mod's own page
     'item-sources': 'Item Sources',
     'item-encyclopedia': 'Item Encyclopedia',
     'recipe-rates': 'Recipe Rates',
+    'astrology-overview': 'Astrology Overview',
     'combat-goals': 'Combat Goals',
     'kills-in-combat': 'Kills in Combat',
     'dungeon-completions': 'Dungeon Completions',
