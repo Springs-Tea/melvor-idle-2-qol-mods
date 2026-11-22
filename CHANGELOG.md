@@ -2,6 +2,15 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
+## Unreleased
+
+- **Item Encyclopedia**, a new mod: every item of the game in one window (F9, or the round button with the
+  book on the right edge of the screen). Search, sort, filter by kind, slot, combat style, weapon, skill and
+  where an item comes from, down to one area or dungeon, and read everything about an item: the game's own
+  item panel, how many you have, every enemy, recipe, chest and purchase that gives it, and everything it is
+  used in. Click an ingredient to open it; Back returns. A button beside the X folds the window down to its
+  title, to put it aside without closing it, and the filters keep your last five searches one click away.
+
 ## 0.3.0
 
 For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The result of reading every line of the six

@@ -65,6 +65,68 @@ public sealed class GameStyle(float scale = 1f)
         return tag;
     }
 
+    /// <summary>
+    /// The same small dark tag as a button: a picture and a few words that lead somewhere when clicked (an
+    /// ingredient that opens its own page). Its border lights up under the pointer.
+    /// </summary>
+    public Button LinkTag(Texture2D? icon, string text)
+    {
+        var tag = new Button
+        {
+            Text = text, Icon = icon, FocusMode = Control.FocusModeEnum.None,
+            MouseDefaultCursorShape = Control.CursorShape.PointingHand, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        foreach (string state in new[] { "normal", "hover", "pressed", "disabled", "focus" })
+        {
+            var box = new StyleBoxFlat { BgColor = new Color(state == "pressed" ? "2a241c" : "141310"), BorderColor = state is "hover" or "pressed" ? Highlight : new Color("5c5c5c") };
+            box.SetBorderWidthAll(1);
+            box.SetCornerRadiusAll(2);
+            box.ContentMarginLeft = box.ContentMarginRight = Px(5);
+            box.ContentMarginTop = box.ContentMarginBottom = Px(1);
+            tag.AddThemeStyleboxOverride(state, box);
+        }
+        foreach (string color in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_disabled_color" })
+            tag.AddThemeColorOverride(color, color == "font_disabled_color" ? TextDim : TextPaper);
+        if (SemiBold is { } font) tag.AddThemeFontOverride("font", font);
+        tag.AddThemeFontSizeOverride("font_size", Px(12));
+        tag.AddThemeConstantOverride("icon_max_width", Px(16));
+        tag.AddThemeConstantOverride("h_separation", Px(4));
+        return tag;
+    }
+
+    /// <summary>The small arrow of the game's drop-downs.</summary>
+    public static Texture2D? DropArrow
+    {
+        get
+        {
+            // The drop-downs' own theme first; it may leave the arrow to the game's main theme.
+            foreach (Theme? theme in new[] { Load<Theme>("res://Assets/Styles/Themes/custom_dropdown_1.tres"), ThemeDB.GetProjectTheme(), ThemeDB.GetDefaultTheme() })
+                if (theme != null && theme.HasIcon("arrow", "OptionButton")) return theme.GetIcon("arrow", "OptionButton");
+            return null;
+        }
+    }
+
+    /// <summary>An option that is on or off, with the game's own tick box in front of its name.</summary>
+    public Button TickBox(string text, bool on)
+    {
+        // Copies at the size they are shown: the box is thin lines, which a picture shrunk on the fly loses.
+        Texture2D? empty = Sized(Icon("EmptyTickbox_64Artboard 1"), 18), ticked = Sized(Icon("GreenTickbox"), 18);
+        var box = new Button
+        {
+            Text = text, ToggleMode = true, ButtonPressed = on, Icon = on ? ticked : empty, Alignment = HorizontalAlignment.Left,
+            FocusMode = Control.FocusModeEnum.None, MouseDefaultCursorShape = Control.CursorShape.PointingHand,
+        };
+        foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed", "disabled", "focus" })
+            box.AddThemeStyleboxOverride(state, new StyleBoxEmpty { ContentMarginLeft = Px(2), ContentMarginRight = Px(2), ContentMarginTop = Px(2), ContentMarginBottom = Px(2) });
+        foreach (string color in new[] { "font_color", "font_pressed_color", "font_focus_color", "font_hover_color", "font_hover_pressed_color" })
+            box.AddThemeColorOverride(color, color.Contains("hover") ? TextWhite : TextPaper);
+        box.AddThemeFontSizeOverride("font_size", Px(13));
+        box.AddThemeConstantOverride("icon_max_width", Px(18));
+        box.AddThemeConstantOverride("h_separation", Px(6));
+        box.Toggled += now => box.Icon = now ? ticked : empty;
+        return box;
+    }
+
     /// <summary>The thin line under the name in the item tooltip: light on the left, gone on the right.</summary>
     public Panel FadingLine()
     {
@@ -72,6 +134,46 @@ public sealed class GameStyle(float scale = 1f)
         var gradient = new Gradient { Offsets = new[] { 0f, 1f }, Colors = new[] { new Color(1, 1, 1, 0.55f), new Color(1, 1, 1, 0) } };
         line.AddThemeStyleboxOverride("panel", new StyleBoxTexture { Texture = new GradientTexture1D { Gradient = gradient, Width = 256 } });
         return line;
+    }
+
+    /// <summary>The small dark box the game's item panel shows an item's picture in.</summary>
+    public StyleBox ItemFrame(bool lit = false)
+    {
+        var box = new StyleBoxFlat { BgColor = new Color("191108"), BorderColor = lit ? Highlight : new Color("3e2f1c") };
+        box.SetBorderWidthAll(1);
+        box.SetCornerRadiusAll(4);
+        box.ContentMarginLeft = box.ContentMarginRight = box.ContentMarginTop = box.ContentMarginBottom = Px(4);
+        return box;
+    }
+
+    /// <summary>
+    /// A box to type a search into, like the bank's: the looking glass at its right end while it is empty,
+    /// the cross that empties it once something is typed.
+    /// </summary>
+    public LineEdit SearchBox(string placeholder)
+    {
+        var box = new LineEdit { PlaceholderText = placeholder, ClearButtonEnabled = true, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        box.AddThemeFontSizeOverride("font_size", Px(14));
+        box.RightIcon = Sized(Icon("search"), 16);
+        return box;
+    }
+
+    /// <summary>
+    /// A copy of a picture at a size of this window, for the places that draw a picture as large as it is
+    /// (the end of a text box) instead of fitting it. The picture itself when it cannot be copied.
+    /// </summary>
+    public Texture2D? Sized(Texture2D? picture, float designPixels)
+    {
+        if (picture == null) return null;
+        try
+        {
+            Image? image = picture.GetImage();
+            if (image == null || image.IsEmpty()) return picture;
+            if (image.IsCompressed()) image.Decompress();
+            image.Resize(Px(designPixels), Px(designPixels), Image.Interpolation.Lanczos);
+            return ImageTexture.CreateFromImage(image);
+        }
+        catch { return picture; }
     }
 
     /// <summary>The frame of the game's large pop-up windows (the Mastery Guild, the combat areas menu).</summary>

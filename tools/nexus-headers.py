@@ -23,6 +23,7 @@ WIDTH, HEIGHT = 1300, 372
 HEADERS = {
     'CombatSim': ('h-combat-simulator.svg', 'What does an hour of this fight give me, what does it cost, and will I die?'),
     'ItemSources': ('h-item-sources.svg', 'Where does this drop, and what is it for?'),
+    'ItemEncyclopedia': ('h-item-encyclopedia.svg', 'What is this item, what is it good for, and where do I get it?'),
     'RecipeRates': ('h-recipe-rates.svg', 'Which recipe gives more XP per hour?'),
     'CombatGoals': ('h-combat-goals.svg', 'How long until Magic 20, while I am also training Hitpoints and Defence?'),
     'KillsInCombat': ('h-kills-in-combat.svg', 'How many of these have I killed?'),

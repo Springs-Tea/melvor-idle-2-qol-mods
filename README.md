@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: six quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: seven quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -57,6 +57,16 @@ Take the ones you want. Each has a page of its own with pictures and details.
     </td>
   </tr>
   <tr>
+    <td><a href="mods/ItemEncyclopedia"><img src="docs/img/item-encyclopedia.png" alt="Item Encyclopedia"></a></td>
+    <td>
+      <h3><a href="mods/ItemEncyclopedia">Item Encyclopedia</a></h3>
+      Every item of the game in one window. Search it, filter it by kind, slot, combat style, weapon,
+      skill and where it comes from, down to one dungeon, and read everything about an item: its stats
+      and requirements, how many you have, which enemy drops it and how likely, what it is made from and
+      what it is used in. Click an ingredient to go on from there.
+    </td>
+  </tr>
+  <tr>
     <td><a href="mods/RecipeRates"><img src="docs/img/recipe-rates.png" alt="Recipe Rates"></a></td>
     <td>
       <h3><a href="mods/RecipeRates">Recipe Rates</a></h3>
@@ -93,9 +103,9 @@ Take the ones you want. Each has a page of its own with pictures and details.
 </table>
 
 Downloads are on this repository's [Releases](https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases).
-If you would rather use Nexus Mods, every mod has a page
+If you would rather use Nexus Mods, the mods have pages
 there too, with the same guide and the same zip, and there is one for
-[all six in one zip](https://www.nexusmods.com/melvoridle2/mods/23).
+[all of them in one zip](https://www.nexusmods.com/melvoridle2/mods/23).
 
 <h2 align="center"><a name="install"></a><img src="docs/img/art/h-install.svg" alt="Install" width="720"></h2>
 
@@ -168,23 +178,25 @@ flowchart TB
         L["Melvor Mod Loader<br/>loads every DLL under mods"]
     end
     subgraph repo["This repository"]
-        S["mods/Shared<br/>GameStyle · GameWindow · ModFiles"]
+        S["mods/Shared<br/>GameStyle · GameWindow · ModFiles · ItemIndex"]
         M1["CombatSim"]
         M2["ItemSources"]
         M3["RecipeRates"]
         M4["CombatGoals"]
         M5["KillsInCombat"]
         M6["DungeonCompletions"]
+        M7["ItemEncyclopedia"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6
-    M1 & M2 & M3 & M4 & M5 & M6 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own
   textures, fonts and colours at runtime; nothing is copied into a mod. `GameWindow.cs` is a draggable,
   resizable window in the style of the game's pop-ups.
-- **They read the game instead of re-creating it.** The simulator runs the game's combat; Item Sources reads
-  the game's drop tables; Recipe Rates uses the game's own values for a recipe, bonuses included.
+- **They read the game instead of re-creating it.** The simulator runs the game's combat; Item Sources and
+  the Item Encyclopedia read the game's drop tables and recipes through one shared index; Recipe Rates uses
+  the game's own values for a recipe, bonuses included.
 
 | Folder | Contents |
 | --- | --- |

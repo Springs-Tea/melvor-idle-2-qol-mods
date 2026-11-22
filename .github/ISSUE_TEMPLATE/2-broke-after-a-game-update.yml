@@ -23,6 +23,7 @@ body:
       options:
         - Combat Simulator
         - Item Sources
+        - Item Encyclopedia
         - Recipe Rates
         - Combat Goals
         - Kills in Combat
@@ -41,7 +42,7 @@ body:
     attributes:
       label: Mod and loader version
       description: 'Both are in MelvorModLoader.log: "Melvor Mod Loader 0.2.0 starting" and "Mod loaded: RecipeRates 0.3.0".'
-      placeholder: all six at 0.3.0, loader 0.2.0
+      placeholder: all of them at 0.3.0, loader 0.2.0
     validations:
       required: true
   - type: textarea

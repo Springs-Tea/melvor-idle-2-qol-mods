@@ -69,7 +69,8 @@ Use a test character while you develop: a mod runs inside the real game.
   `README.txt` (ships in the zip).
 - `mods/Shared` is compiled into every mod. `GameStyle.cs` is the game's look; `GameWindow.cs` is a window in
   the style of the game's pop-ups; `ModFiles.cs` reads and writes a mod's settings safely and has `Tempo`,
-  for work that should happen a few times a second.
+  for work that should happen a few times a second; `ItemIndex.cs` and `ItemLines.cs` work out, from the
+  game's data, where every item comes from and what it is used in.
 - `mods/Directory.Build.props` holds everything the mods' builds share, including the one version number.
   A mod's own project file is empty: its name is the mod's name.
 - A mod is a public class that implements the loader's `IMod`. The loader's

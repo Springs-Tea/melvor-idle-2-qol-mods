@@ -5,7 +5,9 @@ namespace MelvorMods.Shared;
 
 /// <summary>
 /// A window that looks like the game's own large pop-ups: the heavy frame, the title on a strip of paper, a
-/// red X to close. It can be dragged from any empty spot and resized from its bottom right corner.
+/// red X to close. It can be dragged from any empty spot and resized from its bottom right corner. A window
+/// that asks for it also has a button beside the X that folds it down to its title, to be put aside without
+/// closing it.
 ///
 /// A size is a rebuild, not a stretch: while the corner is dragged the window is only scaled (cheap, a little
 /// soft); on release <see cref="ResizeRequested"/> is raised and the owner builds a new window at that scale,
@@ -27,14 +29,19 @@ public sealed class GameWindow
     public event Action<Vector2>? Moved;
     /// <summary>The corner was released at this scale (already in steps of 5%).</summary>
     public event Action<float>? ResizeRequested;
+    /// <summary>The window was folded down to its title (true) or opened up again.</summary>
+    public event Action<bool>? MinimisedChanged;
+    /// <summary>Only the title is showing.</summary>
+    public bool Minimised { get; private set; }
 
-    readonly Control _grip;
+    readonly Control _grip, _balance;
+    readonly Button? _fold;
     readonly Vector2? _startAt;
     bool _dragging, _resizing, _placed;
     Vector2 _resizeFrom;
     float _resizeTo;
 
-    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105)
+    public GameWindow(SceneTree tree, string title, float scale, Vector2? position, int layer = 105, bool canMinimise = false, bool minimised = false)
     {
         Style = new GameStyle(Math.Clamp(scale, MinScale, MaxScale));
         _startAt = position;
@@ -51,13 +58,34 @@ public sealed class GameWindow
         var column = Style.Spaced(new VBoxContainer(), 10);
         Root.AddChild(column);
 
-        // [ (space as wide as the X) ......... [ title on paper ] ......... [X] ]
-        var bar = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        // [ (space as wide as the buttons) ......... [ title on paper ] ......... [_] [X] ]
+        var bar = Style.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass }, 4);
         int closeSize = Style.Px(32);
-        bar.AddChild(new Control { CustomMinimumSize = new Vector2(closeSize, 0), MouseFilter = Control.MouseFilterEnum.Ignore });
+        _balance = new Control { CustomMinimumSize = new Vector2(canMinimise ? closeSize * 2 + Style.Px(4) : closeSize, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
+        bar.AddChild(_balance);
         var centre = new CenterContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore };
         centre.AddChild(Style.PaperTag(title, 18, 220));
         bar.AddChild(centre);
+        if (canMinimise)
+        {
+            // Its sign is drawn, not written: a line for "down to the title", a box for "open again".
+            Button fold = _fold = new Button
+            {
+                ThemeTypeVariation = "TexturedButton4x",
+                CustomMinimumSize = new Vector2(closeSize, closeSize),
+                SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+                MouseDefaultCursorShape = Control.CursorShape.PointingHand,
+                FocusMode = Control.FocusModeEnum.None,
+            };
+            fold.Draw += () =>
+            {
+                float width = Math.Max(2f, MathF.Round(2 * Style.Scale)), left = fold.Size.X * 0.3f, right = fold.Size.X * 0.7f;
+                if (Minimised) fold.DrawRect(new Rect2(left, fold.Size.Y * 0.3f, right - left, fold.Size.Y * 0.36f), GameStyle.TextPaper, false, width);
+                else fold.DrawLine(new Vector2(left, fold.Size.Y * 0.64f), new Vector2(right, fold.Size.Y * 0.64f), GameStyle.TextPaper, width);
+            };
+            fold.Pressed += () => SetMinimised(!Minimised);
+            bar.AddChild(fold);
+        }
         var close = new Button
         {
             Text = "X", ThemeTypeVariation = "TexturedButtonCancel2x",
@@ -76,7 +104,37 @@ public sealed class GameWindow
 
         _grip = BuildGrip();
         Layer.AddChild(_grip);
+        if (canMinimise) Fold(minimised);
         tree.Root.AddChild(Layer);
+    }
+
+    /// <summary>
+    /// Folds the window down to its title, or opens it up again. Its top right corner, where the button is,
+    /// stays where it is, so the same spot opens it again.
+    /// </summary>
+    public void SetMinimised(bool minimised)
+    {
+        if (_fold == null || minimised == Minimised) return;
+        float right = Root.Position.X + Root.Size.X;
+        // Where it goes is decided here from now on, not by where it was first put.
+        _placed = true;
+        Fold(minimised);
+        Root.ResetSize();
+        Root.Position = new Vector2(MathF.Round(right - Root.Size.X), Root.Position.Y);
+        KeepOnScreen();
+        MinimisedChanged?.Invoke(minimised);
+        Moved?.Invoke(Root.Position);
+    }
+
+    void Fold(bool minimised)
+    {
+        Minimised = minimised;
+        Body.Visible = !minimised;
+        // Folded, the title needs nothing to balance the buttons: the bar is as short as it can be.
+        _balance.Visible = !minimised;
+        _grip.Visible = !minimised;
+        _fold!.TooltipText = minimised ? "Open the window again" : "Fold down to the title";
+        _fold.QueueRedraw();
     }
 
     public bool Visible

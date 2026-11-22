@@ -1,0 +1,77 @@
+NAME
+Item Encyclopedia
+
+VERSION
+{version}
+
+FILE
+dist/ItemEncyclopedia-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+docs/img/item-encyclopedia.png (main), item-encyclopedia-list.png, item-encyclopedia-dungeon.png, item-encyclopedia-folded.png
+
+SUMMARY (the short line under the name, at most 350 characters)
+Every item of the game in one window. Search it, filter it by kind, slot, combat style, weapon, skill and source (down to one dungeon), and read everything about an item: its stats and requirements, how many you have, which enemy drops it and how likely, what it is made from and what it is used in.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Item Encyclopedia[/b][/size]
+Every item of the game in one window. Search it by name, narrow it down, and read everything about the item you pick: what it does, what it takes to use it, how many you have, where it comes from and what it is used in. It only shows what the game's own data says; it never gives, buys or equips anything.
+
+[size=4][b]Opening it[/b][/size]
+Press [b]F9[/b], or the round button with the book on the right edge of the screen. Drag the window from any empty spot, and its bottom right corner to resize it. The small button beside the X folds it down to its title, so you can put it aside without closing it. Its place, size and filters are remembered.
+
+[size=4][b]Finding an item[/b][/size]
+[list]
+[*][b]Search[/b] by name or description.
+[*][b]Sort[/b] by the game's order, name, level, sell price, or how many you own.
+[*][b]Kind[/b]: weapon, armour, jewellery, ammo, food, potion, tool, chest, material and more.
+[*][b]Slot[/b]: helmet, torso, legs, boots, gloves, cape, offhand, ring, amulet, weapon, ammo.
+[*][b]Combat style[/b]: melee, ranged, magic.
+[*][b]Weapon[/b]: bow, sword, staff, crossbow, dagger and the rest.
+[*][b]Skill[/b]: what a skill gives, what it uses, and its tools.
+[*][b]Comes from[/b]: an enemy drop, a skill, the shop, a chest, thieving, a quest, an upgrade, or one area or dungeon.
+[*][b]Show[/b]: only what you own, only what you have found, or only what you have not found yet.
+[*][b]Recent[/b]: your last five different searches and filter choices, one click away.
+[/list]
+Tick several to combine them: Ranged and Torso for a ranger's body armour, Cooking for everything that skill makes and uses, a dungeon's name for its loot.
+
+[size=4][b]The details[/b][/size]
+[list]
+[*]The game's own item panel: picture, name, price, stats, bonuses and requirements, in the game's words.
+[*]How many you have, in the bank and equipped.
+[*][b]Found in[/b]: every enemy that drops it with its level, area, amount and chance; every recipe with its level and ingredients; chests, thieving targets, shop purchases, quests.
+[*][b]Used in[/b]: every recipe, upgrade and purchase that takes it, and what comes out.
+[*]Click any ingredient or product to open that item. Back takes you to where you came from.
+[/list]
+
+[size=4][b]No spoilers[/b][/size]
+One tick keeps the items you have not found yet as "???" in the list, without their picture and details.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]Everything is read from the game's data, so items a game update adds show up by themselves.
+[*]The chances are the base ones from the game's own drop tables; bonuses to drop chance are not applied.
+[*]The game has no field for "this is ranged armour": the combat style is worked out from the item's requirements and stats.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\ItemEncyclopedia\ItemEncyclopedia.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\ItemEncyclopedia[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.
+It uses the game's own textures, fonts and colours, so it looks like part of the game. It gives no items, XP or bonuses.
+Open source (MIT), with more pictures and the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/ItemEncyclopedia]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/ItemEncyclopedia[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.

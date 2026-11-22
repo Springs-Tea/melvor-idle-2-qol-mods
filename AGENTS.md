@@ -6,7 +6,7 @@ this page needs fixing.
 
 ## What this is
 
-Six mods for the game Melvor Idle 2 (Godot 4, C#, .NET 10), loaded by the unofficial Melvor Mod Loader. A
+Seven mods for the game Melvor Idle 2 (Godot 4, C#, .NET 10), loaded by the unofficial Melvor Mod Loader. A
 mod is one DLL built from `mods/<Mod>`; the code in `mods/Shared` is compiled into every one of them. They
 show what the game already knows (rates, sources, counts, a combat simulation). They never give items or
 XP and never change the save.
@@ -58,7 +58,7 @@ XP and never change the save.
 | Path | What it is |
 | --- | --- |
 | `mods/<Mod>/` | One mod: an empty project file named like the mod, its code, `README.md` (the guide on GitHub and, converted, on Nexus Mods) and `README.txt` (ships in the zip). |
-| `mods/Shared/` | `GameStyle.cs` (the game's look), `GameWindow.cs` (a window like the game's pop-ups), `ModFiles.cs` (settings written safely, `Tempo`). |
+| `mods/Shared/` | `GameStyle.cs` (the game's look), `GameWindow.cs` (a window like the game's pop-ups), `ModFiles.cs` (settings written safely, `Tempo`), `ItemIndex.cs` and `ItemLines.cs` (where every item comes from and goes to, for Item Sources and the Item Encyclopedia). |
 | `mods/Directory.Build.props` | Everything the builds share, and the one version number. |
 | `third_party/MelvorModLoader/` | The loader's source at 0.1.3, to read. Not ours: do not edit it and do not replace it with a newer version, whose license no longer allows copying. |
 | `tools/` | Scripts: build and restart, packaging, the repository check, the drawn art, the Nexus page texts. Each says what it does in its first lines. |

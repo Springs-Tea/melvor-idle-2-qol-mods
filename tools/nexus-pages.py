@@ -22,10 +22,16 @@ import sys
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 REPO = 'https://github.com/Springs-Tea/melvor-idle-2-qol-mods'
 PAGE = 'https://www.nexusmods.com/melvoridle2/mods/'
-PAGES = {'CombatSim': 17, 'ItemSources': 18, 'RecipeRates': 19, 'CombatGoals': 20, 'KillsInCombat': 21,
-         'DungeonCompletions': 22, 'Pack': 23}
+# The number of each mod's page on Nexus. None is a mod that has no page there yet: until its number is
+# written here, links to it lead to its guide on GitHub.
+PAGES = {'CombatSim': 17, 'ItemSources': 18, 'ItemEncyclopedia': None, 'RecipeRates': 19, 'CombatGoals': 20,
+         'KillsInCombat': 21, 'DungeonCompletions': 22, 'Pack': 23}
 MODS = [mod for mod in PAGES if mod != 'Pack']
 PAPER, GOLD, GREY = '#e9dfc1', '#edbf59', '#b5b5b5'   # the game's paper, gold and secondary text
+
+
+def address(mod):
+    return PAGE + str(PAGES[mod]) if PAGES.get(mod) else f'{REPO}/tree/main/mods/{mod}'
 
 
 def heading(title):
@@ -46,7 +52,7 @@ def inline(text, folder):
         if not re.match(r'https?://', target):
             path = os.path.normpath(os.path.join('mods', folder, target)).replace('\\', '/')
             other = re.fullmatch(r'mods/(\w+)(/README\.md)?', path)   # another mod's guide: its own page here
-            target = PAGE + str(PAGES[other.group(1)]) if other and other.group(1) in PAGES else REPO + '/tree/main/' + path
+            target = address(other.group(1)) if other and other.group(1) in PAGES else REPO + '/tree/main/' + path
         return f'[url={target}]{label}[/url]'
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', link, text)
     text = re.sub(r'\*\*(.+?)\*\*', r'[b]\1[/b]', text)
@@ -195,11 +201,11 @@ def convert(folder, images, others):
     out = body(readme(folder), folder, images)
 
     out.extend(heading('The rest of the set'))
-    out.append('Six mods made together; each works on its own.')
+    out.append('Seven mods made together; each works on its own.')
     out.append('[list]')
-    out.extend(f'[*][url={PAGE}{PAGES[mod]}][b]{name}[/b][/url]: {line}' for mod, (name, line) in others.items() if mod != folder)
+    out.extend(f'[*][url={address(mod)}][b]{name}[/b][/url]: {line}' for mod, (name, line) in others.items() if mod != folder)
     out.append('[/list]')
-    out.append(f'All six in one zip: [url={PAGE}{PAGES["Pack"]}]Quality of Life Mods (all in one)[/url]')
+    out.append(f'All seven in one zip: [url={PAGE}{PAGES["Pack"]}]Quality of Life Mods (all in one)[/url]')
     out.append('')
 
     out.extend(heading('About'))
@@ -229,7 +235,7 @@ def pack(images):
         opening = lines[:next(n for n, line in enumerate(lines) if line.startswith('## '))]
         out.extend(heading(name))
         out.extend(body(opening, mod, images))
-        out.append(f'[url={PAGE}{PAGES[mod]}]The full guide is on its own page: {name}[/url]')
+        out.append(f'[url={address(mod)}]The full guide is on its own page: {name}[/url]')
         out.append('')
     out.append(after.strip())
     return tidy(out), others

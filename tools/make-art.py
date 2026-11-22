@@ -289,6 +289,7 @@ def heading(art, x, y, w, title, size):
 MODS = [   # the banner's list: name, what the mod adds to the screen
     ('Combat Simulator', 'window'),
     ('Item Sources', 'tooltip'),
+    ('Item Encyclopedia', 'window'),
     ('Recipe Rates', 'tooltip'),
     ('Combat Goals', 'window'),
     ('Kills in Combat', 'tag'),
@@ -299,7 +300,7 @@ MODS = [   # the banner's list: name, what the mod adds to the screen
 def banner():
     """The top of the readme as one of the game's windows: the list of the mods, and the details."""
     w, h = 1000, 416
-    art = Art(w, h, "Melvor Idle 2 Mods: six quality-of-life mods in the game's own look. Separate downloads. "
+    art = Art(w, h, "Melvor Idle 2 Mods: seven quality-of-life mods in the game's own look. Separate downloads. "
                     'Your save is never changed.')
     frame(art, 0, 0, w, h)
     title = 'Melvor Idle 2 Mods'
@@ -314,7 +315,7 @@ def banner():
     paper(art, right_x + right_w / 2, top - 17, 214, 31, 'Details', 20, seed_of('details'))
 
     # the list: the first line is the selected one, like a result that was clicked
-    x, y, line, gap, wide = left_x + 18, top + 32, 33, 4.6, left_w - 36 - 13
+    x, y, line, gap, wide = left_x + 18, top + 32, 29, 4.2, left_w - 36 - 13
     art.add(rect(x + wide + 5, y, 8, len(MODS) * (line + gap) - gap, '#262321'), rect(x + wide + 5, y, 8, 150, SCROLL))
     for i, (name, kind) in enumerate(MODS):
         row(art, x, y, wide, line, selected=i == 0)
@@ -384,6 +385,7 @@ SECTIONS = {
 WINDOWS = {   # the title of each mod's own page
     'combat-simulator': 'Combat Simulator',
     'item-sources': 'Item Sources',
+    'item-encyclopedia': 'Item Encyclopedia',
     'recipe-rates': 'Recipe Rates',
     'combat-goals': 'Combat Goals',
     'kills-in-combat': 'Kills in Combat',

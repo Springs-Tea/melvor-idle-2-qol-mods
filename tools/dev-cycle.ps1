@@ -4,6 +4,7 @@
 #   .\tools\dev-cycle.ps1 -Mod RecipeRates
 #   .\tools\dev-cycle.ps1 -Mod DungeonCompletions -Request areas.request -Produces shot-areas.png
 #   .\tools\dev-cycle.ps1 -Mod ItemSources -Into ItemSources -Request item.request -Text 'Big Bone' -Produces shot-item.png
+#   .\tools\dev-cycle.ps1 -Mod ItemEncyclopedia -Into ItemEncyclopedia -Request enc.request -Text "open`nsearch=bow`nshot=bows" -Produces enc.done
 #
 # Combat Goals is always built along: its helper (mods\CombatGoals\Dev.cs) presses "Load" on the main menu and
 # confirms the "Welcome back" window, which is what opens the character. -Into is the mod whose folder the
