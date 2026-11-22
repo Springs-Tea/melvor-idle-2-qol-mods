@@ -2,33 +2,35 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
-## Unreleased
+## 0.5.0
 
-- **Item Sources**: the game's drop lists, in View Enemy Stats (Drops) and on a thieving target's View
-  Possible Rewards, get the tooltip of "Found in" on each chance: how many kills or tries it usually takes.
-  A thieving target also gets a tag with your successful tries beside its name.
-- **Combat Simulator**: each enemy's card in the game's combat areas menu gets a small tag with your newest
-  scan of that enemy: Safe or Risky, then XP and deaths per hour. It is grey and says "Other setup" when that
-  scan was made with other equipment, stance, spell, food or prayers; a click opens the scan in the simulator.
-  Opening the menu never simulates anything; a box at the bottom of History hides the tags.
+For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer (tried with 0.2.0). Three new mods.
+
+- **Astrology Overview**, a new mod: on the Astrology page, a round button opens one list of your
+  constellations. Node choices ready to make come first, then the shortest study time to the next unlock,
+  with what that unlock needs and, for a locked constellation, what it still misses. Click a row to open it.
 - **Skill Bonuses**, a new mod: on a skill's page, a round button opens every bonus of the selected recipe,
   tree or plot, with where each comes from: mastery ranks, constellations, potions, shop upgrades, equipment.
   The game shows only the totals; the sources add up to them.
 - **Away Summary**, a new mod: come back to the game after a while in another window, and a summary in the
   look of the game's own "Welcome Back" window says what changed while you were away: the XP and levels,
   the items gained and used, gold, and when an action stopped or what a defeat cost.
-- **Item Sources**: a tooltip kept open with Alt has a Make button for anything a skill makes from materials.
-  Enter how many you want and it lists every step down to what you gather or find, under its skill: how many
-  are needed, what your bank already covers, what is still to make or get, and how long each step takes at
-  your current rate.
-- **Astrology Overview**, a new mod: on the Astrology page, a round button opens one list of your
-  constellations. Node choices ready to make come first, then the shortest study time to the next unlock,
-  with what that unlock needs and, for a locked constellation, what it still misses. Click a row to open it.
 - **Combat Simulator**: a button beside the X folds the window down to its title, as in the Item Encyclopedia,
   and the window remembers it. Folded, the title follows a scan ("Simulator · 4 of 12", then "Simulator · Done:
   12 fights"); opened again, the window has the same tab, list, sort and selected fight. After Cancel the window
   says how far the scan got ("Stopped: 4 of 12"), and in Best for the fight you clicked stays selected when a
   better stance of it comes in.
+- **Combat Simulator**: each enemy's card in the game's combat areas menu gets a small tag with your newest
+  scan of that enemy: Safe or Risky, then XP and deaths per hour. It is grey and says "Other setup" when that
+  scan was made with other equipment, stance, spell, food or prayers; a click opens the scan in the simulator.
+  Opening the menu never simulates anything; a box at the bottom of History hides the tags.
+- **Item Sources**: a tooltip kept open with Alt has a Make button for anything a skill makes from materials.
+  Enter how many you want and it lists every step down to what you gather or find, under its skill: how many
+  are needed, what your bank already covers, what is still to make or get, and how long each step takes at
+  your current rate.
+- **Item Sources**: the game's drop lists, in View Enemy Stats (Drops) and on a thieving target's View
+  Possible Rewards, get the tooltip of "Found in" on each chance: how many kills or tries it usually takes.
+  A thieving target also gets a tag with your successful tries beside its name.
 
 ## 0.4.1
 
