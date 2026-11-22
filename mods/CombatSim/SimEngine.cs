@@ -318,6 +318,7 @@ sealed class SimEngine
         var walletDebt = new Dictionary<Currency, long>();
         bool refilling = false;
         long ticks = 0;
+        double ammoUsed = 0;
 
         void Add(Dictionary<string, Amount> into, string id, string name, double quantity, double sellsFor, bool isCurrency) =>
             into[id] = into.TryGetValue(id, out Amount? old) ? old with { Quantity = old.Quantity + quantity } : new Amount(id, name, quantity, sellsFor, isCurrency);
@@ -367,6 +368,7 @@ sealed class SimEngine
             if (e.Item == null) return;
             Add(used, e.Item.Id, ItemName(e.Item), 1, Price(e.Item), false);
             ammoDebt[e.Item] = ammoDebt.GetValueOrDefault(e.Item) + 1;
+            ammoUsed++;
         };
         // Money in is income (coins from drops, slayer coins); money out is a supply (prayer points).
         bank.Wallet.CurrencyQuantityChanged += (_, e) =>
@@ -460,7 +462,51 @@ sealed class SimEngine
                 result.Xp[skill.Id] = skill.Experience.Xp - before;
         result.Loot = loot.Values.OrderByDescending(l => l.IsCurrency ? double.MaxValue : l.Quantity * Math.Max(l.SellsFor, 0.001)).ToList();
         result.Used = used.Values.OrderByDescending(u => u.Quantity).ToList();
+        result.AmmoUsed = ammoUsed;
+        SortSupplies(combat, result);
     }
+
+    int _suppliesLogged;
+
+    // For the list's columns: which of the supplies used were runes and which prayer points, read once when the
+    // fight is over. Runes are the items any spell or imbuement of the copy can cost (BaseMagicSpell.RuneCosts of
+    // MagicSpellsComponent.ActiveSpells and ActiveImbuements), prayer points the currencies its prayers cost
+    // (PrayerComponent.CostCurrencies); ammo was counted as the game's AmmoConsumed took it from the slot. Used
+    // holds every piece that left the bank, so a From bank fight that stopped because its runes ran out has the
+    // runes of the time until then. When the game cannot say, they stay unknown and the fight is still right.
+    void SortSupplies(CombatEntity combat, SimResult result)
+    {
+        try
+        {
+            var (runes, prayer) = SupplyKinds(combat);
+            result.RunesUsed = result.Used.Where(u => !u.IsCurrency && runes.Contains(u.Id)).Sum(u => u.Quantity);
+            result.PrayerPointsUsed = result.Used.Where(u => u.IsCurrency && prayer.Contains(u.Id)).Sum(u => u.Quantity);
+#if DEVTOOLS
+            // To compare with "Used" in the details of the same line.
+            static string Listed(IEnumerable<Amount> amounts)
+            {
+                var all = amounts.Select(u => $"{u.Id} {u.Quantity:0}").ToList();
+                return all.Count == 0 ? "none" : string.Join(", ", all.Take(6)) + (all.Count > 6 ? $" and {all.Count - 6} more" : "");
+            }
+            _log($"Dev: supplies of {result.Target.Name} {result.Target.StanceName}: {runes.Count} kinds of rune known, prayer points are {string.Join(", ", prayer)}; " +
+                 $"runes {result.RunesUsed:0} ({Listed(result.Used.Where(u => !u.IsCurrency && runes.Contains(u.Id)))}), prayer points {result.PrayerPointsUsed:0}, ammo {result.AmmoUsed:0}");
+            _log($"Dev: supplies of {result.Target.Name} {result.Target.StanceName}, the rest of Used: " +
+                 Listed(result.Used.Where(u => u.IsCurrency ? !prayer.Contains(u.Id) : !runes.Contains(u.Id))));
+#endif
+        }
+        catch (Exception e)
+        {
+            if (Interlocked.Exchange(ref _suppliesLogged, 1) == 0)
+                _log("Runes and prayer points could not be told apart from the other supplies (the game was updated?): " + e.Message);
+        }
+    }
+
+    // Its own method, never inlined: a game update that removed these fails when it is called, inside the try.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static (HashSet<string> Runes, HashSet<string> Prayer) SupplyKinds(CombatEntity combat) =>
+        (combat.MagicSpells.ActiveSpells.Keys.SelectMany(s => s.RuneCosts)
+             .Concat(combat.MagicSpells.ActiveImbuements.Keys.SelectMany(s => s.RuneCosts)).Select(c => c.Item.Id).ToHashSet(),
+         combat.Prayer.CostCurrencies.Select(c => c.Id).ToHashSet());
 
     // Puts the chosen loadout on, then the single items that were swapped in. An item the character does
     // not own is handed to the copy first; the game's own equip call still decides whether it can be worn.

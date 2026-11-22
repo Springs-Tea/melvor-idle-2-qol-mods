@@ -50,6 +50,8 @@ public class CombatSimMod : IMod, ISimLookup
         public bool ShowEnemyCards { get; set; } = true;
         public bool BestMode { get; set; }
         public string TrainSkill { get; set; } = "";
+        /// <summary>The list's columns by key, left to right; null is the default list (SimColumns.Default).</summary>
+        public List<string>? Columns { get; set; }
     }
 
     // What each saved loadout holds is kept inside the equipment component; only the one that is worn right
@@ -92,6 +94,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
+        _state.Columns = SimColumns.Read(_settings.Columns);
         _engine = new SimEngine(ctx.Log);
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         _history = new SimHistory(ctx.Directory, ctx.Log);
@@ -467,6 +470,7 @@ public class CombatSimMod : IMod, ISimLookup
         _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, () => { Build(); _window!.Visible = true; }, Fight, _history.Clear);
         KeepTitleRoom();
 #if DEVTOOLS
+        _view.DevLog = _ctx.Log;
         LogFold();
 #endif
     }
@@ -519,18 +523,29 @@ public class CombatSimMod : IMod, ISimLookup
     }
 
     // At full size the window is at most 1408 wide (Best for, with a stance on every line) and 889 high (Best
-    // for, with the Train and the Spell box); at other sizes a few pixels more or less than that in proportion,
-    // every length being rounded on its own. It is never larger than the screen above the game's bottom bar,
+    // for, with the Train and the Spell box); larger, a few pixels more or less than that in proportion, every
+    // length being rounded on its own. It is never larger than the screen above the game's bottom bar,
     // whatever size was chosen on another screen or dragged to: the largest size that fits, in the same steps
     // of 5% the corner resizes in.
-    const float FullWidth = 1414, FullHeight = 895;
+    //
+    // Below full size the height is not quite in proportion. The Setup column sets it, and its buttons and drop-downs
+    // keep the margins of the game's theme at every size: the same Best for list was 544 px high at size 0.6 and
+    // 780 at 0.9, which is 787 px that shrink with the window and 72 that do not (907 and 867 at full size). With
+    // the Spell box, one drop-down more, and the rounding of every length at the sizes between, 100 of the 895 are
+    // counted as keeping their size.
+    const float FullWidth = 1414, FullHeight = 895, KeptHeight = 100;
 
     float LargestScale(float footer)
     {
         Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
-        float fits = Math.Min(screen.X / FullWidth, (screen.Y - footer) / FullHeight);
+        float room = screen.Y - footer;
+        float high = room >= FullHeight ? room / FullHeight : (room - KeptHeight) / (FullHeight - KeptHeight);
+        float fits = Math.Min(screen.X / FullWidth, high);
         return Math.Clamp(MathF.Floor(fits * 20f) / 20f, GameWindow.MinScale, GameWindow.MaxScale);
     }
+
+    /// <summary>How high the window may be at this size, by the rule LargestScale goes by.</summary>
+    static float HeightAt(float scale) => scale >= 1 ? FullHeight * scale : (FullHeight - KeptHeight) * scale + KeptHeight;
 
     void SaveChoices()
     {
@@ -541,6 +556,7 @@ public class CombatSimMod : IMod, ISimLookup
         _settings.ShowEnemyCards = _state.ShowEnemyCards;
         _settings.BestMode = _state.BestMode;
         _settings.TrainSkill = _state.TrainSkillId;
+        _settings.Columns = SimColumns.Write(_state.Columns);
         WriteSettings();
     }
 
@@ -750,7 +766,7 @@ public class CombatSimMod : IMod, ISimLookup
     {
         string state = $"simulator folded = {_window!.Minimised}, settings = {_settings.Minimised}, title = {_title}, " +
             $"tab = {(_state.BestMode ? "Best for" : "Fights")}, list = {_state.Viewing?.Title ?? "current"}, " +
-            $"sort column = {_state.SortColumn}, descending = {_state.SortDescending}, selected = {_state.Selected ?? "-"}, pinned = {_state.Pinned}, " +
+            $"sort = {_state.SortKey}, descending = {_state.SortDescending}, columns = {_state.Columns.Count}, selected = {_state.Selected ?? "-"}, pinned = {_state.Pinned}, " +
             $"position = {_window.Position}, size = {_window.Root.Size}, right = {_window.Root.GetGlobalRect().End.X}, scale = {_window.Style.Scale}, " +
             $"{_window.DevTitleLayout}, visible = {_window.Visible}, running = {_state.Running}, fights = {_state.FightCount}";
         _ctx.Log(picture == null ? "Dev: " + state : $"Dev: saved {picture}: {state}");
@@ -878,11 +894,12 @@ public class CombatSimMod : IMod, ISimLookup
             foreach (Node child in _window.Layer.GetChildren())
                 if (child is PanelContainer { Visible: true } panel && panel != _window.Root) frame = frame.Merge(panel.GetGlobalRect());
             _ctx.Log($"Dev: rect = {(int)frame.Position.X},{(int)frame.Position.Y},{(int)frame.End.X},{(int)frame.End.Y}");
-            // The sizes LargestScale goes by must cover the window as it really is.
+            // The sizes LargestScale goes by must cover the window as it really is, at every size.
             Vector2 full = _window.Root.Size / _window.Style.Scale, screen = _ctx.Tree.Root.GetVisibleRect().Size;
-            float bar = FooterHeight();
-            _ctx.Log($"Dev: window {_window.Root.Size.X:0}x{_window.Root.Size.Y:0} at size {_window.Style.Scale:0.##} (chosen {_settings.Scale:0.##}, largest {LargestScale(bar):0.##}), {full.X:0}x{full.Y:0} at full size" +
-                     $"{(full.X > FullWidth || full.Y > FullHeight ? $"  LARGER THAN THE {FullWidth}x{FullHeight} LargestScale GOES BY" : "")}; screen {screen.X:0}x{screen.Y:0}, bottom bar {bar:0}, window bottom at {_window.Root.GetGlobalRect().End.Y:0}");
+            float bar = FooterHeight(), scale = _window.Style.Scale, wide = FullWidth * scale, high = HeightAt(scale);
+            _ctx.Log($"Dev: window {_window.Root.Size.X:0}x{_window.Root.Size.Y:0} at size {scale:0.##} (chosen {_settings.Scale:0.##}, largest {LargestScale(bar):0.##}), {full.X:0}x{full.Y:0} at full size; " +
+                     $"LargestScale allows {wide:0.#}x{high:0.#} at this size" +
+                     $"{(_window.Root.Size.X > wide + 0.5f || _window.Root.Size.Y > high + 0.5f ? "  LARGER THAN LargestScale ALLOWS" : ", it fits")}; screen {screen.X:0}x{screen.Y:0}, bottom bar {bar:0}, window bottom at {_window.Root.GetGlobalRect().End.Y:0}");
             foreach (SimResult r in _state.Results.Values.OrderByDescending(r => r.XpPerHour))
                 _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name + " " + r.Target.StanceName,-30} {string.Join(" ", r.Xp.Select(x => x.Key.Replace("MelvorBase:", "") + "=" + (x.Value / Math.Max(r.Hours, 1e-9)).ToString("N0")))} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
                          $"eaten {r.FoodEaten} / killed {r.Kills} = {r.FoodPerKill:0.####}  healed {r.Healed}  food gone {(r.FoodGoneSeconds < 0 ? "-" : $"{r.FoodGoneSeconds:0}s, {r.FoodGoneKills} kills")}  " +
@@ -988,6 +1005,7 @@ public class CombatSimMod : IMod, ISimLookup
         _state.BestMode = _settings.BestMode;
         _state.TrainSkillId = _settings.TrainSkill;
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
+        _state.Columns = SimColumns.Read(_settings.Columns);
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         if (_window is { IsAlive: true } window)
         {

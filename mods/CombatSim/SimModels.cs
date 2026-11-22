@@ -77,6 +77,12 @@ sealed class SimResult
     /// <summary>Skill id -> XP gained.</summary>
     public Dictionary<string, double> Xp = new();
     public List<Amount> Loot = new(), Used = new();
+    /// <summary>
+    /// Of <see cref="Used"/>: the runes, the ammo and the prayer points, told apart the way the game tells them
+    /// apart (SimEngine.SortSupplies). Null in scans made before they were counted, and when the game could not
+    /// say: the list shows "-" for them then.
+    /// </summary>
+    public double? RunesUsed, AmmoUsed, PrayerPointsUsed;
     public string Note = "";
     public bool Failed;
     public double RealMilliseconds;

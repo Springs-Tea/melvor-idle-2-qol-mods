@@ -65,8 +65,13 @@ sealed class SimState
     public string? Selected;
     /// <summary>The player clicked a row: until then the details follow whatever is on top.</summary>
     public bool Pinned;
-    public int SortColumn = 1;
+    /// <summary>The column the list is sorted by, by its key (<see cref="SimColumn.Key"/>), "name" for the enemy.</summary>
+    public string SortKey = "xp";
     public bool SortDescending = true;
+    /// <summary>The keys of the columns the list shows, from left to right; saved in settings.json.</summary>
+    public List<string> Columns = SimColumns.Default.ToList();
+    /// <summary>The groups the player folded in the columns picker, for as long as the game runs.</summary>
+    public HashSet<string> FoldedColumnGroups = new();
     public string FoodLine = "";
     public bool FoodMissing;
     /// <summary>The worn loadout's food in the bank, as of opening the window; -1 when it is not known.</summary>
@@ -176,29 +181,12 @@ interface ISimLookup
 /// middle (click a column to sort, a line for its details), everything about the selected fight on the right.
 /// All numbers are per hour of game time.
 /// </summary>
-sealed class SimView
+sealed partial class SimView
 {
-    static readonly Color Bad = new("ff4500"), Good = new("5fd35f");
+    internal static readonly Color Bad = new("ff4500"), Good = new("5fd35f");
 
-    // LessIsBetter: the first click on the column puts the smallest numbers on top.
-    sealed record Column(string Title, string Tip, float Width, Func<SimResult, double> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint,
-        bool LessIsBetter = false);
+    // The columns of the list (which numbers, in which order, sorted how) are in SimViewColumns.cs.
 
-    Column[] Columns => _columns ??= new Column[]
-    {
-        new("Kills", "Enemies killed per hour", 58, r => r.KillsPerHour, r => Fmt(r.KillsPerHour), _ => GameStyle.TextWhite),
-        new("XP", "Experience per hour: all combat skills together, or the skill you are training", 66, r => _state.Xp(r), r => Fmt(_state.Xp(r)), _ => GameStyle.TextWhite),
-        new("Gold", "Coins dropped plus what the dropped items sell for, per hour", 66, r => r.GoldPerHour, r => Fmt(r.GoldPerHour), _ => GameStyle.TextGold),
-        new("Food", "Food eaten per hour", 52, r => r.FoodPerHour, r => Fmt(r.FoodPerHour), _ => GameStyle.TextWhite),
-        new("Food/kill", "Food eaten per kill: the less, the longer your food lasts", 66, r => r.FoodPerKill,
-            r => r.Kills > 0 ? PerKill(r.FoodPerKill) : "-", r => r.Kills > 0 ? GameStyle.TextWhite : GameStyle.TextDim, LessIsBetter: true),
-        new("Deaths", "Times you die per hour", 60, r => r.DeathsPerHour, r => r.Deaths == 0 ? "0" : Fmt(r.DeathsPerHour),
-            r => r.Deaths == 0 ? GameStyle.TextDim : Bad, LessIsBetter: true),
-        new("Low HP", "The lowest your hitpoints got, as a share of the maximum", 62, r => r.LowestHpFraction, r => r.LowestHpFraction.ToString("P0"),
-            r => r.Deaths > 0 || r.LowestHpFraction < 0.15 ? Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite),
-    };
-
-    Column[]? _columns;
     readonly GameWindow _window;
     readonly GameStyle _s;
     readonly SimState _state;
@@ -661,7 +649,7 @@ sealed class SimView
         _state.Selected = null;
         _state.Pinned = false;
         // An earlier scan is ranked the way it was asked: best first.
-        _state.SortColumn = 1;
+        _state.SortKey = "xp";
         _state.SortDescending = true;
         _tableSignature = _detailsSignature = "";
         ClosePicker();
@@ -879,8 +867,8 @@ sealed class SimView
 
     Control BuildResults()
     {
-        float width = (_state.PerStance ? 320 : 250) + Columns.Sum(c => c.Width + 6) + 30;
-        Control column = _s.Column("Results, per hour", out VBoxContainer body, width);
+        float width = ResultsWidth();
+        Control column = _resultsColumn = _s.Column("Results, per hour", out VBoxContainer body, width);
         column.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
         // What the table shows, and the way to the earlier scans.
@@ -894,6 +882,7 @@ sealed class SimView
         _back.TooltipText = "Leave this earlier scan and show the current results";
         _back.Pressed += () => { ShowCurrent(); ClosePicker(); Refresh(); };
         top.AddChild(_back);
+        top.AddChild(ColumnsButton());
         _historyButton = _s.GameButton("History", "TexturedButton4x", 12);
         _historyButton.TooltipText = "Look at an earlier scan again, without simulating anything";
         _historyButton.Pressed += OpenHistory;
@@ -905,8 +894,9 @@ sealed class SimView
         headerMargin.AddThemeConstantOverride("margin_left", _s.Px(8));
         headerMargin.AddThemeConstantOverride("margin_right", _s.Px(8 + 12));   // the rows' own padding and the scroll bar
         headerMargin.AddChild(header);
-        header.AddChild(HeaderButton("Enemy", "Sort by name", 0, -1));
-        for (int i = 0; i < Columns.Length; i++) header.AddChild(HeaderButton(Columns[i].Title, Columns[i].Tip, Columns[i].Width, i));
+        header.AddChild(HeaderButton("Enemy", "Sort by name", 0, NameKey));
+        header.AddChild(NumbersStrip(out _headerCells));
+        FillHeader();
         body.AddChild(headerMargin);
 
         var scroll = new ScrollContainer
@@ -918,6 +908,7 @@ sealed class SimView
         _rows = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 2);
         scroll.AddChild(_rows);
         body.AddChild(scroll);
+        body.AddChild(SidewaysBar(scroll));
 
         // Nothing to show yet: say what to do, and offer the last scans right here.
         _emptyBox = _s.Spaced(new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center }, 10);
@@ -935,61 +926,32 @@ sealed class SimView
         return column;
     }
 
-    Button HeaderButton(string title, string tip, float width, int column)
+    Button HeaderButton(string title, string tip, float width, string key)
     {
+        bool name = key == NameKey;
         var button = new Button
         {
             Text = title, Flat = true, TooltipText = tip, FocusMode = Control.FocusModeEnum.None,
-            Alignment = column < 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+            Alignment = name ? HorizontalAlignment.Left : HorizontalAlignment.Right,
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
         };
-        if (column < 0) button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        if (name) button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         else button.CustomMinimumSize = new Vector2(_s.Px(width), 0);
         button.AddThemeFontSizeOverride("font_size", _s.Px(12));
         if (GameStyle.SemiBold is { } font) button.AddThemeFontOverride("font", font);
-        button.Pressed += () =>
-        {
-            if (_state.SortColumn == column) _state.SortDescending = !_state.SortDescending;
-            else { _state.SortColumn = column; _state.SortDescending = column >= 0 && !Columns[column].LessIsBetter; }
-            _tableSignature = "";
-            Refresh();
-        };
-        button.SetMeta("column", column);
+        button.Pressed += () => SortBy(key);
+        button.Draw += () => DrawSortArrow(button);
+        button.SetMeta("column", key);
         _headers.Add(button);
         return button;
     }
 
     void FillRows()
     {
-        var results = _state.Lines();
-        List<SimResult> ordered;
-        if (_state.SortColumn < 0)
-        {
-            ordered = results.OrderBy(r => r.Target.Name, StringComparer.OrdinalIgnoreCase).ToList();
-            if (_state.SortDescending) ordered.Reverse();
-        }
-        else
-        {
-            Func<SimResult, double> value = Columns[_state.SortColumn].Value;
-            var simulated = results.Where(r => !r.Failed);
-            // Equal numbers are common (every fight that eats no food): the better experience first among them.
-            ordered = (_state.SortDescending ? simulated.OrderByDescending(value) : simulated.OrderBy(value)).ThenByDescending(_state.Xp).ToList();
-            // A fight that could not be simulated has no numbers to sort by: it goes last, whichever the direction.
-            ordered.AddRange(results.Where(r => r.Failed));
-        }
+        List<SimResult> ordered = Sorted(_state.Lines());
+        PaintHeaders();
 
-        foreach (Button header in _headers)
-        {
-            // The XP column says whose experience it is.
-            if (header.GetMeta("column").AsInt32() == 1)
-                header.Text = _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName : "XP";
-            bool active = header.GetMeta("column").AsInt32() == _state.SortColumn;
-            Color color = active ? GameStyle.TextGold : GameStyle.TextGrey;
-            foreach (string name in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_focus_color" })
-                header.AddThemeColorOverride(name, color);
-        }
-
-        string signature = _state.Viewing?.Id + "#" + _state.ShownSetupKey + "#" + _state.ShownBest + _state.ShownSkillId + "#" + string.Join("|", ordered.Select(r => r.Target.Key + r.RealMilliseconds)) + "#" + _state.Selected + "#" + _state.SortColumn + _state.SortDescending;
+        string signature = _state.Viewing?.Id + "#" + _state.ShownSetupKey + "#" + _state.ShownBest + _state.ShownSkillId + "#" + string.Join("|", ordered.Select(r => r.Target.Key + r.RealMilliseconds)) + "#" + _state.Selected + "#" + _state.SortKey + _state.SortDescending;
         if (signature != _tableSignature)
         {
             _tableSignature = signature;
@@ -1008,6 +970,7 @@ sealed class SimView
 
         bool any = ordered.Count > 0;
         _rows.GetParent<Control>().Visible = any;
+        _sidewaysRow.Visible = any && _cellsWidth > _numbersWidth;
         _emptyBox.Visible = !any;
         if (_state.Viewing is { } scan)
         {
@@ -1080,16 +1043,7 @@ sealed class SimView
         level.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(level);
 
-        foreach (Column column in Columns)
-        {
-            Label cell = result.Failed
-                ? _s.Text("-", GameStyle.TextDim)
-                : _s.Text(column.Text(result), column.Tint(result), 14, GameStyle.SemiBold);
-            cell.HorizontalAlignment = HorizontalAlignment.Right;
-            cell.CustomMinimumSize = new Vector2(_s.Px(column.Width), 0);
-            cell.MouseFilter = Control.MouseFilterEnum.Ignore;
-            line.AddChild(cell);
-        }
+        line.AddChild(RowCells(result));
         return row;
     }
 
@@ -1207,13 +1161,8 @@ sealed class SimView
                 versus.TooltipText = other.SetupLabel;
                 versus.MouseFilter = Control.MouseFilterEnum.Pass;
                 _details.AddChild(versus);
-                _details.AddChild(Stat("Experience", Change(r.XpPerHour, other.XpPerHour), Tint(r.XpPerHour, other.XpPerHour)));
-                _details.AddChild(Stat("Kills", Change(r.KillsPerHour, other.KillsPerHour), Tint(r.KillsPerHour, other.KillsPerHour)));
-                _details.AddChild(Stat("Gold", Change(r.GoldPerHour, other.GoldPerHour), Tint(r.GoldPerHour, other.GoldPerHour)));
-                // Less food eaten is the good direction.
-                _details.AddChild(Stat("Food eaten", Change(r.FoodPerHour, other.FoodPerHour), LessTint(r.FoodPerHour, other.FoodPerHour)));
-                if (r.Kills > 0 && other.Kills > 0)
-                    _details.AddChild(Stat("Food per kill", Change(r.FoodPerKill, other.FoodPerKill), LessTint(r.FoodPerKill, other.FoodPerKill)));
+                // The columns of the list, each the way it is better.
+                foreach (Control line in Compared(r, other)) _details.AddChild(line);
             }
         }
 
@@ -1293,16 +1242,6 @@ sealed class SimView
         return Math.Abs(change) < 0.005 ? "same" : change.ToString("+0%;-0%");
     }
 
-    static Color Tint(double mine, double theirs) =>
-        theirs <= 0 || Math.Abs(mine / theirs - 1) < 0.005 ? GameStyle.TextWhite : mine > theirs ? Good : Bad;
-
-    // The same for what is better when it is less: food. Eating none where the other setup eats is green.
-    static Color LessTint(double mine, double theirs)
-    {
-        if (theirs <= 0) return mine > 0 ? Bad : GameStyle.TextWhite;
-        return Math.Abs(mine / theirs - 1) < 0.005 ? GameStyle.TextWhite : mine < theirs ? Good : Bad;
-    }
-
     // "[icon] Name                          value"
     // "                                     note"
     Control Stat(string name, string value, Color? tint = null, string? note = null, Texture2D? icon = null)
@@ -1373,10 +1312,12 @@ sealed class SimView
     /// <summary>
     /// Development: opens the areas, the earlier scans, the newest scan, or the item picker of a slot;
     /// "sort=Food/kill" is one click on that column's name, "details=end" scrolls the details to their last line.
+    /// The Columns picker and the columns' own requests are in DevColumns (SimViewColumns.cs).
     /// </summary>
     public void DevOpenPicker(string slotName)
     {
         if (slotName == "details=end") { if (_details.GetParent() is ScrollContainer scroll) scroll.ScrollVertical = int.MaxValue; return; }
+        if (DevColumns(slotName)) return;
         if (slotName.StartsWith("sort=", StringComparison.Ordinal))
         {
             _headers.FirstOrDefault(h => h.Text.Equals(slotName[5..], StringComparison.OrdinalIgnoreCase))?.EmitSignal(BaseButton.SignalName.Pressed);
@@ -1435,7 +1376,7 @@ sealed class SimView
     };
 
     // Food per kill is mostly a small fraction: three decimals where Fmt would round it to 0.
-    static string PerKill(double value) => value switch
+    internal static string PerKill(double value) => value switch
     {
         0 => "0",
         >= 1 => Fmt(value),

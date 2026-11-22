@@ -25,11 +25,23 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     item of the game that fits, with a search box, whether you own it or not. When the weapon
     casts spells, choose which one to fight with.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
-    deaths, and the lowest your hitpoints got. Click a column to sort.
+    deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
+    best fights on top (the most XP, but the fewest deaths), the next turns the order around.
+    A small arrow after the column's name shows which way: down for the most first.
+  - Columns, over the list, chooses which numbers it shows and in which order, out of 43 in
+    groups (offence, defence, supplies, economy, experience, dungeons, time): runes, ammo and
+    prayer points used, what the supplies cost and the gold left after them, damage taken,
+    Safe or Risky, the enemy's biggest hit, the XP of each skill, dungeon runs and more. One
+    click on a preset (Idle, Money, Supplies, Training, Dungeons) sets several at once; Reset
+    brings back the seven above. The choice is kept in settings.json. The window keeps its
+    width: when the numbers need more room, a bar under them moves them sideways, a column at
+    a time, under the enemy's name. "-" means no number: nothing was killed, the fight is not
+    a dungeon, or an earlier scan did not record it.
   - Details: per skill XP, loot item by item, what was used (food, ammo, runes, prayer points),
     damage taken, time of the first death, food and healing per kill, and how many kills the
     food in your bank is enough for. When the same fight was simulated with other equipment,
-    the difference is shown.
+    the difference is shown for every column of the list, green where it is better; the
+    columns in which both are the same share one line.
   - Best for: pick the skill you want to train and the areas to look in. Every fight is tried
     in each attack stance of your weapon and the fights are ranked by what they give that
     skill, with the best stance named on each line.

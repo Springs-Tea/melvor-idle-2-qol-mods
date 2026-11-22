@@ -13,8 +13,9 @@
 ![The simulator's window](../../docs/img/combat-simulator.png)
 
 The Combat Simulator answers that without fighting. You choose where, for how long and with what; it runs
-the fights and shows, for every one of them, an hour's kills, XP, gold, food and deaths. The newest answer
-for an enemy also sits on its card in the game's combat areas menu: Safe or Risky, XP and deaths per hour.
+the fights and shows, for every one of them, an hour's kills, XP, gold, food and deaths, or any other of its
+numbers you choose for the list. The newest answer for an enemy also sits on its card in the game's combat
+areas menu: Safe or Risky, XP and deaths per hour.
 
 It does **not** re-create the game's combat formulas. It loads a copy of your character into a second,
 hidden game and runs the game's own combat on it. Nothing the copy does is ever saved.
@@ -24,6 +25,7 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 - [Opening it](#opening-it)
 - [A first simulation, step by step](#a-first-simulation-step-by-step)
 - [Reading the results](#reading-the-results)
+- [Choosing the columns](#choosing-the-columns)
 - [Choosing where](#choosing-where)
 - [Trying other equipment and spells](#trying-other-equipment-and-spells)
 - [Finding where to train: "Best for"](#finding-where-to-train-best-for)
@@ -73,7 +75,9 @@ The window has three columns: **Setup** on the left (what to simulate), **Result
 
 ## Reading the results
 
-Every number is **per hour of game time**, whatever length you simulated.
+The list starts with seven columns. Every number is **per hour of game time**, whatever length you
+simulated, unless its name says otherwise (per kill, per run). **Columns**, over the list, shows others in
+their place: see [Choosing the columns](#choosing-the-columns).
 
 | Column | What it is |
 | --- | --- |
@@ -81,19 +85,32 @@ Every number is **per hour of game time**, whatever length you simulated.
 | **XP** | Combat XP per hour, all skills together. In "Best for" it is the XP of the skill you chose, and the column is named after it. |
 | **Gold** | Coins dropped plus what the dropped items sell for. |
 | **Food** | Pieces of food eaten per hour. |
-| **Food/kill** | Pieces of food eaten per kill: the fight where your food lasts longest has the smallest number. The first click on it sorts the smallest to the top. A fight without a kill shows `-`. |
-| **Deaths** | Times you die per hour. Grey 0 is what you want; anything else is red. The first click on it sorts the fewest to the top. |
+| **Food/kill** | Pieces of food eaten per kill: the fight where your food lasts longest has the smallest number. A fight without a kill shows `-`. |
+| **Deaths** | Times you die per hour. Grey 0 is what you want; anything else is red. |
 | **Low HP** | The lowest your hitpoints got, as a share of the maximum. Gold under 35%, red under 15% or when you died. |
 
-Click a column's name to sort by it, again to turn the order around. Fights with the same number, like all
-those that eat no food, stand with the better XP first. `Lv 12` next to a name is the enemy's combat level;
-a dungeon says `Dungeon` and is simulated as a whole, run after run.
+Click a column's name to sort by it. The first click puts the best fights on top: the most XP or gold, but
+the fewest deaths and the least food. The next click turns the order around. The name of the column the list
+is sorted by is gold, with the game's small arrow after it, where the numbers of that column end: down when
+the most is on top, up when the least is. Put the pointer on a name for what the number is and which way is
+better. Fights with the same number, like all those that eat no food, stand with the better XP first. `Lv 12`
+next to a name is the enemy's combat level; a dungeon says `Dungeon` and is simulated as a whole, run after
+run.
+
+A `-` means there is no number. A fight that killed nothing has no Food/kill: that counts as the worst there
+is, so it is last on the first click and first on the second. A number that is missing, because the fight is
+not a dungeon or because an earlier scan did not record it, stands at the bottom either way.
 
 The **Details** of a line, from top to bottom:
 
 - **Compared with**: only when the same fight was simulated with other equipment or another spell. Each
-  other setup gets lines for Experience, Kills, Gold, Food eaten and Food per kill saying how much better or
-  worse *this* setup is. Green is better; for food, less is better.
+  other setup gets a line for every column of the list, saying how much better or worse *this* setup is, in
+  percent. When the other setup's number is 0 there is no percent: the line shows this setup's own number
+  and `vs 0`. Low HP, Safe, First death, Net gold and Best drop always show this setup's own number. Green
+  is better and red is worse, the way the column says: more XP is better, fewer deaths and less food are
+  better. A number for which neither is better (Healed, Items, Sim time) has no colour. The columns in
+  which the two setups are the same share one line at the end, **The same: ...**, and a number one of them
+  does not have (`-`) is left out.
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
@@ -106,6 +123,111 @@ The **Details** of a line, from top to bottom:
 
 A gold line of text under the name is a note from the run: an item that could not be equipped, a fight that
 ended early because something ran out.
+
+### Every number the list can show
+
+They are grouped here as in the Columns picker. More is better, unless the table says less; neither is
+better for Healed, Items and Sim time. Every number per kill shows `-` when nothing was killed, and every
+number per run when no run of the dungeon was finished. An earlier scan from History shows `-` for a number
+it did not record: runes, ammo and prayer points are counted from this version on, Safe and Max hit from the
+version that put the tags on the enemy cards.
+
+**Offence**
+
+| Column | What it is |
+| --- | --- |
+| **Kills** | Enemies killed per hour. |
+| **Kill time** | Seconds of game time for each kill, waiting for the next enemy included; from a minute on as `1m 5s`. Less is better. |
+
+**Defence**
+
+| Column | What it is |
+| --- | --- |
+| **Deaths** | Times you die per hour. Less is better. |
+| **First death** | How far into the fight you died for the first time; `none` when you never died. |
+| **Low HP** | The lowest your hitpoints got, as a share of the maximum. |
+| **Safe** | Safe or Risky, in the same words and colours as on the enemy's card in the combat areas menu (see [On the enemy cards](#on-the-enemy-cards)). `-` for a dungeon. |
+| **Max hit** | The enemy's biggest hit: the most its attacks can deal as the game says, or a bigger loss of hitpoints seen in the fight. `-` for a dungeon. Less is better. |
+| **Dmg taken** | Hitpoints you lose per hour. Less is better. |
+| **Dmg/kill** | Hitpoints you lose for each kill. Less is better. |
+| **Healed** | Hitpoints food healed per hour. |
+
+**Supplies**
+
+| Column | What it is |
+| --- | --- |
+| **Food**, **Food/kill** | Pieces of food eaten, per hour and per kill. Less is better. |
+| **Runes**, **Runes/kill** | Runes your spells used, per hour and per kill. Less is better. |
+| **Ammo**, **Ammo/kill** | Arrows, bolts and other ammo used, per hour and per kill. Less is better. |
+| **Prayer pts**, **Pts/kill** | Prayer points your prayers used, per hour and per kill. Less is better. |
+| **Cost** | What the supplies used in an hour sell for: food, runes, ammo, potions. Prayer points have no price. Less is better. |
+
+**Economy**
+
+| Column | What it is |
+| --- | --- |
+| **Gold**, **Gold/kill** | Coins dropped plus what the dropped items sell for, per hour and per kill. |
+| **Coins** | Coins dropped per hour. |
+| **Loot**, **Loot/kill** | What the dropped items sell for, per hour and per kill. |
+| **Net gold** | Gold per hour less what the supplies used in that hour sell for. Red below zero. |
+| **Best drop** | The most valuable item that dropped, by what one sells for. |
+| **Items** | How many different items dropped in the whole simulated time: the bank slots they need. Not per hour. |
+
+**Experience**
+
+| Column | What it is |
+| --- | --- |
+| **XP** | Combat XP per hour, all skills together; in "Best for", of the skill you train. |
+| **XP/kill** | The XP column's experience for each kill. |
+| **Attack**, **Strength**, **Defence**, **Hitpoints**, **Ranged**, **Magic**, **Prayer**, **Slayer** | The XP per hour of that skill alone, one column each. |
+
+**Dungeons**: only for a dungeon; any other fight shows `-`.
+
+| Column | What it is |
+| --- | --- |
+| **Runs** | Whole runs of the dungeon per hour. |
+| **Run time** | Game time for each run, deaths included. Less is better. |
+| **Deaths/run** | Times you die for each run. Less is better. |
+| **Gold/run** | Gold for each run. |
+
+**Time**
+
+| Column | What it is |
+| --- | --- |
+| **Fought** | The game time the fight was simulated for: less than asked when it had to stop. |
+| **Sim time** | Real seconds the fight took to simulate. |
+
+## Choosing the columns
+
+![The Columns picker beside the list: presets, the groups with their tick boxes, and the order of the list](../../docs/img/combat-simulator-columns.png)
+
+**Columns**, next to History over the list, opens every number the simulator has, in groups, with a tick
+in front of each. Tick a number to add it to the list, untick it to take it out: the list changes as you go.
+
+- **Presets** along the top put a set of columns in place with one click, and you can change the ticks
+  afterwards. **Default** is the list as it starts. **Idle** answers "can I leave this running?": Safe,
+  Deaths, First death, Low HP, Max hit and Food/kill. **Money**, **Supplies** and **Dungeons** do what they
+  say, and **Training** shows XP, XP/kill and the XP of each combat skill that gained any in the list (in
+  "Best for", not the skill you train: the XP column already is its XP).
+- **The groups** fold and open with a click on their name. The search box finds a number by its name:
+  "rune" finds Runes used and Runes per kill.
+- **In the list, from left to right**, on the right, is the order of the columns. Move one with its two
+  arrows, or take it out with its red X. One column always stays.
+- **Reset** brings back the seven columns the list starts with. **Done** closes the picker.
+- Put the pointer on a number in the picker, or on a column's name over the list, for what it is, when it
+  shows `-`, and which way is better. Over the list, the tooltip of a short name like **Dmg taken** starts
+  with the whole name. At the smallest window sizes a name too long for its column is cut short with `...`,
+  and its tooltip starts with the whole name too.
+
+Your choice is kept in `settings.json`, also after the game is closed. In "Best for" the XP column is always
+there, named after the skill you train; when you did not tick it, it comes first.
+
+The window keeps its width whatever you choose, so it covers no more of the game than it does with the seven
+columns it starts with. Fewer columns leave more room to the enemy's names. When the numbers need more room
+than that, only whole columns are in sight, and a bar under them moves them sideways a column at a time,
+while the enemy's name stays where it is. Shift with the mouse wheel, or a sideways swipe, moves them too.
+
+![Many columns: the numbers move sideways under the Enemy column, with the bar under them](../../docs/img/combat-simulator-columns-scroll.png)
 
 ## Choosing where
 
@@ -222,11 +344,13 @@ changes your equipment: if you simulated other items, you still have to put them
   have to own it), simulate again, read "Compared with".
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
   at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
-  was.
+  was. Columns > Idle puts Safe, the deaths, the first death and the enemy's biggest hit side by side for
+  every fight.
 - **Which fight makes my food last longest?** Click Food/kill: the top line eats the least for each kill.
   "Your food lasts" in its details says how many kills the food in your bank is enough for.
-- **Which spell?** Simulate once per spell and compare.
-- **Where is the gold?** Simulate everything and sort by Gold.
+- **Which spell?** Simulate once per spell and compare. Columns > Supplies shows the runes each one uses.
+- **Where is the gold?** Simulate everything and sort by Gold. Columns > Money adds what the supplies cost
+  and Net gold, the gold that is left after them.
 
 ## How it works
 
@@ -261,9 +385,10 @@ own ten minute average for the same fight. That is one point, not a proof. Tell 
 
 Everything is in `mods\CombatSim`:
 
-- `settings.json`: the window's place, size and folded state, and your last choices. `"Workers"` sets how
-  many fights run side by side, 1 to 8 (0 lets the mod choose: half of the processor, four at most).
-  Lower it if the game stutters during a scan.
+- `settings.json`: the window's place, size and folded state, your last choices and the list's columns
+  (`"Columns"`, `null` while they are the ones the list starts with). `"Workers"` sets how many fights run
+  side by side, 1 to 8 (0 lets the mod choose: half of the processor, four at most). Lower it if the game
+  stutters during a scan.
 - `history\<character>\`: the earlier scans. Delete the folder, or press Clear in History, to forget them.
 
 ## When something is off

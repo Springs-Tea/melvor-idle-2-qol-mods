@@ -12,6 +12,11 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 - **Item Encyclopedia**: **View Item Stats** in the details of every weapon, armour piece, ring, amulet and ammo
   opens the game's own item stats window for it, also for gear you do not have yet: every bonus compared with
   what you wear, TAB for the other loadouts, as from the bank.
+- **Combat Simulator**: a **Columns** button over the list chooses which of 43 numbers it shows and in which order
+  (runes, ammo and prayer points used, what supplies cost, net gold, Safe or Risky, the enemy's biggest hit, XP per
+  skill, dungeon runs and more), with presets; more than fit scroll sideways inside the window. The first click on
+  a column now puts the best fights on top, so Food sorts the least first, and a small arrow after the column's
+  name shows the direction.
 
 ## 0.5.0
 
