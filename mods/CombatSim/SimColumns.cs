@@ -29,9 +29,12 @@ enum Better { More, Less, Neither }
 /// <param name="Rate">The rate the column shows, for its 95% range (issue #5, <see cref="SimRanges"/>); null for a
 /// number that has none: the lowest HP, a hit, a first death, a drop, a time.</param>
 /// <param name="Format">How the column writes a number, for the ends of a range; <see cref="SimView.Fmt"/> when null.</param>
+/// <param name="Way">The last line of <see cref="About"/> in place of the one <see cref="Better"/> gives: for a column of
+/// compare mode that says which setup is better, of which "more" is not "better" (SimViewCompare.cs).</param>
 sealed record SimColumn(string Key, string Group, string Title, string Name, string Tip, float Width,
     Func<SimResult, double?> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint, Better Better,
-    bool Percent = true, bool Trim = false, string Dash = "", Func<SimRate>? Rate = null, Func<double, string>? Format = null)
+    bool Percent = true, bool Trim = false, string Dash = "", Func<SimRate>? Rate = null, Func<double, string>? Format = null,
+    string? Way = null)
 {
     /// <summary>
     /// The tooltip of the column's name over the list: its whole name first when the title is short for it (and the
@@ -44,7 +47,7 @@ sealed record SimColumn(string Key, string Group, string Title, string Name, str
     {
         Tip,
         Dash == "" ? "" : "Shows - " + Dash,
-        Better switch
+        Way ?? Better switch
         {
             Better.More => "More is better",
             Better.Less => "Less is better",

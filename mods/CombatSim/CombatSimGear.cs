@@ -52,6 +52,11 @@ public partial class CombatSimMod
         }
         _gearLoadout = loadout;
         _gearWorn = worn;
+        // What the setup on the left shows, kept with it when it leaves the left in compare mode (SimSetup.Shown).
+        _state.ShownSlots = worn.OwnItems();
+#if DEVTOOLS
+        _state.DevSlots = DevGearText();
+#endif
 
         // The game's tint is looked for only when a slot is filled from another: a one-handed setup pays nothing.
         Color? tint = worn.Slots.Values.Any(p => p.FilledFrom != null) ? _filledLook.Tint(_ctx.Log) : null;
@@ -72,7 +77,7 @@ public partial class CombatSimMod
             if (from == "" && item != null && item.Capabilities.TryGet(out WeaponCapability? weapon)) wielded = weapon;
         }
 #if DEVTOOLS
-        DevLogGear("the slots on the left were made", saved);
+        DevLogGear(_devGearFor ?? "the slots on the left were made", saved);
 #endif
         return wielded;
     }
@@ -82,9 +87,6 @@ public partial class CombatSimMod
         _state.Overrides.Clear();
         foreach (var (slot, item) in overrides) _state.Overrides[slot] = item;
     }
-
-    /// <summary>What the slots on the left show, for the copy to be checked against (SimOptions.Shown).</summary>
-    Dictionary<string, string>? ShownGear() => _gearWorn?.OwnItems();
 
     // A click in a slot's item picker: back to the loadout's own (null), nothing (""), or one of the items the picker
     // lists for the slot (ChoicesFor), put on the slots on the left as equipping it in the game would (SimGear.Put); the
@@ -264,7 +266,8 @@ public partial class CombatSimMod
     //                        as the game takes it by itself, the way the simulator did before issue #46; the gear line
     //                        of the fight compares the copy with what the slots on the left show for that pick. The
     //                        slots on the left stay as they are; the scan is named "(raw ...)" and is the request's,
-    //                        as one of "simulate" is (DevSimulate)
+    //                        as one of "simulate" is (DevSimulate). In compare mode it is the setup on the left that
+    //                        gets the change; the other one is simulated as it is
     bool DevGearCommand(string command)
     {
         if (command.StartsWith("pick=", StringComparison.Ordinal)) DevPick(command[5..]);
@@ -338,10 +341,10 @@ public partial class CombatSimMod
         DevSimulate();
     }
 
-    // Simulate's options, for SimEngine.DevGear; for a raw= scan its one change instead of the player's.
+    // For a raw= scan, the options of the setup on the left get its one change instead of the player's. Each setup's
+    // options already have the slots it shows, for SimEngine.DevGear (RunOptions, SimSetup.DevSlots).
     void DevSimulateOptions(SimOptions options)
     {
-        options.DevGear = DevGearText();
         if (_devRaw is not { } raw) return;
         _devRaw = null;
         options.Overrides = new Dictionary<string, string> { [raw.Slot] = raw.Item };

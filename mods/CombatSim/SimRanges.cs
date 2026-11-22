@@ -410,8 +410,9 @@ static class SimRanges
     // "± 2%" only for an even range that stays on one side of 0; a range that reaches 0 says where it goes.
     static bool PlusMinus(SimRange range) => range.Even && (range.Low > 0 || range.High < 0);
 
-    // Two figures at most, as the game writes its percentages; a very steady number is "± 0.04%", never "± 0%".
-    static string Percent(double share)
+    // Two figures at most, as the game writes its percentages; a very steady number is "± 0.04%", never "± 0%". Also
+    // how much better one setup is than the other in compare mode ("A by 23%", SimViewCompare.cs).
+    internal static string Percent(double share)
     {
         double percent = share * 100;
         return percent switch

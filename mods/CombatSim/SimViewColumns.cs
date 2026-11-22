@@ -18,9 +18,11 @@ sealed partial class SimView
     const string NameKey = "name";
 
     List<SimColumn>? _catalog, _shown;
+    bool _shownComparing;
     Dictionary<string, SimColumn>? _byKey;
     List<SimColumn> Catalog => _catalog ??= SimColumns.All(_state);
-    SimColumn? ColumnOf(string key) => (_byKey ??= Catalog.ToDictionary(c => c.Key)).GetValueOrDefault(key);
+    /// <summary>A column by its key, or one of the cells of compare mode by theirs (SimViewCompare.cs).</summary>
+    SimColumn? ColumnOf(string key) => (_byKey ??= Catalog.Concat(PairCatalog).ToDictionary(c => c.Key)).GetValueOrDefault(key);
 
     Control _resultsColumn = null!, _sidewaysRow = null!;
     HBoxContainer _headerCells = null!;
@@ -30,26 +32,43 @@ sealed partial class SimView
     Action? _syncColumnsPicker;
     // The numbers of every line, moved sideways together with those of the header.
     readonly List<HBoxContainer> _rowCells = new();
-    // In pixels of this window: where each shown column starts and how wide it is; all the numbers of a line; the
-    // room they have; how far they are moved; and how much of the room the whole columns in sight from there take.
-    readonly List<(float Start, float Width)> _spans = new();
+    // In pixels of this window: what moves sideways and comes into sight as one (each column, or in compare mode each
+    // column's three cells together), where each such group starts and how wide it is, and the group of each shown
+    // column; all the numbers of a line; the room they have; how far they are moved; and how much of the room the whole
+    // groups in sight from there take.
+    readonly List<(float Start, float Width)> _groups = new();
+    readonly List<int> _groupOf = new();
     float _cellsWidth, _numbersWidth, _offset, _inSight;
 
-    /// <summary>The columns of the list, from left to right.</summary>
+    // Where the numbers can stop when they move sideways: the start of each group.
+    IEnumerable<float> Stops => _groups.Select(g => g.Start);
+
+    /// <summary>The columns of the list, from left to right; in compare mode each as its three cells (SimViewCompare.cs).</summary>
     List<SimColumn> Shown()
     {
-        if (_shown != null) return _shown;
+        if (_shown != null && _shownComparing == _state.ShownComparing) return _shown;
+        _shownComparing = _state.ShownComparing;
+        List<SimColumn> shown = BaseShown();
+        return _shown = _shownComparing ? shown.SelectMany(PairCells).ToList() : shown;
+    }
+
+    /// <summary>The columns chosen for the list, from left to right, for one setup or two.</summary>
+    List<SimColumn> BaseShown()
+    {
         var shown = _state.Columns.Select(ColumnOf).OfType<SimColumn>().ToList();
         // "Best for" ranks the fights by the XP of the skill you train: that column is always there, first when it
         // was not chosen. It is named after the skill, as before.
         if (_state.BestMode && shown.All(c => c.Key != "xp") && ColumnOf("xp") is { } xp) shown.Insert(0, xp);
         if (shown.Count == 0) shown.AddRange(SimColumns.Default.Select(ColumnOf).OfType<SimColumn>());
-        return _shown = shown;
+        return shown;
     }
 
     // ---- the width ------------------------------------------------------------------------------------------
 
-    float EnemyPart => _state.PerStance ? 320 : 250;
+    // A line names its stance in Best for, when the weapon has more than one. Compare mode keeps the room of Fights: its
+    // lines name no stance (their tooltip and Details name each setup's), so the window is never wider than with the
+    // setup on the left alone, at any size (FullWidth; review of check-1: 1067 px at 0.75 where 1060.5 is allowed).
+    float EnemyPart => _state.PerStance && !_state.Compare ? 320 : 250;
 
     /// <summary>
     /// The middle column's width at full size: always the one it has with the seven columns the list starts with,
@@ -59,18 +78,27 @@ sealed partial class SimView
     /// </summary>
     float ResultsWidth()
     {
-        _spans.Clear();
+        _groups.Clear();
+        _groupOf.Clear();
         float x = 0, gap = _s.Px(6);
-        foreach (SimColumn column in Shown())
+        List<SimColumn> shown = Shown();
+        // In compare mode a column's three cells move sideways together, and are in sight together.
+        int together = _state.ShownComparing ? PairCellCount : 1;
+        for (int i = 0; i < shown.Count; i++)
         {
-            _spans.Add((x, _s.Px(column.Width)));
-            x += _s.Px(column.Width) + gap;
+            float width = _s.Px(shown[i].Width);
+            if (i % together == 0) _groups.Add((x, 0));
+            _groups[^1] = (_groups[^1].Start, x + width - _groups[^1].Start);
+            _groupOf.Add(_groups.Count - 1);
+            x += width + gap;
         }
         _cellsWidth = Math.Max(0, x - gap);
         // The room is the default columns' own, every width rounded as theirs are: at every size they fit exactly.
         List<SimColumn> defaults = SimColumns.Default.Select(ColumnOf).OfType<SimColumn>().ToList();
         float room = defaults.Sum(c => _s.Px(c.Width)) + gap * Math.Max(0, defaults.Count - 1);
-        _numbersWidth = Math.Min(_cellsWidth, Math.Max(room, _spans.Select(s => s.Width).DefaultIfEmpty(0).Max()));
+        // The widest of what moves together.
+        float widest = _groups.Select(g => g.Width).DefaultIfEmpty(0).Max();
+        _numbersWidth = Math.Min(_cellsWidth, Math.Max(room, widest));
         return EnemyPart + defaults.Sum(c => c.Width + 6) + 30;
     }
 
@@ -118,6 +146,7 @@ sealed partial class SimView
 
     void FillHeader()
     {
+        _headerComparing = _state.ShownComparing;
         foreach (Node old in _headerCells.GetChildren())
         {
             _headerCells.RemoveChild(old);
@@ -142,7 +171,7 @@ sealed partial class SimView
         Control strip = NumbersStrip(out HBoxContainer cells);
         foreach (SimColumn column in Shown())
         {
-            Label cell = result.Failed
+            Label cell = LineFailed(result)
                 ? _s.Text("-", GameStyle.TextDim)
                 : _s.Text(column.Text(result), column.Tint(result), 14, GameStyle.SemiBold);
             cell.HorizontalAlignment = HorizontalAlignment.Right;
@@ -209,8 +238,8 @@ sealed partial class SimView
             };
             if (by == 0) return;
             _offset = by > 0
-                ? _spans.Select(s => s.Start).FirstOrDefault(s => s > _offset + 0.5f, _offset)
-                : _spans.Select(s => s.Start).LastOrDefault(s => s < _offset - 0.5f, 0);
+                ? Stops.FirstOrDefault(s => s > _offset + 0.5f, _offset)
+                : Stops.LastOrDefault(s => s < _offset - 0.5f, 0);
             ApplyOffset();
             rows.AcceptEvent();
         };
@@ -299,15 +328,16 @@ sealed partial class SimView
     }
 
     // The furthest the numbers can move: to the first column from which all the rest are in sight.
-    float MostOffset => _spans.Select(s => s.Start).Where(start => _cellsWidth - start <= _numbersWidth + 0.5f).DefaultIfEmpty(0).Min();
+    float MostOffset => Stops.Where(start => _cellsWidth - start <= _numbersWidth + 0.5f).DefaultIfEmpty(0).Min();
 
     void ApplyOffset()
     {
         // A whole column at a time: the start of the column nearest to where they were moved.
         float most = MostOffset, wanted = Math.Clamp(_offset, 0, most);
-        _offset = _spans.Select(s => s.Start).Where(start => start <= most + 0.5f).DefaultIfEmpty(0).MinBy(start => Math.Abs(start - wanted));
-        // The whole columns from there that fit in the room; one cut at its right edge is left out of sight.
-        float end = _spans.Where(InSight).Select(s => s.Start + s.Width).DefaultIfEmpty(_offset + _numbersWidth).Max();
+        _offset = Stops.Where(start => start <= most + 0.5f).DefaultIfEmpty(0).MinBy(start => Math.Abs(start - wanted));
+        // The whole columns from there that fit in the room; one cut at its right edge is left out of sight. In compare
+        // mode a column's three cells are in sight together or not at all.
+        float end = _groups.Where(InSight).Select(g => g.Start + g.Width).DefaultIfEmpty(_offset + _numbersWidth).Max();
         _inSight = end - _offset;
         _rowCells.RemoveAll(c => !GodotObject.IsInstanceValid(c) || c.IsQueuedForDeletion());
         foreach (HBoxContainer cells in _rowCells) Place(cells);
@@ -315,7 +345,7 @@ sealed partial class SimView
         // A column's name out of sight takes no clicks.
         var titles = _headerCells.GetChildren().OfType<Button>().Where(b => !b.IsQueuedForDeletion()).ToList();
         for (int i = 0; i < titles.Count; i++)
-            titles[i].MouseFilter = i < _spans.Count && InSight(_spans[i]) ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
+            titles[i].MouseFilter = i < _groupOf.Count && InSight(_groups[_groupOf[i]]) ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
         if (_sideways is { } bar && Math.Abs(bar.Value - _offset) > 0.5) bar.SetValueNoSignal(_offset);
     }
 
@@ -329,17 +359,24 @@ sealed partial class SimView
     /// </summary>
     string? SortedBy()
     {
-        if (_state.SortKey == NameKey || Shown().Any(c => c.Key == _state.SortKey)) return _state.SortKey;
-        return Shown().Any(c => c.Key == "xp") ? "xp" : null;
+        // A column's key stands for its first cell in compare mode (which is better), and a cell's key for its column
+        // with one setup.
+        string key = SortKeyOnShow(_state.SortKey), xp = SortKeyOnShow("xp");
+        if (key == NameKey || Shown().Any(c => c.Key == key)) return key;
+        return Shown().Any(c => c.Key == xp) ? xp : null;
     }
 
-    // Without the chosen column the list goes by XP, best first.
-    bool SortedDescending => SortedBy() != _state.SortKey || _state.SortDescending;
+    // Without the chosen column the list goes by XP, best first; with the column the chosen key stands for, the way
+    // its first click sorts.
+    bool SortedDescending => SortedBy() is not { } key || (key == _state.SortKey ? _state.SortDescending : FirstDescending(key));
+
+    // The first click on a column puts the best fights on top.
+    bool FirstDescending(string key) => key != NameKey && ColumnOf(key)?.Better != Better.Less;
 
     // The first click on a column puts the best fights on top, the next turns the order around.
     void SortBy(string key)
     {
-        bool descending = SortedBy() == key ? !SortedDescending : key != NameKey && ColumnOf(key)?.Better != Better.Less;
+        bool descending = SortedBy() == key ? !SortedDescending : FirstDescending(key);
         _state.SortKey = key;
         _state.SortDescending = descending;
         _tableSignature = "";
@@ -357,7 +394,7 @@ sealed partial class SimView
             return byName;
         }
         Func<SimResult, double?> value = key != null && ColumnOf(key) is { } column ? column.Value : r => _state.Xp(r);
-        var simulated = results.Where(r => !r.Failed).Select(r => (Result: r, Value: value(r))).ToList();
+        var simulated = results.Where(r => !LineFailed(r)).Select(r => (Result: r, Value: value(r))).ToList();
         var numbers = simulated.Where(x => x.Value != null);
         // Equal numbers are common (every fight that eats no food): the better experience first among them. A fight
         // that killed nothing is the worst there is for a number per kill (SimColumn): last, or first turned round.
@@ -366,7 +403,7 @@ sealed partial class SimView
         // A number that is missing (not a dungeon, an earlier scan that did not record it), and a fight that could not
         // be simulated at all: last, whichever the direction.
         ordered.AddRange(simulated.Where(x => x.Value == null).OrderByDescending(x => _state.Xp(x.Result)).Select(x => x.Result));
-        ordered.AddRange(results.Where(r => r.Failed));
+        ordered.AddRange(results.Where(LineFailed));
         return ordered;
     }
 
@@ -380,8 +417,9 @@ sealed partial class SimView
         {
             if (!GodotObject.IsInstanceValid(header)) continue;
             string key = header.GetMeta("column").AsString();
-            // The XP column says whose experience it is.
-            if (key == "xp") header.Text = _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName : "XP";
+            // The XP column says whose experience it is; in compare mode its first cell, which carries its name.
+            if (key is "xp" or "xp" + Versus)
+                header.Text = _state.ShownBest && _state.ShownSkillName != "" ? _state.ShownSkillName : "XP";
             Color color = key == sorted ? GameStyle.TextGold : GameStyle.TextGrey;
             foreach (string name in new[] { "font_color", "font_hover_color", "font_pressed_color", "font_focus_color" })
                 header.AddThemeColorOverride(name, color);
@@ -762,7 +800,7 @@ sealed partial class SimView
     {
         var chosen = keys.ToList();
         if (name != SimColumns.TrainingPreset) return chosen;
-        var gained = _state.Lines().Where(r => !r.Failed).SelectMany(r => r.Xp.Where(x => x.Value > 0).Select(x => x.Key)).ToHashSet();
+        var gained = BothSides(_state.Lines()).Where(r => !r.Failed).SelectMany(r => r.Xp.Where(x => x.Value > 0).Select(x => x.Key)).ToHashSet();
         if (_state.ShownBest) gained.Remove(_state.ShownSkillId);
         chosen.AddRange(SimEngine.CombatSkills.Where(gained.Contains).Select(id => SimColumns.SkillPrefix + id));
         return chosen;
@@ -771,7 +809,8 @@ sealed partial class SimView
     /// <summary>Shows these columns, in this order: at least one, and only those this version knows.</summary>
     void SetColumns(IEnumerable<string> keys)
     {
-        List<string> chosen = keys.Where(k => ColumnOf(k) != null).Distinct().ToList();
+        // Columns only: the cells of compare mode are made from them.
+        List<string> chosen = keys.Where(k => ColumnOf(k) != null && BaseOf(k) == k).Distinct().ToList();
         if (chosen.Count > 0 && !chosen.SequenceEqual(_state.Columns))
         {
             _state.Columns = chosen;

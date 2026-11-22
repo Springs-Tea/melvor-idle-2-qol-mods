@@ -38,6 +38,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   numbers for your character. The best of each column is gold, a click on a column's name sorts by it, the spot the
   page shows is lit, a locked spot is greyed with the level it needs, and a click on a line opens that spot on the
   Fishing page without starting to fish. A line's tooltip has the whole hour.
+- **Combat Simulator**: **Compare** runs two setups, A and B, with one press of Simulate, from the same moment of
+  your character, and shows every fight with which setup is better and by how much, both numbers side by side,
+  how many fights each one wins, and in Best for where each setup does best. Better or worse only when the 95%
+  ranges say so; otherwise "could be luck".
 
 ## 0.5.0
 

@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-simulator.png (main), combat-simulator-best.png, combat-simulator-compare.png, combat-simulator-areas.png, combat-simulator-spell.png, combat-simulator-history.png, combat-simulator-picker.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-What an hour of each fight gives, uses and risks, from the game's own combat run on a hidden copy of your character, each rate with its 95% range. Choose the numbers the list shows, compare equipment and spells, find where to train, look at earlier scans, see Safe or Risky on enemy cards, and let Fight put on the simulated setup from your bank.
+What an hour of each fight gives, uses and risks, from the game's own combat run on a hidden copy of your character, each rate with its 95% range. Choose the numbers the list shows, compare two setups at once, find where to train, look at earlier scans, see Safe or Risky on enemy cards, and let Fight put on the simulated setup from your bank.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -46,6 +46,7 @@ The button beside the red X folds the window down to its title so you can follow
 [list]
 [*][b]Equipment[/b]: pick one of your saved loadouts, or click any slot to try another item: every item of the game that fits, with a search box, whether you own it or not. A two-handed weapon fills both hands, as on the game's equipment screen; if the copy ever wears something other than the slots show, the result says so.
 [*][b]Spells[/b]: when the weapon casts spells, choose which one to fight with.
+[*][b]Compare[/b]: tick it for two setups, A and B (a saved loadout, or one with an item or the spell changed), and press Simulate once: every fight runs with both, from the same moment of your character. Each column of the table becomes three: under its name which setup is better and by how much ("A by 23%", "A ×4"), then the number with A and with B, green and red only when the two ranges do not overlap, grey where it could be luck. Click a column's name for the fights where the choice matters most; a line above the table counts the fights each setup wins, and in Best for says where each setup does best. Details shows the fight with both setups side by side, and Fight is for the setup shown on the left.
 [*][b]Supplies[/b]: Unlimited gives the rates of a fight that is kept supplied; From bank uses what you own and tells you what ran out, and when.
 [*][b]Go on until[/b]: each fight goes on after its time until every number in the table is known to the size you choose ("± 1% sure" to "± 10% sure"), 12 hours of fighting at most. A number that 12 hours cannot bring that far goes on until it is within the next larger size it can reach; one that cannot reach even ± 10%, like a few deaths or gold that hangs on a rare drop, does not hold it back. A smaller size never ends a fight sooner than a larger one. Not with supplies From bank.
 [/list]

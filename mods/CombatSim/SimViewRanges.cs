@@ -133,19 +133,27 @@ sealed partial class SimView
     //   Food ± 15%  ·  Food/kill ± 18%  ·  Deaths up to 3.69
     string RowTip(SimResult r)
     {
+        if (_state.ShownComparing) return PairTip(r);   // both setups (SimViewCompare.cs)
+        var lines = RangeLines(r, "95% ranges");
+        if (r.Note != "") lines.Add(r.Note);
+        return string.Join("\n", lines);
+    }
+
+    // The ranges of a result's numbers in the list, under a heading; nothing when it has none.
+    List<string> RangeLines(SimResult r, string heading)
+    {
         var ranges = new List<string>();
         if (!r.Failed)
-            foreach (SimColumn column in Shown())
+            foreach (SimColumn column in BaseShown())
                 if (RangeOf(column, r) is { } range && SimRanges.Text(range, column.Format ?? Fmt) is { } text)
                     ranges.Add($"{TitleOf(column)} {text}");
         var lines = new List<string>();
         if (ranges.Count > 0)
         {
-            lines.Add("95% ranges");
+            lines.Add(heading);
             lines.AddRange(ranges.Chunk(3).Select(three => string.Join("  ·  ", three)));
         }
-        if (r.Note != "") lines.Add(r.Note);
-        return string.Join("\n", lines);
+        return lines;
     }
 
     // A column's name over the list: in "Best for" the XP column is named after the skill (as in SimViewColumns).
@@ -279,7 +287,7 @@ sealed partial class SimView
         foreach (SimResult other in shown.Values.Where(o => o.Target.Key == r.Target.Key && o.SetupKey != r.SetupKey && !o.Failed))
         {
             var said = new List<string>();
-            foreach (SimColumn column in Shown())
+            foreach (SimColumn column in BaseShown())
             {
                 if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
                 string why = "no rate";

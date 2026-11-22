@@ -35,6 +35,18 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     casts spells, choose which one to fight with. A two-handed weapon fills both hands, as on
     the game's equipment screen: an item picked for the Offhand takes it off, and taking it
     off empties both hands.
+  - Compare, at the end of the Equipment heading: two setups, A and B. The A and B buttons in
+    front of the loadout choose which one the loadout, the slots and the spell show and
+    change; the first time, B is a copy of A. One press of Simulate runs every fight with
+    both, from the same moment of your character. Each column of the list becomes three:
+    under its name which setup is better and by how much ("A by 23%", "A ×4" from twice as
+    much up; for Healed, Items and Sim time which has more, "A +12%"), then the number with
+    A and with B. The better side is green and the worse red, grey where it could be luck.
+    Click a column's name for the fights where the choice matters most; the line above the
+    list counts the fights each setup wins in the column it is sorted by, and in Best for
+    says where each setup does best. Details shows the fight with both setups side by side.
+    Fight is for the setup on the left. A and B last until the game is closed or another
+    character is opened.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.
@@ -67,6 +79,7 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     skill, with the best stance named on each line.
   - History: the last ten scans are kept, also after the game was closed. Look at one again,
     table and details, without simulating anything. They are old numbers: the window says so.
+    A scan of two setups is called "A against B" and shows both.
   - Enemy cards: in the game's combat areas menu, each enemy's card gets a small tag with
     the newest scan of that enemy made with what you have on now: Safe or Risky, then XP and
     deaths per hour. Safe: no deaths, and no hit of that enemy reaches your auto-eat point.
@@ -75,7 +88,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     to open its scan in the simulator. Opening the menu never simulates anything. Untick the
     box at the bottom of History to hide the tags.
   - Fight: the red button under the details starts the selected fight in the game (and
-    switches to the stance and the spell of that result). Your equipment is left as it is,
+    switches to the stance and the spell of that result; with Compare ticked, the result of
+    the setup on the left, and the text above it says which). Your equipment is left as it is,
     unless you tick "Wear this setup first" above the button. It is off until you tick it.
     Ticked, Fight first puts on what the result was simulated with, through the game's own
     actions: it changes to that loadout (which comes with the food, prayers, attack stance

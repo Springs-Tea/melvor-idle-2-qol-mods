@@ -25,7 +25,7 @@ sealed record GearChoice(string ItemId, string Name, Texture2D? Icon, int Owned,
 sealed record SpellChoice(string Id, string Name, string Book, Texture2D? Icon);
 
 /// <summary>What the view shows and remembers; owned by the mod, so it survives a rebuild of the window.</summary>
-sealed class SimState
+sealed partial class SimState
 {
     public List<SimTarget> Catalog = new();
     /// <summary>Every unlocked area and dungeon, in the game's order.</summary>
@@ -146,6 +146,7 @@ sealed class SimState
     /// <summary>The table's lines: one per fight; in best mode, the stance that trains the skill best.</summary>
     public List<SimResult> Lines()
     {
+        if (ShownComparing) return PairLines();   // two setups (SimCompare.cs)
         IEnumerable<SimResult> pool;
         if (Viewing != null) pool = Viewing.Results;
         else
@@ -322,9 +323,9 @@ sealed partial class SimView
         _supplyHint = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
         body.AddChild(_supplyHint);
 
-        body.AddChild(_s.Section("Equipment"));
+        body.AddChild(EquipmentHeading());   // with the Compare box (SimViewCompare.cs)
         _loadout = _s.Dropdown();
-        _loadout.TooltipText = "Fight with one of your saved loadouts. Simulate two of them to compare.";
+        _loadout.TooltipText = "Fight with one of your saved loadouts. Simulate two of them to compare, or tick Compare to run two at once.";
         _loadout.ClipText = true;
         foreach (var (_, name) in _state.Loadouts) _loadout.AddItem(name);
         _loadout.Selected = Math.Max(0, _state.Loadouts.FindIndex(l => l.Id == _state.LoadoutId));
@@ -338,7 +339,7 @@ sealed partial class SimView
             FillGear();
             Refresh();
         };
-        body.AddChild(_loadout);
+        body.AddChild(LoadoutRow(_loadout));   // in compare mode after the A and B buttons
 
         _gearHolder = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         body.AddChild(_gearHolder);
@@ -413,7 +414,7 @@ sealed partial class SimView
         OptionButton spell = _spell = _s.Dropdown();
         spell.ClipText = true;
         spell.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        spell.TooltipText = "The spell to fight with. Simulate two of them to compare.";
+        spell.TooltipText = "The spell to fight with. Simulate two of them to compare, or tick Compare to run two at once.";
         spell.AddThemeConstantOverride("icon_max_width", _s.Px(16));
         spell.GetPopup().AddThemeConstantOverride("icon_max_width", _s.Px(20));
         spell.AddItem(_state.SpellDefault);
@@ -748,7 +749,7 @@ sealed partial class SimView
             ThemeTypeVariation = "OutlineToggleButton", CustomMinimumSize = new Vector2(0, _s.Px(66)),
             FocusMode = Control.FocusModeEnum.None, MouseDefaultCursorShape = Control.CursorShape.PointingHand,
             ToggleMode = true, ButtonPressed = ReferenceEquals(_state.Viewing, scan),
-            TooltipText = $"{scan.At.ToLocalTime():d MMM yyyy, HH:mm}\n{scan.Where}\nwith {scan.SetupLabel}",
+            TooltipText = $"{scan.At.ToLocalTime():d MMM yyyy, HH:mm}\n{scan.Where}\nwith {scan.Setups}",
         };
         row.Pressed += () => Show(scan);
         var lines = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, -1);
@@ -773,10 +774,11 @@ sealed partial class SimView
         }
 
         string duration = SimState.Durations.FirstOrDefault(d => Math.Abs(d.Hours - scan.Hours) < 1e-6).Label ?? $"{scan.Hours:0.##} h";
-        string what = (scan.BestMode ? scan.Where + "  ·  " : "") + duration + (scan.Unlimited ? "" : ", from bank") + "  ·  " + scan.SetupLabel;
+        string what = (scan.BestMode ? scan.Where + "  ·  " : "") + duration + (scan.Unlimited ? "" : ", from bank") + "  ·  " + scan.Setups;
         SimResult? top = scan.Top;
         string best = top == null ? "Nothing could be fought"
-            : $"Top: {top.Target.Name}{(top.Target.StanceName != "" ? " (" + top.Target.StanceName + ")" : "")}  {Fmt(scan.Rank(top))} XP/h";
+            : $"Top: {top.Target.Name}{(top.Target.StanceName != "" ? " (" + top.Target.StanceName + ")" : "")}  {Fmt(scan.Rank(top))} XP/h" +
+              (scan.Compare ? (top.SetupKey == scan.SetupKey ? " with A" : " with B") : "");
         int fights = scan.Fights;
         lines.AddChild(Line(scan.Title, GameStyle.TextWhite, 14, GameStyle.SemiBold, Ago(scan.At), GameStyle.TextGrey));
         lines.AddChild(Line(what, GameStyle.TextGrey, 12, null, "", GameStyle.TextGrey));
@@ -981,9 +983,10 @@ sealed partial class SimView
     void FillRows()
     {
         List<SimResult> ordered = Sorted(_state.Lines());
+        MatchCompare(ordered);   // the header's cells for one setup or two (SimViewCompare.cs)
         PaintHeaders();
 
-        string signature = _state.Viewing?.Id + "#" + _state.ShownSetupKey + "#" + _state.ShownBest + _state.ShownSkillId + "#" + string.Join("|", ordered.Select(r => r.Target.Key + r.RealMilliseconds)) + "#" + _state.Selected + "#" + _state.SortKey + _state.SortDescending;
+        string signature = _state.Viewing?.Id + "#" + _state.ShownSetupKey + "#" + _state.ShownComparing + _state.ShownBest + _state.ShownSkillId + "#" + string.Join("|", ordered.Select(LineKey)) + "#" + _state.Selected + "#" + _state.SortKey + _state.SortDescending;
         if (signature != _tableSignature)
         {
             _tableSignature = signature;
@@ -994,6 +997,7 @@ sealed partial class SimView
                 ? _state.ShownResults.GetValueOrDefault(SimResult.MakeKey(_state.ShownSetupKey, key))?.Target : null;
             SimResult? match = pinned == null ? null : ordered.FirstOrDefault(r =>
                 r.Target.Key == pinned.Key || (_state.ShownBest && r.Target.FightKey == pinned.FightKey));
+            if (_state.ShownComparing) match = PinnedLine(ordered);
             _state.Pinned = match != null;
             _state.Selected = (match ?? ordered.FirstOrDefault())?.Target.Key;
             var group = new ButtonGroup();
@@ -1024,6 +1028,7 @@ sealed partial class SimView
             : otherSetups ? "Nothing simulated with this equipment yet.\n\nPress Simulate to compare it with what you ran before."
             : _state.BestMode ? "Choose the skill you want to train and where on the left, then press Simulate.\n\nEvery fight is tried in each attack stance of your weapon, and the fights are ranked by what they give that skill."
             : "Choose where to fight and with which equipment on the left, then press Simulate.\n\nEvery fight is run with the game's own combat, on a hidden copy of your character. Nothing is saved.";
+        if (_state.ShownComparing) FillPairShowing(ordered);   // the wins of each setup, and the words when there is nothing
 
         // The last scans, one click away, while there is nothing else to look at.
         string recent = any || _state.Running ? "" : string.Join("|", _state.History.Take(3).Select(h => h.Id));
@@ -1058,14 +1063,14 @@ sealed partial class SimView
         row.AddChild(line);
 
         line.AddChild(_s.Picture(_lookup.TargetIcon(result.Target), 20));
-        Label name = _s.Text(result.Target.Name, result.Failed ? GameStyle.TextDim : GameStyle.TextWhite);
+        Label name = _s.Text(result.Target.Name, LineFailed(result) ? GameStyle.TextDim : GameStyle.TextWhite);
         name.ClipText = true;
         name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         name.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(name);
-        if (result.Target.StanceName != "")
+        if (StanceText(result) is { Length: > 0 } stanceName)   // none in compare mode (SimViewCompare.cs)
         {
-            Label stance = _s.Text(result.Target.StanceName, GameStyle.TextPaper, 12);
+            Label stance = _s.Text(stanceName, GameStyle.TextPaper, 12);
             stance.MouseFilter = Control.MouseFilterEnum.Ignore;
             line.AddChild(stance);
         }
@@ -1111,14 +1116,9 @@ sealed partial class SimView
         return column;
     }
 
-    void FillDetails()
+    // The Fight button, its words and "Wear this setup first", for the result Fight would start.
+    void FillFight(SimResult? r)
     {
-        var shown = _state.ShownResults;
-        SimResult? r = _state.Selected != null ? shown.GetValueOrDefault(SimResult.MakeKey(_state.ShownSetupKey, _state.Selected)) : null;
-        var others = r == null ? new List<SimResult>()
-            : shown.Values.Where(o => o.Target.Key == r.Target.Key && o.SetupKey != r.SetupKey && !o.Failed).ToList();
-        string signature = r == null ? "none" : _state.Viewing?.Id + r.Key + r.RealMilliseconds + _state.ShownSkillId + "/" + string.Join(",", others.Select(o => o.Key + o.RealMilliseconds))
-            + "/" + shown.Values.Count(o => o.SetupKey == r.SetupKey && o.Target.FightKey == r.Target.FightKey && o.Target.StanceId != null);
         // The button follows the selection even when the list itself did not change.
         _fightTarget = r is { Failed: false } ? r.Target : null;
         _fightButton.Visible = _fightTarget != null;
@@ -1139,6 +1139,18 @@ sealed partial class SimView
             _fightNote.Visible = _fightNote.Text != "";
         }
         FillWear();
+    }
+
+    void FillDetails()
+    {
+        if (_state.ShownComparing) { FillPairDetails(); return; }   // two setups (SimViewCompare.cs)
+        var shown = _state.ShownResults;
+        SimResult? r = _state.Selected != null ? shown.GetValueOrDefault(SimResult.MakeKey(_state.ShownSetupKey, _state.Selected)) : null;
+        var others = r == null ? new List<SimResult>()
+            : shown.Values.Where(o => o.Target.Key == r.Target.Key && o.SetupKey != r.SetupKey && !o.Failed).ToList();
+        string signature = r == null ? "none" : _state.Viewing?.Id + r.Key + r.RealMilliseconds + _state.ShownSkillId + "/" + string.Join(",", others.Select(o => o.Key + o.RealMilliseconds))
+            + "/" + shown.Values.Count(o => o.SetupKey == r.SetupKey && o.Target.FightKey == r.Target.FightKey && o.Target.StanceId != null);
+        FillFight(r);
         if (signature == _detailsSignature) return;
         _detailsSignature = signature;
         foreach (Node old in _details.GetChildren()) old.QueueFree();
@@ -1337,6 +1349,7 @@ sealed partial class SimView
         _status.Text = _state.Message != "" ? _state.Message
             : _state.Running && _state.Current != "" ? $"{_state.ScanStatus}  ·  {_state.Current}" : _state.ScanStatus;
         _status.AddThemeColorOverride("font_color", _state.Message != "" ? Bad : GameStyle.TextGrey);
+        RefreshPair(hours);   // compare mode: the fights of A and B, and the Compare, A and B buttons (SimViewCompare.cs)
 
         FillRows();
         FillDetails();
@@ -1353,7 +1366,7 @@ sealed partial class SimView
     public void DevOpenPicker(string slotName)
     {
         if (slotName == "details=end") { if (_details.GetParent() is ScrollContainer scroll) scroll.ScrollVertical = int.MaxValue; return; }
-        if (DevColumns(slotName) || DevRanges(slotName)) return;
+        if (DevColumns(slotName) || DevRanges(slotName) || DevPairs(slotName)) return;
         if (slotName.StartsWith("sort=", StringComparison.Ordinal))
         {
             _headers.FirstOrDefault(h => h.Text.Equals(slotName[5..], StringComparison.OrdinalIgnoreCase))?.EmitSignal(BaseButton.SignalName.Pressed);

@@ -29,6 +29,7 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 - [Choosing the columns](#choosing-the-columns)
 - [Choosing where](#choosing-where)
 - [Trying other equipment and spells](#trying-other-equipment-and-spells)
+- [Comparing two setups](#comparing-two-setups)
 - [Finding where to train: "Best for"](#finding-where-to-train-best-for)
 - [Supplies: unlimited or from the bank](#supplies-unlimited-or-from-the-bank)
 - [Earlier scans](#earlier-scans)
@@ -258,7 +259,8 @@ fights you have ticked: an area is one fight per enemy in it, a dungeon is one f
 ## Trying other equipment and spells
 
 **Loadouts.** The box under Equipment lists your saved loadouts. Simulate a fight with one, switch to
-another, simulate again: Details compares the two.
+another, simulate again: Details compares the two. To run two setups at once and see every fight with both,
+tick Compare: see [Comparing two setups](#comparing-two-setups).
 
 **Single items.** Click any slot to open every item of the game that fits it, the ones you own first. Type
 to search; "Only items I own" hides the rest. A slot you changed gets a gold frame, and "Undo changes"
@@ -286,6 +288,61 @@ that weapon can cast. Choosing one makes it a setup of its own, so two spells ar
 weapons are.
 
 ![Air Strike against Air Bolt](../../docs/img/combat-simulator-spell.png)
+
+## Comparing two setups
+
+> Which of my two setups is better, and where?
+
+Tick **Compare**, at the end of the Equipment heading. Two buttons, **A** and **B**, appear in front of the
+loadout: the one that is down is the setup that the loadout, the slots and the spell under them show and
+change. The first time, B is a copy of A: press B, then choose another loadout, click a slot to swap an item
+in, or choose another spell. Press A to see A again. Put the pointer on A or B for the whole name of its
+setup.
+
+One press of **Simulate** runs every fight with A and with B, from the same moment of your character. The line
+above Simulate says how many fights that is for the two together and about how long it takes. While A and B
+are still the same setup, it says **A and B are the same setup**: the list says what to do, and Simulate
+waits until you change one of them.
+
+![Compare in Fights: Warrior (A) against Mage (B), the better side and both numbers under each column, the count above the list, Details side by side](../../docs/img/combat-simulator-compare-fights.png)
+
+The list has one line per fight, and every column you chose is three cells. The first, under the column's
+name, says which setup is better and by how much: **A by 23%** means A's number is 23% better than B's, so 23%
+more XP, or for food, food per kill and deaths, 23% less. From twice as much up it says how many times:
+**A ×4**. Then come the numbers with **A** and with **B**, the better one green and the worse red, by the rule
+"Compared with" goes by: where the two 95% ranges overlap, both are grey and so are the words before them,
+because it could be luck. **the same** is less than half a percent apart. Low HP, Safe, First death, Net gold
+and Best drop say only which is better, and so does a number against 0. Neither is better for Healed, Items
+and Sim time: there the first cell says which setup has more, **A +12%**. A `-` means that setup has no result
+or no number for the fight. The three cells of a column move sideways together, and are in sight together.
+Put the pointer on a line for the stance of each setup and the 95% ranges of both.
+
+Click a column's name to put the fights where the choice matters most on top: those where one setup is
+clearly better, the furthest apart first, then those that could be luck, then those that are the same. Click
+it again for the other way round. **A** or **B** sorts by that setup's own number. The line above the list
+counts the fights each setup wins in the column the list is sorted by, for example *XP: A is better in 7 of
+12 fights, B in 4, the same in 1*. Put the pointer on it for the names of the two setups.
+
+In **Best for**, each line compares A's best stance in that fight with B's. Under the count, the line above
+the list says where each setup does best and which setup is better there, for example *Best with A: Black
+Slime, A ×5.5  ·  Best with B: Rainbow Slime, A ×3.5*. The lines name no stance, so that the enemy's
+name keeps the room it has in Fights; the pointer on a line, and Details, name the stance of each setup.
+
+![Compare in Best for Defence: Warrior (A) against Hunter (B), where each does best above the list, and the stances and ranges of both in a line's tooltip](../../docs/img/combat-simulator-compare-best.png)
+
+**Details** shows the selected fight with both setups side by side: kills, combat XP and gold per hour, the
+XP of each skill, deaths, the lowest hitpoints, damage taken, healing, food per kill, and what each setup
+used. Under a number, which is better and by how much, in the words of the list, and the 95% range of each
+setup. For the loot item by item, untick Compare: the list then shows the setup on the left alone, and its
+numbers are still there.
+
+**Fight** is for the setup on the left: its stance, and with **Wear this setup first** ticked, its
+equipment. The text above Fight starts with *Fight is for setup A, the one on the left.* To fight with B,
+press B first. When the setup on the left has no result for the selected fight yet, the text says so where
+the button would be.
+
+A and B are kept until you close the game or open another character; Compare starts unticked then. A scan of
+two setups goes into History as **A against B: ...**, with both setups named.
 
 ## Finding where to train: "Best for"
 
@@ -322,7 +379,9 @@ right in the empty table.
 ![Earlier scans](../../docs/img/combat-simulator-history.png)
 
 The numbers of an earlier scan are from then: your levels and equipment may have changed since. A gold line
-says so while one is on show, and "Back to now" leaves it.
+says so while one is on show, and "Back to now" leaves it. A scan of two setups is called **A against B** and
+shows its list with both, whether Compare is ticked or not; its top line says which setup it came with, and
+the gold line names the scan above the count of wins.
 
 ## On the enemy cards
 
@@ -358,7 +417,8 @@ To hide the tags, untick **Show on enemy cards in the combat areas menu** at the
 
 The red button under the details starts the selected fight in the game, the way the game's own area menu
 does, and closes the window. The small text above it says exactly what else it will do: switch to the stance
-of that result, and select the spell when the result was simulated with what you are wearing.
+of that result, and select the spell when the result was simulated with what you are wearing. With Compare
+ticked it is for the setup on the left, and the text says which one that is.
 
 **Wear this setup first**, the tick box above the button, is off until you tick it, and stays as you leave
 it. Unticked, Fight never changes your equipment: if you simulated other items, you still have to put them on.
@@ -406,6 +466,9 @@ Fight does what it does unticked. It can always be ticked and unticked.
   the stance.
 - **Is this weapon worth buying?** Simulate your area, click the weapon slot, pick the weapon (you do not
   have to own it), simulate again, read "Compared with".
+- **Which of my two setups is better, and where?** Tick Compare, press B and make it the other setup, press
+  Simulate. The fights where the choice matters most are on top, and the line above the list counts the
+  fights each setup wins.
 - **Is it really better, or was that luck?** "Compared with" is green or red only when the two ranges do not
   overlap, and grey with "could be luck" when they do. Go on until ± 2% sure narrows the ranges where it is
   close.
@@ -533,6 +596,9 @@ Everything is in `mods\CombatSim`:
 | With Go on until, a fight that did not go on | Every number of the list was within the size already, or 12 hours could not bring it even within ± 10% (a few deaths, gold from a rare drop). |
 | With Go on until ± 2% sure, a number still at ± 4% | 12 hours could not bring that number within ± 2%, so the fight waited only until it was within ± 5%. |
 | No range in the tooltip or in Details | The scan was made before the ranges were counted: simulate again. Or the number was 0 all fight and is not counted one at a time, like no damage taken. |
+| "A and B are the same setup" above Simulate | B is still a copy of A. Press B and change its loadout, an item or its spell: Simulate waits until the two differ. |
+| With Compare, a line with `-` for one setup | That setup has no result for the fight: you changed it after the scan, or its fight could not be simulated. Press Simulate again. |
+| With Compare, a loadout's name cut short | Beside A and B the drop-down has less room than alone. Put the pointer on A or B for the whole name. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |
 | No tag on an enemy card | That enemy has no scan yet (scans made before the tags existed do not count), its fight failed, it belongs to a dungeon, or the tags are switched off at the bottom of History. If no card ever gets one, look for `[CombatSim] The tags on the enemy cards are switched off` in `MelvorModLoader.log`: a game update changed the menu; the simulator itself keeps working. |

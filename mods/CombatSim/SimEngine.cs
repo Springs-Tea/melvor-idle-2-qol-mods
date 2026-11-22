@@ -94,7 +94,15 @@ sealed class SimEngine
     /// Call on the game's thread. Has the game write its save the way its autosave does, takes that file as
     /// the snapshot and starts simulating the targets, a few of them side by side.
     /// </summary>
-    public bool Start(Game real, IReadOnlyList<SimTarget> targets, SimOptions options, int workers, out string error)
+    public bool Start(Game real, IReadOnlyList<SimTarget> targets, SimOptions options, int workers, out string error) =>
+        Start(real, targets.Select(t => new SimJob(t, options)).ToList(), workers, out error);
+
+    /// <summary>
+    /// The same, with a setup of its own for each fight: two setups of the same fights (compare mode, issue #2), or
+    /// any other list. Every job starts from the one snapshot this call takes, so the setups are compared on the
+    /// same character.
+    /// </summary>
+    public bool Start(Game real, IReadOnlyList<SimJob> jobs, int workers, out string error)
     {
         error = "";
         if (Running) { error = "A simulation is already running."; return false; }
@@ -115,14 +123,14 @@ sealed class SimEngine
 
         while (Finished.TryDequeue(out _)) { }
         Volatile.Write(ref _done, 0);
-        Total = targets.Count;
+        Total = jobs.Count;
         Current = "";
         Problem = "";
         Running = true;
         long memoryAtStart = GC.GetTotalMemory(false);
         var cancel = _cancel = new CancellationTokenSource();
-        var waiting = new ConcurrentQueue<SimTarget>(targets);
-        workers = Math.Clamp(workers, 1, Math.Max(1, targets.Count));
+        var waiting = new ConcurrentQueue<SimJob>(jobs);
+        workers = Math.Clamp(workers, 1, Math.Max(1, jobs.Count));
         Volatile.Write(ref _shownLogged, 0);
 #if DEVTOOLS
         _musicScan = new MusicScan(_log);
@@ -138,10 +146,10 @@ sealed class SimEngine
             {
                 Task.WaitAll(Enumerable.Range(0, workers).Select(_ => Task.Run(() =>
                 {
-                    while (!cancel.IsCancellationRequested && waiting.TryDequeue(out SimTarget? target))
+                    while (!cancel.IsCancellationRequested && waiting.TryDequeue(out SimJob? job))
                     {
-                        Current = target.Name;
-                        SimResult result = RunOne(save, target, options, cancel.Token);
+                        Current = job.Target.Name;
+                        SimResult result = RunOne(save, job.Target, job.Options, cancel.Token);
                         if (cancel.IsCancellationRequested) break;   // a fight that was cut short is not a result
                         Finished.Enqueue(result);
                         Interlocked.Increment(ref _done);

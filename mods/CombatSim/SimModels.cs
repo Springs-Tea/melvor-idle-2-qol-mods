@@ -60,6 +60,16 @@ sealed class SimOptions
 #endif
 }
 
+/// <summary>
+/// One fight to simulate and the setup to fight it with. A run is a list of them, all from one snapshot of the
+/// character (SimEngine.Start): one setup for every fight, or two setups fight by fight in compare mode (issue #2).
+/// </summary>
+sealed record SimJob(SimTarget Target, SimOptions Options)
+{
+    /// <summary>The key its result will have (<see cref="SimResult.Key"/>).</summary>
+    public string Key => SimResult.MakeKey(Options.SetupKey, Target.Key);
+}
+
 /// <summary>An amount of something, by the game's id, with what one of it sells for (0 when unknown).</summary>
 sealed record Amount(string Id, string Name, double Quantity, double SellsFor, bool IsCurrency);
 
@@ -149,6 +159,13 @@ sealed class Scan
     public double Hours;
     public bool Unlimited;
     public string SetupKey = "", SetupLabel = "";
+    /// <summary>
+    /// A scan of two setups (compare mode, issue #2): setup B's key and name, <see cref="SetupKey"/> being A's. Null in
+    /// a scan of one setup, which every scan made before compare mode is: that is how the two are told apart, and an
+    /// old file loads as it always did. Not written when null, so a scan of one setup is the file it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SetupKeyB, SetupLabelB;
     /// <summary>Fights the run was asked for; more than the results when it was stopped.</summary>
     public int Asked;
     public List<SimResult> Results = new();
@@ -157,7 +174,10 @@ sealed class Scan
     [JsonIgnore] public Dictionary<string, SimResult> ByKey => _byKey ??= Results.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Last());
     [JsonIgnore] public bool Stopped => Results.Count < Asked;
     [JsonIgnore] public int Fights => Results.Select(r => r.Target.FightKey).Distinct().Count();
-    [JsonIgnore] public string Title => BestMode ? "Best for " + (TrainSkillName == "" ? "combat XP" : TrainSkillName) : Where;
+    [JsonIgnore] public bool Compare => SetupKeyB != null;
+    [JsonIgnore] public string Title => (Compare ? "A against B: " : "") + (BestMode ? "Best for " + (TrainSkillName == "" ? "combat XP" : TrainSkillName) : Where);
+    /// <summary>The setup it was made with, or the two: "A: Warrior, B: Mage".</summary>
+    [JsonIgnore] public string Setups => Compare ? $"A: {SetupLabel}, B: {SetupLabelB}" : SetupLabel;
 
     /// <summary>XP per hour as this scan ranked it.</summary>
     public double Rank(SimResult r) => BestMode && TrainSkillId != "" ? r.PerHour(r.Xp.GetValueOrDefault(TrainSkillId)) : r.XpPerHour;

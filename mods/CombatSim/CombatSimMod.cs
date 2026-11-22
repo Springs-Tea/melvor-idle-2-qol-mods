@@ -158,6 +158,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Running = false;
         _state.Current = "";
         _state.Overrides.Clear();
+        _state.ForgetCompare();
         _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = _state.FightReport = "";
         _wearShown = null;   // FightSetup.cs: the words on show were for the character before
         _history.Close();
@@ -224,6 +225,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.BestAreas.RemoveWhere(id => !_areaIcons.ContainsKey(id));
 
         BuildGear();
+        DescribeOther();   // compare mode's other setup (SimCompare.cs)
     }
 
     // The loadouts to choose from, and the slots of the chosen one with the player's changes on top.
@@ -232,6 +234,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Loadouts.Clear();
         _state.Gear.Clear();
         _gearLoadout = _gearWorn = null;   // CombatSimGear.cs: made again by ReadGear, for this character
+        _state.ShownSlots = null;
         if (_combat == null || _game == null) return;
         string? worn = _combat.Loadouts.CurrentLoadout?.Data.Id;
         _state.WornLoadoutId = worn ?? "";
@@ -555,41 +558,53 @@ public partial class CombatSimMod : IMod, ISimLookup
         WriteSettings();
     }
 
-    // What a run is asked, from the choices on the left.
-    SimOptions RunOptions() => new()
+    // What a run is asked, from the choices on the left; with the setup on the left unless another is given (A and B in
+    // compare mode, SimCompare.cs).
+    SimOptions RunOptions(SimSetup? setup = null)
     {
-        Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
-        UnlimitedSupplies = _state.Unlimited,
-        LoadoutId = _state.LoadoutId == "" ? null : _state.LoadoutId,
-        Overrides = new Dictionary<string, string>(_state.Overrides),
-        SpellId = _state.SpellId == "" ? null : _state.SpellId,
-        SetupKey = _state.SetupKey,
-        SetupLabel = _state.SetupLabel,
-        // "Go on until": the longest duration is as far as a fight goes on; never From bank (SimEngine.Fight).
-        Sure = _state.Unlimited ? _state.Sure / 100 : 0,
-        SureSizes = SimState.SureSizes.Where(size => size > 0).Select(size => size / 100).ToArray(),
-        MostHours = SimState.Durations[^1].Hours,
-        Watch = _view?.WatchedRates() ?? new List<SimRate>(),
-        Shown = ShownGear(),
-    };
+        SimSetup with = setup ?? _state.OnLeft;
+        return new()
+        {
+            Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
+            UnlimitedSupplies = _state.Unlimited,
+            LoadoutId = with.LoadoutId == "" ? null : with.LoadoutId,
+            Overrides = new Dictionary<string, string>(with.Overrides),
+            SpellId = with.SpellId == "" ? null : with.SpellId,
+            SetupKey = with.Key,
+            SetupLabel = with.Label,
+            // "Go on until": the longest duration is as far as a fight goes on; never From bank (SimEngine.Fight).
+            Sure = _state.Unlimited ? _state.Sure / 100 : 0,
+            SureSizes = SimState.SureSizes.Where(size => size > 0).Select(size => size / 100).ToArray(),
+            MostHours = SimState.Durations[^1].Hours,
+            Watch = _view?.WatchedRates() ?? new List<SimRate>(),
+            // What the slots show for this setup (#46), as they did when it was last on the left (SimSetup.Shown).
+            Shown = with.Shown == null ? null : new Dictionary<string, string>(with.Shown),
+#if DEVTOOLS
+            DevGear = with.DevSlots,
+#endif
+        };
+    }
 
     void Simulate()
     {
         if (_game == null) return;
-        var targets = _state.ToSimulate();
         // First back to the current results: the XP column of an earlier scan may be of another skill (RunOptions).
         _state.Viewing = null;
-        var options = RunOptions();
+        // The setup on the left; in compare mode A and B, fight by fight (SimCompare.cs). B's options, when there are two.
+        List<SimJob> jobs = RunJobs();
+        SimOptions options = jobs.FirstOrDefault()?.Options ?? RunOptions();
+        SimOptions? b = jobs.Select(j => j.Options).FirstOrDefault(o => o != options);
 #if DEVTOOLS
-        DevSimulateOptions(options);
+        // raw= changes the setup on the left (CombatSimGear.cs).
+        DevSimulateOptions(b != null && _state.ShowingB ? b : options);
 #endif
         _state.Message = "";
-        if (!_engine.Start(_game, targets, options, _state.Workers, out string error)) { _state.Message = error; _ctx.Log(error); }
+        if (!_engine.Start(_game, jobs, _state.Workers, out string error)) { _state.Message = error; _ctx.Log(error); }
         else
         {
             // Old numbers for these fights would sit next to new ones until they are replaced.
-            foreach (SimTarget target in targets) _state.Results.Remove(SimResult.MakeKey(options.SetupKey, target.Key));
-            _runKeys = targets.Select(t => SimResult.MakeKey(options.SetupKey, t.Key)).ToList();
+            foreach (SimJob job in jobs) _state.Results.Remove(job.Key);
+            _runKeys = jobs.Select(j => j.Key).ToList();
             _run = new Scan
             {
                 Id = DateTime.UtcNow.Ticks.ToString(),
@@ -601,11 +616,14 @@ public partial class CombatSimMod : IMod, ISimLookup
                 Unlimited = options.UnlimitedSupplies,
                 SetupKey = options.SetupKey,
                 SetupLabel = options.SetupLabel,
-                Asked = targets.Count,
+                SetupKeyB = b?.SetupKey,
+                SetupLabelB = b?.SetupLabel,
+                Asked = jobs.Count,
             };
-            _ctx.Log($"Simulating {targets.Count} fights, {options.Hours:0.##} h each" +
+            _ctx.Log($"Simulating {jobs.Count} fights, {options.Hours:0.##} h each" +
                      (options.Sure > 0 ? $" or on until {SimRanges.Size(_state.Sure)} sure ({options.MostHours:0.##} h at most)" : "") +
-                     $", supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {options.SetupLabel}, {Math.Min(_state.Workers, targets.Count)} at a time.");
+                     $", supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {(b == null ? options.SetupLabel : $"A {options.SetupLabel} and B {b.SetupLabel}")}, " +
+                     $"{Math.Min(_state.Workers, jobs.Count)} at a time.");
             _runClock.Restart();
         }
         Pump(force: true);
@@ -817,7 +835,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     // again; PlayerMade: those of the player's own runs that ended meanwhile, which stay.
     sealed record DevSession((string? Folder, List<Scan> Scans) History, Dictionary<string, SimResult> Results, int Done, int Total,
         string Message, string LoadoutId, Dictionary<string, string> Overrides, string SpellId, string? Selected, bool Pinned, Scan? Viewing,
-        string SortKey, bool SortDescending)
+        string SortKey, bool SortDescending, (bool On, bool ShowingB, SimSetup Other) Compare)
     {
         public readonly List<string> Made = new(), PlayerMade = new();
     }
@@ -857,7 +875,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 ReadHistory();
                 _devSession = new DevSession(_history.DevKeep(), new Dictionary<string, SimResult>(_state.Results), _state.Done, _state.Total,
                     _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.Selected,
-                    _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending);
+                    _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending, (_state.Compare, _state.ShowingB, _state.Other));
             }
             foreach (string line in File.ReadAllLines(request))
                 if (line.Trim() != "") _devCommands.Enqueue(line.Trim());
@@ -984,6 +1002,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
     //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
     //                 game's own equipment screen (CombatSimGear.DevGearCommand)
+    //   compare=<loadout>|<slot=item id>|<spell>, compare=off, side=a|b, wear=on|off   compare mode (SimCompare.cs)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1014,6 +1033,9 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("shot=", StringComparison.Ordinal)) DevShot(command[5..]);
                 else if (command.StartsWith("sure=", StringComparison.Ordinal)) DevSure(command[5..]);
                 else if (command.StartsWith("twice=", StringComparison.Ordinal)) DevTwice(command[6..].Trim());
+                else if (command.StartsWith("compare=", StringComparison.Ordinal)) DevCompare(command[8..].Trim());
+                else if (command.StartsWith("side=", StringComparison.Ordinal)) DevSide(command[5..].Trim());
+                else if (command.StartsWith("wear=", StringComparison.Ordinal)) DevTickWear(command[5..].Trim());
                 else if (!DevGearCommand(command)) return false;   // pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
                 break;
         }
@@ -1136,7 +1158,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     void PutBackWindow(DevSession session, string history)
     {
         int results = _state.Results.Count;
-        string setup = _state.SetupLabel;
+        string setup = _state.SetupLabel, compare = DevCompareState();
         _state.Results.Clear();
         foreach (var (key, result) in session.Results) _state.Results[key] = result;
         (_state.Done, _state.Total, _state.Message, _state.Current) = (session.Done, session.Total, session.Message, "");
@@ -1149,9 +1171,11 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Viewing = session.Viewing != null && _history.Scans.Contains(session.Viewing) ? session.Viewing : null;
         _state.SortKey = session.SortKey;
         _state.SortDescending = session.SortDescending;
+        (_state.Compare, _state.ShowingB, _state.Other) = session.Compare;
         BuildGear();
         _ctx.Log($"Dev: also put back: {history}. Current results: {results} put back to the {_state.Results.Count} from before. " +
-                 $"Setup: {setup} put back to {_state.SetupLabel}; selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}.");
+                 $"Setup: {setup} put back to {_state.SetupLabel}; selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}. " +
+                 $"Compare: {compare}; put back to {DevCompareState()}.");
     }
 
     // cards.request (EnemyCards) photographs the game's enemy cards, which this window would cover. It closes
