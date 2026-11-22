@@ -67,6 +67,9 @@ sealed class SimState
     public bool SortDescending = true;
     public string FoodLine = "";
     public bool FoodMissing;
+    /// <summary>The worn loadout's food in the bank, as of opening the window; -1 when it is not known.</summary>
+    public long FoodInBank = -1;
+    public string FoodName = "", FoodLoadoutId = "";
     public bool Running;
     public int Done, Total;
     public string Current = "", Message = "";
@@ -169,7 +172,9 @@ sealed class SimView
 {
     static readonly Color Bad = new("ff4500"), Good = new("5fd35f");
 
-    sealed record Column(string Title, string Tip, float Width, Func<SimResult, double> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint);
+    // LessIsBetter: the first click on the column puts the smallest numbers on top.
+    sealed record Column(string Title, string Tip, float Width, Func<SimResult, double> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint,
+        bool LessIsBetter = false);
 
     Column[] Columns => _columns ??= new Column[]
     {
@@ -177,6 +182,8 @@ sealed class SimView
         new("XP", "Experience per hour: all combat skills together, or the skill you are training", 66, r => _state.Xp(r), r => Fmt(_state.Xp(r)), _ => GameStyle.TextWhite),
         new("Gold", "Coins dropped plus what the dropped items sell for, per hour", 66, r => r.GoldPerHour, r => Fmt(r.GoldPerHour), _ => GameStyle.TextGold),
         new("Food", "Food eaten per hour", 52, r => r.FoodPerHour, r => Fmt(r.FoodPerHour), _ => GameStyle.TextWhite),
+        new("Food/kill", "Food eaten per kill: the less, the longer your food lasts", 66, r => r.FoodPerKill,
+            r => r.Kills > 0 ? PerKill(r.FoodPerKill) : "-", r => r.Kills > 0 ? GameStyle.TextWhite : GameStyle.TextDim, LessIsBetter: true),
         new("Deaths", "Times you die per hour", 60, r => r.DeathsPerHour, r => r.Deaths == 0 ? "0" : Fmt(r.DeathsPerHour),
             r => r.Deaths == 0 ? GameStyle.TextDim : Bad),
         new("Low HP", "The lowest your hitpoints got, as a share of the maximum", 62, r => r.LowestHpFraction, r => r.LowestHpFraction.ToString("P0"),
@@ -928,7 +935,7 @@ sealed class SimView
         button.Pressed += () =>
         {
             if (_state.SortColumn == column) _state.SortDescending = !_state.SortDescending;
-            else { _state.SortColumn = column; _state.SortDescending = column >= 0; }
+            else { _state.SortColumn = column; _state.SortDescending = column >= 0 && !Columns[column].LessIsBetter; }
             _tableSignature = "";
             Refresh();
         };
@@ -940,10 +947,21 @@ sealed class SimView
     void FillRows()
     {
         var results = _state.Lines();
-        IEnumerable<SimResult> sorted = _state.SortColumn < 0
-            ? results.OrderBy(r => r.Target.Name, StringComparer.OrdinalIgnoreCase)
-            : results.OrderBy(r => r.Failed ? double.MinValue : Columns[_state.SortColumn].Value(r));
-        var ordered = (_state.SortDescending ? sorted.Reverse() : sorted).ToList();
+        List<SimResult> ordered;
+        if (_state.SortColumn < 0)
+        {
+            ordered = results.OrderBy(r => r.Target.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            if (_state.SortDescending) ordered.Reverse();
+        }
+        else
+        {
+            Func<SimResult, double> value = Columns[_state.SortColumn].Value;
+            var simulated = results.Where(r => !r.Failed);
+            // Equal numbers are common (every fight that eats no food): the better experience first among them.
+            ordered = (_state.SortDescending ? simulated.OrderByDescending(value) : simulated.OrderBy(value)).ThenByDescending(_state.Xp).ToList();
+            // A fight that could not be simulated has no numbers to sort by: it goes last, whichever the direction.
+            ordered.AddRange(results.Where(r => r.Failed));
+        }
 
         foreach (Button header in _headers)
         {
@@ -1170,7 +1188,9 @@ sealed class SimView
                 _details.AddChild(Stat("Kills", Change(r.KillsPerHour, other.KillsPerHour), Tint(r.KillsPerHour, other.KillsPerHour)));
                 _details.AddChild(Stat("Gold", Change(r.GoldPerHour, other.GoldPerHour), Tint(r.GoldPerHour, other.GoldPerHour)));
                 // Less food eaten is the good direction.
-                _details.AddChild(Stat("Food eaten", Change(r.FoodPerHour, other.FoodPerHour), Tint(other.FoodPerHour, r.FoodPerHour)));
+                _details.AddChild(Stat("Food eaten", Change(r.FoodPerHour, other.FoodPerHour), LessTint(r.FoodPerHour, other.FoodPerHour)));
+                if (r.Kills > 0 && other.Kills > 0)
+                    _details.AddChild(Stat("Food per kill", Change(r.FoodPerKill, other.FoodPerKill), LessTint(r.FoodPerKill, other.FoodPerKill)));
             }
         }
 
@@ -1197,6 +1217,27 @@ sealed class SimView
             r.LowestHpFraction < 0.15 ? Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite, r.LowestHpFraction.ToString("P0")));
         _details.AddChild(Stat("Damage taken", Fmt(r.PerHour(r.DamageTaken))));
         _details.AddChild(Stat("Healed by food", Fmt(r.PerHour(r.Healed)), null, $"{Fmt(r.FoodPerHour)} eaten"));
+        if (r.Kills > 0)
+        {
+            double perKill = r.FoodPerKill;
+            _details.AddChild(Stat("Food per kill", PerKill(perKill), null, EveryKills(perKill)));
+            if (r.FoodEaten > 0) _details.AddChild(Stat("Healed per kill", Fmt(r.HealedPerKill)));
+            // How far the food in the bank goes here; only known for the loadout the character wears.
+            // An earlier scan is of another day's fight; today's bank says nothing about it. A fight that
+            // ate the bank empty has counted it instead: see below.
+            if (perKill > 0 && r.FoodGoneSeconds < 0 && _state.Viewing == null && _state.FoodInBank >= 0 && r.SetupKey.Split(';')[0] == _state.FoodLoadoutId)
+            {
+                // Whole kills: the piece that is left over does not finish another one.
+                double kills = Math.Floor(_state.FoodInBank / perKill);
+                _details.AddChild(Stat("Your food lasts", kills >= 1 || _state.FoodInBank == 0 ? $"{Fmt(kills)} {(kills == 1 ? "kill" : "kills")}" : "less than 1 kill",
+                    null, $"{_state.FoodInBank:N0} {_state.FoodName} in the bank"));
+            }
+        }
+        else if (r.FoodEaten > 0) _details.AddChild(Stat("Food per kill", "-", GameStyle.TextDim, "nothing was killed"));
+        // From the bank, and the food ran out: the kills until then were counted, no estimate is needed.
+        if (r.FoodGoneSeconds >= 0)
+            _details.AddChild(Stat("Your food lasts", $"{Fmt(r.FoodGoneKills)} {(r.FoodGoneKills == 1 ? "kill" : "kills")}", Bad,
+                $"ran out after {Clock(r.FoodGoneSeconds)}"));
 
         if (r.Used.Count > 0)
         {
@@ -1231,6 +1272,13 @@ sealed class SimView
 
     static Color Tint(double mine, double theirs) =>
         theirs <= 0 || Math.Abs(mine / theirs - 1) < 0.005 ? GameStyle.TextWhite : mine > theirs ? Good : Bad;
+
+    // The same for what is better when it is less: food. Eating none where the other setup eats is green.
+    static Color LessTint(double mine, double theirs)
+    {
+        if (theirs <= 0) return mine > 0 ? Bad : GameStyle.TextWhite;
+        return Math.Abs(mine / theirs - 1) < 0.005 ? GameStyle.TextWhite : mine < theirs ? Good : Bad;
+    }
 
     // "[icon] Name                          value"
     // "                                     note"
@@ -1297,9 +1345,18 @@ sealed class SimView
     }
 
 #if DEVTOOLS
-    /// <summary>Development: opens the areas, the earlier scans, the newest scan, or the item picker of a slot.</summary>
+    /// <summary>
+    /// Development: opens the areas, the earlier scans, the newest scan, or the item picker of a slot;
+    /// "sort=Food/kill" is one click on that column's name, "details=end" scrolls the details to their last line.
+    /// </summary>
     public void DevOpenPicker(string slotName)
     {
+        if (slotName == "details=end") { if (_details.GetParent() is ScrollContainer scroll) scroll.ScrollVertical = int.MaxValue; return; }
+        if (slotName.StartsWith("sort=", StringComparison.Ordinal))
+        {
+            _headers.FirstOrDefault(h => h.Text.Equals(slotName[5..], StringComparison.OrdinalIgnoreCase))?.EmitSignal(BaseButton.SignalName.Pressed);
+            return;
+        }
         if (slotName == "where") { OpenAreas(); return; }
         if (slotName == "history") { OpenHistory(); return; }
         if (slotName == "view") { if (_state.History.FirstOrDefault() is { } newest) Show(newest); return; }
@@ -1351,6 +1408,22 @@ sealed class SimView
         0 => "0",
         _ => value.ToString("0.##"),
     };
+
+    // Food per kill is mostly a small fraction: three decimals where Fmt would round it to 0.
+    static string PerKill(double value) => value switch
+    {
+        0 => "0",
+        >= 1 => Fmt(value),
+        >= 0.001 => value.ToString("0.###"),
+        _ => "<0.001",
+    };
+
+    // "one piece every 125 kills" is easier to picture than 0.008. Nothing to add from one piece per kill up.
+    static string? EveryKills(double perKill)
+    {
+        double kills = perKill > 0 ? 1 / perKill : 0;
+        return kills >= 9.95 ? $"one piece every {kills:N0} kills" : kills >= 1.05 ? $"one piece every {kills:0.#} kills" : null;
+    }
 
     static string Clock(double seconds) => SimText.Clock(seconds);
 }

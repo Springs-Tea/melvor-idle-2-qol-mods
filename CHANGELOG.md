@@ -2,6 +2,15 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
+## Unreleased
+
+- **Combat Simulator**: a Food/kill column, for when food is short: the fight with the smallest number makes
+  your food last longest, and the first click on the column puts it on top. Details add food and healing per
+  kill and how many kills the food in your bank is enough for, and "Compared with" says how food per kill
+  changed. A From bank fight now says when the food ran out, and how many kills it had made by then.
+- **Combat Simulator**: fights with the same number in the sorted column stand with the better XP first, and
+  a fight that could not be simulated stays at the bottom whichever way the list is sorted.
+
 ## 0.4.0
 
 For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer (tried with 0.2.0). A seventh mod.

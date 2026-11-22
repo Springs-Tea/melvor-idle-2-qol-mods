@@ -66,21 +66,26 @@ Every number is **per hour of game time**, whatever length you simulated.
 | **XP** | Combat XP per hour, all skills together. In "Best for" it is the XP of the skill you chose, and the column is named after it. |
 | **Gold** | Coins dropped plus what the dropped items sell for. |
 | **Food** | Pieces of food eaten per hour. |
+| **Food/kill** | Pieces of food eaten per kill: the fight where your food lasts longest has the smallest number. The first click on it sorts the smallest to the top. A fight without a kill shows `-`. |
 | **Deaths** | Times you die per hour. Grey 0 is what you want; anything else is red. |
 | **Low HP** | The lowest your hitpoints got, as a share of the maximum. Gold under 35%, red under 15% or when you died. |
 
-Click a column's name to sort by it, again to turn the order around. `Lv 12` next to a name is the enemy's
-combat level; a dungeon says `Dungeon` and is simulated as a whole, run after run.
+Click a column's name to sort by it, again to turn the order around. Fights with the same number, like all
+those that eat no food, stand with the better XP first. `Lv 12` next to a name is the enemy's combat level;
+a dungeon says `Dungeon` and is simulated as a whole, run after run.
 
 The **Details** of a line, from top to bottom:
 
 - **Compared with**: only when the same fight was simulated with other equipment or another spell. Each
-  other setup gets four lines (Experience, Kills, Gold, Food eaten) saying how much better or worse *this*
-  setup is. Green is better; for food, less is better.
+  other setup gets lines for Experience, Kills, Gold, Food eaten and Food per kill saying how much better or
+  worse *this* setup is. Green is better; for food, less is better.
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
-  food healed.
+  food healed. Then **Food per kill** (also as "one piece every 12 kills") and **Healed per kill**, and
+  **Your food lasts**: how many kills the food in your bank is enough for in this fight. That is worked out
+  from the food per kill, for the loadout you are wearing; when a From bank fight ate the last piece, it is
+  the number of kills it had counted by then, in red.
 - **Used**: what the fight consumed per hour: food, runes, arrows, prayer points.
 - **Loot**: every item dropped per hour, with what it sells for.
 
@@ -137,8 +142,10 @@ start. Tick fewer areas to keep it short.
 
 - **Unlimited** hands food, runes, arrows and prayer points back as they are used. These are the rates of a
   fight that is kept supplied: use it to compare places, equipment and spells.
-- **From bank** uses what you own right now and ends the fight when something runs out. Use it with a long
-  duration to see how far your supplies get you: the note on the result says what ran out and when.
+- **From bank** uses what you own right now. Use it with a long duration to see how far your supplies get
+  you: the note on the result says what ran out and when. Without arrows or runes the fight ends there.
+  Without food it goes on, and the deaths that follow are in the numbers; "Your food lasts" in the details
+  says how many kills the food was enough for.
 
 Either way, "Used" in the details tells you what an hour costs.
 
@@ -169,6 +176,8 @@ changes your equipment: if you simulated other items, you still have to put them
   have to own it), simulate again, read "Compared with".
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" note, means
   yes. Low HP tells you how close it was.
+- **Which fight makes my food last longest?** Click Food/kill: the top line eats the least for each kill.
+  "Your food lasts" in its details says how many kills the food in your bank is enough for.
 - **Which spell?** Simulate once per spell and compare.
 - **Where is the gold?** Simulate everything and sort by Gold.
 
@@ -216,7 +225,7 @@ Everything is in `mods\CombatSim`:
 | --- | --- |
 | A fight is missing from the table after Cancel | A fight that was cut short is dropped; the finished ones are kept. |
 | "... could not be equipped (requirements not met?)" | The copy follows the game's rules: you do not meet that item's requirements. |
-| "Ran out of ... after ..." | From bank: that supply was used up, and the fight ended there. |
+| "Ran out of ... after ..." | From bank: that supply was used up. Without arrows or runes the fight ended there; without food it went on. |
 | "The fight could not be started" | The game refused to start it for the copy, usually an unmet requirement of the area. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
 | "This game version loads saves differently" or "copies are not being released" | A game update changed something the simulator depends on. It needs an update; the rest of the game is unaffected. |

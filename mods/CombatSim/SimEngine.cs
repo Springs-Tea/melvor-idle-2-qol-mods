@@ -236,7 +236,8 @@ sealed class SimEngine
         if (target.StanceId != null) Stand(combat, target, notes);
         Cast(combat, bank, options, notes);
         // "Never runs out" has to hold from the first bite: food that is selected but down to a handful.
-        if (options.UnlimitedSupplies && combat.Food.SelectedFood is { } food) TopUp(bank, food.Item, Stock);
+        Item? eaten = combat.Food.SelectedFood?.Item;
+        if (options.UnlimitedSupplies && eaten != null) TopUp(bank, eaten, Stock);
         combat.Player.GlobalHealth.Set(combat.Player.GlobalHealth.Max);
         result.MaxHp = combat.Player.Health.Max;
         result.LowestHp = combat.Player.Health.Current;
@@ -342,6 +343,14 @@ sealed class SimEngine
             if (ticks % CheckEvery != 0) continue;
             if (options.UnlimitedSupplies) Refill();
             if (cancel.IsCancellationRequested) break;
+            // Food from the bank can run out while the fight goes on; what follows is a fight without food.
+            if (!options.UnlimitedSupplies && result.FoodGoneSeconds < 0 && eaten != null && result.FoodEaten > 0 && bank.Inventory.GetQuantity(eaten) == 0)
+            {
+                result.FoodGoneSeconds = ticks / (double)TicksPerSecond;
+                result.FoodGoneKills = result.Kills;
+                notes.Add($"Ran out of {ItemName(eaten)} after {Clock(ticks)}.");
+                result.Note = string.Join(" ", notes);
+            }
             if (sim.ActionManager.HasActiveAction) continue;
 
             // The fight ended. After a death it goes on, to learn how often that happens; anything else
@@ -350,7 +359,9 @@ sealed class SimEngine
             deathsSeen = result.Deaths;
             if (!died)
             {
-                Amount? empty = used.Values.FirstOrDefault(u => !u.IsCurrency && sim.Data.GetDataRegistryOutput<Item>().TryGetObjectById(u.Id, out Item? item)
+                // The food that ran out has its note already.
+                Amount? empty = used.Values.FirstOrDefault(u => !u.IsCurrency && !(result.FoodGoneSeconds >= 0 && u.Id == eaten?.Id)
+                                                                && sim.Data.GetDataRegistryOutput<Item>().TryGetObjectById(u.Id, out Item? item)
                                                                 && bank.Inventory.GetQuantity(item) == 0 && combat.Equipment.GetEquippedQuantity(item) == 0);
                 notes.Add(empty != null ? $"Ran out of {empty.Name} after {Clock(ticks)}." : $"The fight stopped after {Clock(ticks)}.");
                 result.Note = string.Join(" ", notes);

@@ -15,11 +15,12 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
   - Equipment: pick one of your saved loadouts, and click any slot to try another item: every
     item of the game that fits, with a search box, whether you own it or not. When the weapon
     casts spells, choose which one to fight with.
-  - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, deaths, and the
-    lowest your hitpoints got. Click a column to sort.
+  - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
+    deaths, and the lowest your hitpoints got. Click a column to sort.
   - Details: per skill XP, loot item by item, what was used (food, ammo, runes, prayer points),
-    damage taken, time of the first death. When the same fight was simulated with other
-    equipment, the difference is shown.
+    damage taken, time of the first death, food and healing per kill, and how many kills the
+    food in your bank is enough for. When the same fight was simulated with other equipment,
+    the difference is shown.
   - Best for: pick the skill you want to train and the areas to look in. Every fight is tried
     in each attack stance of your weapon and the fights are ranked by what they give that
     skill, with the best stance named on each line.
@@ -30,7 +31,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
 
 Good to know
   - "Unlimited" supplies hand food, ammo, runes and prayer points back as they are used. "From
-    bank" uses what you have, and ends the fight when something runs out.
+    bank" uses what you have and says what ran out, and when. Without ammo or runes the fight
+    ends there; without food it goes on.
   - Farming and Ranching are paused in the copy, so their items do not show up as supplies.
   - Fights are random: two runs of the same fight differ a little. Longer fights are steadier.
   - An item whose requirements you do not meet cannot be equipped in the copy either; the

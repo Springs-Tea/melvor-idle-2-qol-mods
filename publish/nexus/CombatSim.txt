@@ -33,8 +33,8 @@ It does [b]not[/b] re-create the game's combat formulas. It loads a copy of your
 
 [size=4][b]What you get, per hour[/b][/size]
 [list]
-[*][b]Kills, XP, Gold, Food, Deaths, Low HP[/b] for every fight, in a table you sort by clicking a column.
-[*][b]Details[/b]: XP per skill, loot item by item with its value, what was used (food, runes, arrows, prayer points), damage taken, when the first death came.
+[*][b]Kills, XP, Gold, Food, Food per kill, Deaths, Low HP[/b] for every fight, in a table you sort by clicking a column.
+[*][b]Details[/b]: XP per skill, loot item by item with its value, what was used (food, runes, arrows, prayer points), damage taken, when the first death came, food and healing per kill, how many kills the food in your bank is enough for.
 [*][b]Compared with[/b]: the same fight with other equipment or another spell, side by side, in percent.
 [/list]
 

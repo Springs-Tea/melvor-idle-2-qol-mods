@@ -54,6 +54,12 @@ sealed class SimResult
     public double FirstDeathSeconds = -1;
     public long DamageTaken, Healed;
     public int FoodEaten, LowestHp, MaxHp;
+    /// <summary>
+    /// With supplies from the bank: seconds of game time until the last piece of food was eaten, or -1 when
+    /// the food did not run out, and the kills made by then. The fight goes on without food after that.
+    /// </summary>
+    public double FoodGoneSeconds = -1;
+    public int FoodGoneKills;
     /// <summary>Skill id -> XP gained.</summary>
     public Dictionary<string, double> Xp = new();
     public List<Amount> Loot = new(), Used = new();
@@ -70,6 +76,9 @@ sealed class SimResult
     [JsonIgnore] public double CoinsPerHour => PerHour(Loot.Where(l => l.IsCurrency && l.Id == SimEngine.Gold).Sum(l => l.Quantity));
     [JsonIgnore] public double LootValuePerHour => PerHour(Loot.Where(l => !l.IsCurrency).Sum(l => l.Quantity * l.SellsFor));
     [JsonIgnore] public double FoodPerHour => PerHour(FoodEaten);
+    /// <summary>Pieces of food eaten for each kill; infinity when nothing was killed, the worst there is.</summary>
+    [JsonIgnore] public double FoodPerKill => Kills > 0 ? (double)FoodEaten / Kills : double.PositiveInfinity;
+    [JsonIgnore] public double HealedPerKill => Kills > 0 ? (double)Healed / Kills : 0;
     [JsonIgnore] public double LowestHpFraction => MaxHp > 0 ? (double)LowestHp / MaxHp : 1;
     [JsonIgnore] public double SecondsPerKill => Kills > 0 ? Hours * 3600 / Kills : 0;
 }

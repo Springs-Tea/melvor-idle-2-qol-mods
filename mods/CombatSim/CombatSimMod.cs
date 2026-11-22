@@ -263,6 +263,10 @@ public class CombatSimMod : IMod, ISimLookup
         _state.FoodLine = !wornNow ? "Food: as that loadout has it"
             : food == null ? "No food selected: you will not heal."
             : $"Food: {food.Item.DisplayName.GetPluralText(2)} x{_bank?.Inventory.GetQuantity(food.Item) ?? 0:N0}";
+        // For "Your food lasts" in the details: the food of the worn loadout is the only one that can be read.
+        _state.FoodInBank = food != null && _bank != null ? _bank.Inventory.GetQuantity(food.Item) : -1;
+        _state.FoodName = food?.Item.DisplayName.GetPluralText(2) ?? "";
+        _state.FoodLoadoutId = worn ?? "";
 
         // The attack stances belong to the weapon of this setup; bare hands have their own.
         weapon ??= _combat.Equipment.DefaultWeapon?.Weapon?.Type;
@@ -580,7 +584,9 @@ public class CombatSimMod : IMod, ISimLookup
     // game goes into the mod's folder and the table into the log. The file holds
     //   <where>|<duration index>|<1 unlimited, 0 from bank>|<row to select>
     // where: "all", parts of area names joined by "+", "best <skill>" or "best <skill>@<areas>", or "open" to
-    // only open the window (with "where", "history" or "view" as the picker further on).
+    // only open the window (with "where", "history" or "view" as the picker further on). Pickers are joined by
+    // "+"; "sort=<column>" among them clicks that column's name, twice to turn the order around, and
+    // "details=end" scrolls the details down.
     int _devShotAt = -1;
     string? _devSelect, _devPicker;
     bool _devNoRun;
@@ -662,6 +668,7 @@ public class CombatSimMod : IMod, ISimLookup
             _ctx.Log($"Dev: rect = {(int)frame.Position.X},{(int)frame.Position.Y},{(int)frame.End.X},{(int)frame.End.Y}");
             foreach (SimResult r in _state.Results.Values.OrderByDescending(r => r.XpPerHour))
                 _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name + " " + r.Target.StanceName,-30} {string.Join(" ", r.Xp.Select(x => x.Key.Replace("MelvorBase:", "") + "=" + (x.Value / Math.Max(r.Hours, 1e-9)).ToString("N0")))} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
+                         $"eaten {r.FoodEaten} / killed {r.Kills} = {r.FoodPerKill:0.####}  healed {r.Healed}  food gone {(r.FoodGoneSeconds < 0 ? "-" : $"{r.FoodGoneSeconds:0}s, {r.FoodGoneKills} kills")}  " +
                          $"lowHP {r.LowestHpFraction,4:P0}  {r.RealMilliseconds,5:N0} ms  {r.Note}");
         }
     }
