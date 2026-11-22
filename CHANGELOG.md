@@ -2,6 +2,14 @@
 
 From 0.3.0 on all the mods share one version, the repository's. Before that each mod had its own.
 
+## Unreleased
+
+- **Combat Goals**: while you make something with a stop set (Smithing, Crafting, Fletching, Runecrafting,
+  Beastcrafting, Cooking or Herblore), the end of the game's footer says how long until the stop ends the action,
+  in the footer's own words: "1m 38s until Stop Condition". Its tooltip names the stop as the skill's page does.
+  The window's small tooltips now sit on the game's dark tooltip panel, and the window first opens above the
+  game's bottom bar and stays above it.
+
 ## 0.5.0
 
 For Melvor Idle 2 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer (tried with 0.2.0). Three new mods.

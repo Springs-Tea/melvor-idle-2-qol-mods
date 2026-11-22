@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using GamesByMalcs.Melvor2;
 using GamesByMalcs.Melvor2.Components.CombatAreas;
@@ -31,19 +32,19 @@ public class CombatGoalsMod : IMod
     // The XP rate is the average over this much recent play, like the footer's own time period.
     static readonly (string Label, double Seconds)[] Periods = { ("1 minute", 60), ("5 minutes", 300), ("10 minutes", 600), ("30 minutes", 1800) };
     static readonly double LongestPeriod = Periods[^1].Seconds;
-    const ulong SampleEveryMs = 1000;
+    internal const ulong SampleEveryMs = 1000;
     // A longer gap between samples means the game was paused or computed offline progress: that XP did not
     // arrive at a rate we can measure, so the history starts again.
-    const ulong GapResetMs = 5000;
-    // XP arrives in bursts (per hit), so a few seconds of history gives wild numbers.
-    const double MinHistorySeconds = 10;
+    internal const ulong GapResetMs = 5000;
     const float MinScale = 0.7f, MaxScale = 2f;
+    // The first time, the window keeps this far from the screen's right edge and from the game's bottom bar.
+    const float FirstPlaceGap = 60;
 
     sealed class Row
     {
         public string Id = "", Name = "";
         public ExperienceComponent Experience = null!;
-        public readonly Queue<(ulong Ms, double Xp)> Samples = new();
+        public readonly RateHistory Samples = new();
         public Control Root = null!;
         public Label LevelLabel = null!, RateLabel = null!, TimeLabel = null!;
         public SpinBox Target = null!;
@@ -76,6 +77,9 @@ public class CombatGoalsMod : IMod
     bool _wasDown, _settingUp, _dragging, _placed, _resizing, _inCombat, _stripMissingLogged, _stopped, _unsaved, _guessing;
     Vector2 _resizeFrom;
     float _resizeTo = 1f;
+    readonly Tempo _sampling = new(SampleEveryMs);
+    Control? _footer;
+    float _bottomInset;
     ulong _lastSample;
     int _shown = -1;
     object? _fight;
@@ -85,11 +89,17 @@ public class CombatGoalsMod : IMod
         _ctx = ctx;
         _settings = ReadSettings();
         ctx.Frame += OnFrame;
+        try { StartSkilling(); }
+        catch (Exception e) { ctx.Log("Skilling stop estimates disabled (the game was updated?): " + e); }
 #if DEVTOOLS
-        Dev.Start(ctx);
+        Dev.Start(ctx, this);
 #endif
         ctx.Log("Ready. F10 shows/hides the combat goals window.");
     }
+
+    // Resolve optional game types inside the guarded call, even if a game update removes a type entirely.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    void StartSkilling() => SkillingAction.Start(_ctx);
 
     void OnFrame()
     {
@@ -100,8 +110,16 @@ public class CombatGoalsMod : IMod
             // One line, then nothing: an error on every frame would bury the log and help nobody.
             _stopped = true;
             _ctx.Log("Stopped (the game was updated?): " + e);
+            FreeControl(_stripButton);
             DropWindow();
         }
+    }
+
+    // Cleanup still attempts the other controls if one is already being destroyed.
+    static void FreeControl(Node? node)
+    {
+        try { if (GodotObject.IsInstanceValid(node)) node!.QueueFree(); }
+        catch (Exception) { }
     }
 
     void Step()
@@ -110,11 +128,11 @@ public class CombatGoalsMod : IMod
         if (down && !_wasDown) SetHidden(!_settings.Hidden);
         _wasDown = down;
 
+        if (!_sampling.Due()) return;
         TrackCharacter();
         if (_game == null) return;
 
         ulong now = Time.GetTicksMsec();
-        if (now - _lastSample < SampleEveryMs) return;
         bool gap = _lastSample != 0 && now - _lastSample > GapResetMs;
         _lastSample = now;
         FlushSettings();
@@ -147,6 +165,30 @@ public class CombatGoalsMod : IMod
 #endif
     }
 
+#if DEVTOOLS
+    // A development picture's size. It is never written to settings.json, and null puts the window back at
+    // the size the player chose.
+    float? _pictureScale;
+    float WindowScale => _pictureScale ?? _settings.Scale;
+
+    internal bool WindowUp => _layer?.Visible == true && _window != null;
+
+    /// <summary>A positive number: the largest size; a negative one: the smallest; null: the player's.</summary>
+    internal void SetPictureScale(float? largest)
+    {
+        float? scale = largest is { } big ? (big > 0 ? MaxScale : MinScale) : null;
+        if (scale == _pictureScale) return;
+        _pictureScale = scale;
+        Rebuild();
+    }
+
+    internal string WindowReading => _window == null ? "no combat window"
+        : $"combat rows={_shown}, scale={_style.Scale:P0} (saved {_settings.Scale:P0}), window={_window.GetGlobalRect()}, " +
+          $"screen={_window.GetViewportRect().Size}, bottom bar height={_bottomInset}";
+#else
+    float WindowScale => _settings.Scale;
+#endif
+
     // CurrentGame is null on the main menu and a new object for every character that is opened.
     void TrackCharacter()
     {
@@ -160,11 +202,16 @@ public class CombatGoalsMod : IMod
         _lastSample = 0;
         _fight = null;
         _inCombat = false;
-        _stripButton = null;   // it lived in the old character's screen
+        FreeControl(_stripButton);
+        _stripButton = null;
+        _footer = null;
+        _bottomInset = 0;
         DropWindow();
         if (now == null) return;
         try
         {
+            _footer = GameAccess.FindGameView()?.FindChild("Footer", true, false) as Control;
+            if (_footer == null) _ctx.Log("The game's bottom bar was not found. The combat window may overlap it.");
             BuildRows(now);
             BuildWindow(now);
             _ctx.Log($"Character opened, tracking {_rows.Count} combat skills.");
@@ -197,12 +244,14 @@ public class CombatGoalsMod : IMod
         _settingUp = true;
         _placed = false;
         _shown = -1;
-        _style = new GameStyle(Math.Clamp(_settings.Scale, MinScale, MaxScale));
+        _style = new GameStyle(Math.Clamp(WindowScale, MinScale, MaxScale));
         _layer = new CanvasLayer { Layer = 100, Visible = false };
 
         _window = new PanelContainer { MouseDefaultCursorShape = Control.CursorShape.Move };
         _window.AddThemeStyleboxOverride("panel", _style.WindowPanel());
+        _window.Theme = _style.TooltipTheme();
         _window.GuiInput += OnWindowInput;
+        _window.Resized += KeepOnScreen;
         _layer.AddChild(_window);
 
         var column = _style.Spaced(new VBoxContainer(), 8);
@@ -231,7 +280,7 @@ public class CombatGoalsMod : IMod
 
     void DropWindow()
     {
-        if (_layer != null && GodotObject.IsInstanceValid(_layer)) _layer.QueueFree();
+        FreeControl(_layer);
         _layer = null; _window = null; _grip = null;
         _dragging = _resizing = false;
     }
@@ -381,6 +430,7 @@ public class CombatGoalsMod : IMod
             MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
             TooltipText = "Drag to resize",
         };
+        grip.Theme = _window!.Theme;   // the grip is a sibling of the window
         grip.Draw += () =>
         {
             var color = new Color(GameStyle.TextGrey, 0.7f);
@@ -435,11 +485,11 @@ public class CombatGoalsMod : IMod
 
     void KeepOnScreen()
     {
-        if (_window == null) return;
+        if (_window == null || !_placed || !_window.IsInsideTree()) return;
         Vector2 screen = _window.GetViewportRect().Size, size = _window.Size * _window.Scale;
         _window.Position = new Vector2(
             Math.Clamp(_window.Position.X, 0, Math.Max(0, screen.X - size.X)),
-            Math.Clamp(_window.Position.Y, 0, Math.Max(0, screen.Y - size.Y)));
+            Math.Clamp(_window.Position.Y, 0, Math.Max(0, screen.Y - _bottomInset - size.Y)));
         PlaceGrip();
     }
 
@@ -509,6 +559,8 @@ public class CombatGoalsMod : IMod
                 ExpandIcon = true,
                 IconAlignment = HorizontalAlignment.Center,
                 ToggleMode = true,
+                // Its tooltip at the game's size, as the strip is: the window's own follows the window's size.
+                Theme = new GameStyle().TooltipTheme(),
                 TooltipText = "Combat Goals: time left to a level goal for each combat skill (F10)",
             };
             _stripButton.Toggled += open => { if (open == _settings.Hidden) SetHidden(!open); };
@@ -534,25 +586,11 @@ public class CombatGoalsMod : IMod
         foreach (Row row in _rows)
         {
             if (gap) row.Samples.Clear();
-            row.Samples.Enqueue((now, row.Experience.Xp));
-            while (row.Samples.Count > 2 && now - row.Samples.Peek().Ms > LongestPeriod * 1000)
-                row.Samples.Dequeue();
+            row.Samples.Add(now, row.Experience.Xp, LongestPeriod);
         }
     }
 
-    // XP per second over the chosen period, or 0 when there is not enough history yet.
-    double Rate(Row row, ulong now)
-    {
-        double periodMs = Periods[Math.Clamp(_settings.Period, 0, Periods.Length - 1)].Seconds * 1000;
-        foreach (var first in row.Samples)
-        {
-            if (now - first.Ms > periodMs) continue;
-            var last = row.Samples.Last();
-            double seconds = (last.Ms - first.Ms) / 1000.0;
-            return seconds < MinHistorySeconds ? 0 : Math.Max(0, (last.Xp - first.Xp) / seconds);
-        }
-        return 0;
-    }
+    double SelectedPeriod => Periods[Math.Clamp(_settings.Period, 0, Periods.Length - 1)].Seconds;
 
     void Refresh(ulong now)
     {
@@ -563,7 +601,7 @@ public class CombatGoalsMod : IMod
         {
             foreach (Row row in _rows)
             {
-                double rate = Rate(row, now);
+                double rate = row.Samples.PerSecond(now, SelectedPeriod);
                 int level = row.Experience.Level, cap = row.Experience.LevelCap;
                 row.Target.MaxValue = Math.Max(cap, 1);   // the cap can rise while the window is up
                 // Only skills that are gaining XP, and can still gain levels, are listed.
@@ -592,11 +630,15 @@ public class CombatGoalsMod : IMod
         bool resized = shown != _shown;
         _shown = shown;
         _layer.Visible = WindowWanted;
+        float footer = GodotObject.IsInstanceValid(_footer) && _footer!.IsVisibleInTree() ? _footer.GetGlobalRect().Size.Y : 0;
+        bool footerChanged = _bottomInset != footer;
+        _bottomInset = footer;
         if (resized || !_placed)
         {
             _window.ResetSize();   // shrink to the rows that are left
             Place();
         }
+        else if (footerChanged) KeepOnScreen();
     }
 
     // Where the player left it; the first time, the bottom right corner, clear of the game's footer.
@@ -609,7 +651,7 @@ public class CombatGoalsMod : IMod
             Vector2 screen = _window.GetViewportRect().Size, size = _window.GetCombinedMinimumSize();
             _window.Position = _settings is { X: { } x, Y: { } y }
                 ? new Vector2(x, y)
-                : new Vector2(screen.X - size.X - 60, screen.Y - size.Y - 150);
+                : new Vector2(screen.X - size.X - FirstPlaceGap, screen.Y - size.Y - _bottomInset - FirstPlaceGap);
         }
         KeepOnScreen();
     }

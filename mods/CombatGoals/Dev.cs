@@ -12,21 +12,24 @@ namespace CombatGoals;
 /// Development only: compiled when a build asks for it (-p:DevTools=true, see tools/dev-cycle.ps1). Writes what the game looks like into the mod's folder:
 /// a dump of its themes, a dump of the scene tree, and screenshots on request (create a file "shot.request").
 /// </summary>
-static class Dev
+static partial class Dev
 {
     static ModContext s_ctx = null!;
+    static CombatGoalsMod s_mod = null!;
     static ulong s_started, s_lastCheck, s_gameAt;
     static bool s_menuDone, s_gameDone, s_loadPressed, s_welcomeConfirmed;
 
-    public static void Start(ModContext ctx)
+    public static void Start(ModContext ctx, CombatGoalsMod mod)
     {
         s_ctx = ctx;
+        s_mod = mod;
         s_started = Time.GetTicksMsec();
         ctx.Frame += OnFrame;
     }
 
     static void OnFrame()
     {
+        FooterMovedCheck();   // only on the frame after a stop-shot.request hid the tag
         ulong now = Time.GetTicksMsec();
         if (now - s_lastCheck < 1000) return;
         s_lastCheck = now;
@@ -44,6 +47,7 @@ static class Dev
                 s_gameDone = true;
                 s_gameAt = now;
                 DumpThemes("theme-dump-game.txt");
+                LogSkillsWithStops();
             }
             // A while after the character opened, so the screens have settled.
             if (s_gameAt != 0 && now - s_gameAt > 30000)
@@ -78,6 +82,7 @@ static class Dev
                     confirm.EmitSignal(BaseButton.SignalName.Pressed);
                 }
             }
+            StopShotRequest();
             AreasRequest(now);
             ProbeRequest();
             string request = Path.Combine(s_ctx.Directory, "shot.request");
@@ -224,7 +229,8 @@ static class Dev
     static void Shot(string file)
     {
         Image image = s_ctx.Tree.Root.GetTexture().GetImage();
-        image.SavePng(Path.Combine(s_ctx.Directory, file));
+        Error saved = image.SavePng(Path.Combine(s_ctx.Directory, file));
+        if (saved != Error.Ok) throw new IOException($"Could not save {file} ({saved}).");
         s_ctx.Log($"Dev: saved {file} ({image.GetWidth()}x{image.GetHeight()})");
     }
 

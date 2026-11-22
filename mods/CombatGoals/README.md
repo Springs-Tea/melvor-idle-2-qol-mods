@@ -16,6 +16,11 @@ The game's footer tells you how long a skill needs to reach a level you type in,
 you are doing. Combat trains several at once. Combat Goals is that footer line for every combat skill that
 is gaining XP: its rate, a goal of your own, and the time left.
 
+While you skill, the footer already shows your XP per hour, the time to a level you type in and when the
+materials run out. What it does not say is when the stop you set will end the action: Combat Goals adds that
+at the end of the footer. Smithing, Crafting, Fletching, Runecrafting, Beastcrafting, Cooking and Herblore
+have stops.
+
 ## Contents
 
 - [Opening it](#opening-it)
@@ -23,6 +28,7 @@ is gaining XP: its rate, a goal of your own, and the time left.
 - [Setting a goal](#setting-a-goal)
 - [What the rate is measured over](#what-the-rate-is-measured-over)
 - [Moving and resizing](#moving-and-resizing)
+- [While skilling](#while-skilling)
 - [Good to know](#good-to-know)
 - [When something is off](#when-something-is-off)
 
@@ -82,6 +88,25 @@ The rate is always that of **the fight you are in**:
 
 The place, the size, the period and whether it is hidden are remembered.
 
+## While skilling
+
+Set a stop on the skill's page and start making something. About ten seconds later the end of the footer,
+after the game's own parts, says how long until the stop ends the action, worded the way the footer words its
+own times:
+
+![The end of the footer: 2m 4s until Stop Condition, after the game's own parts](../../docs/img/combat-goals-stop.png)
+
+| Part | What it is |
+| --- | --- |
+| **2m 4s** | How long until your stop ends the action, at the pace of the time period chosen in the footer. It counts down, in bold, written the way the footer writes its time to a level: "less than 1s" in the last second, ">999d" when it is that far. |
+| Its tooltip | Your stop, in the words of the stop panel on the skill's page, and the same time. |
+
+A new stop, another recipe, or the game paused or closed starts the measurement again. When the stop is
+reached or cleared, the time goes. When the time has run out but the stop is not reached yet (the next item
+is late), it is hidden until that item is made, rather than guess. It never pushes the footer's own parts
+aside, and it moves along with them as they grow and shrink; when the footer has no room left at its end (a
+narrow game window), it is left out. The window is for combat: it does not open while you skill.
+
 ## Good to know
 
 - The time left assumes the rate stays what it is. A level up that makes you hit harder shortens it.
@@ -95,6 +120,9 @@ The place, the size, the period and whether it is hidden are remembered.
 | --- | --- |
 | "Waiting for combat XP..." that does not go away | No combat skill has gained XP in the last period: you are not hitting, or every skill being trained is at its cap. |
 | No window in combat | It is hidden: press F10 or the round button. |
+| No window while skilling | The window is for combat. While skilling, look at the end of the footer. |
+| No time at the end of the footer while skilling | It needs a stop set in one of the skills listed at the top, and about ten seconds of progress towards it. It is only there while the footer shows the action's name, and only when the footer has room left at its end: in a narrow game window it is left out. |
+| A time without the stop's words in its tooltip | The words come from the stop panel on the skill's page: open that page once. |
 | No round button | The log says "The game's widget strip was not found": a game update moved it. F10 still works. |
 | Nothing at all | Look for `[CombatGoals] Stopped` in `MelvorModLoader.log`: the mod switched itself off after a game update. |
 

@@ -14,7 +14,7 @@ PICTURES
 docs/img/combat-goals.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-A small window with the XP per hour of every combat skill you are training, a level goal of your own for each, and the time left to it. Like the footer's "time left to level N", for all the skills combat trains at once.
+A small window with the XP per hour of every combat skill you are training, a level goal of your own for each, and the time left to it. Like the footer's "time left to level N", for all the skills combat trains at once. While skilling, the end of the footer says when the stop you set ends the action.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -29,6 +29,9 @@ The game's footer tells you how long a skill needs to reach a level you type in,
 [*]The box at the top chooses what the rate is averaged over: 1, 5, 10 or 30 minutes.
 [*]Drag the window anywhere; drag its bottom right corner for another size.
 [/list]
+
+[size=4][b]While skilling[/b][/size]
+The footer already shows your XP per hour, the time to a level you type in and when the materials run out. What it does not say is when the stop you set will end the action. Smithing, Crafting, Fletching, Runecrafting, Beastcrafting, Cooking and Herblore have stops: set one and start making something, and about ten seconds later the end of the footer says how long until the stop ends the action, worded as the footer words its own times: "[b]1m 38s[/b] until Stop Condition", at the pace of the time period chosen in the footer. Its tooltip names your stop as the skill's stop panel does. A new stop, another recipe, or the game paused or closed starts the measurement again. It never pushes the footer's own parts aside, and it moves along with them as they grow and shrink: in a narrow game window, with no room left at the end of the footer, it is left out. The window is for combat only.
 
 [size=4][b]What the rate is[/b][/size]
 The rate of the fight you are in. Leaving combat, or fighting something else, starts the measurement again, so time spent on other skills never drags the rate down. Only skills that are gaining XP right now are listed.
