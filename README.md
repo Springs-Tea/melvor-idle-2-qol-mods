@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: eight quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: nine quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -84,6 +84,16 @@ Take the ones you want. Each has a page of its own with pictures and details.
       choice ready first, then the shortest study time to the next unlock. Under each name the knowledge
       of that unlock, the minor nodes the next major node needs and the bonus every minor node gives; a
       locked one shows only what it still misses. Click a row to look at that constellation.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/AwaySummary"><img src="docs/img/away-summary.png" alt="Away Summary"></a></td>
+    <td>
+      <h3><a href="mods/AwaySummary">Away Summary</a></h3>
+      Switch to another app or minimise the game while your character trains, and come back to a window
+      with how long you were away and what changed, under the headings of the game's own summary: XP and
+      levels, items gained and used, gold, and when an action stopped or a defeat cost you something. A
+      round button on the right opens the last summary again.
     </td>
   </tr>
   <tr>
@@ -198,9 +208,10 @@ flowchart TB
         M6["DungeonCompletions"]
         M7["ItemEncyclopedia"]
         M8["AstrologyOverview"]
+        M9["AwaySummary"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

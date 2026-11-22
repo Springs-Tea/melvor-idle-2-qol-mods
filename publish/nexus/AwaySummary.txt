@@ -1,0 +1,61 @@
+NAME
+Away Summary
+
+VERSION
+{version}
+
+FILE
+dist/AwaySummary-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+docs/img/away-summary.png (main)
+
+SUMMARY (the short line under the name, at most 350 characters)
+Come back to a recap of skill XP, levels, items and gold while the game ran in the background. See how long you were away, when an action stopped and what a defeat cost.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Away Summary[/b][/size]
+Switch to another app or minimise the game while your character trains. Come back after 15 minutes by default and a small window shows how long you were away and what changed.
+
+[size=4][b]Reading the summary[/b][/size]
+The changes are listed under the same headings as in the game's own summary after a restart.
+[list]
+[*]Skills appear in the game's order, with the XP and levels you gained.
+[*]Items show what entered and left your bank. An item can appear under both gains and uses.
+[*]Arrows and other items used up from your equipment or a tool belt have headings of their own, as in the game's summary.
+[*]Gold shows the difference between what you had when you left and when you returned.
+[*]Stops and defeats come last. A stop shows the game's reason and how long after you left it happened. A defeat names the item and quantity you lost when the game reports a loss.
+[/list]
+Only changes appear. If nothing happened, the window just shows the time away.
+
+[size=4][b]Opening it again[/b][/size]
+The round Away Summary button on the right opens the last summary for this character and its settings. Change Minutes away to a whole number from 1 to 1,440 (one day), or clear Away summaries to stop collecting and showing new summaries. Drag the window to move it, drag its bottom right corner to resize it, or fold it down beside the X. Its place, size and fold are kept for next time.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]A shorter absence keeps your last summary. Changing characters or restarting clears it.
+[*]When the game itself catches up, after a restart or after the computer slept, it shows its own Welcome Back! window. Away Summary skips that absence.
+[*]The summary covers skill XP and levels, bank items, items used up from your equipment and tool belts, and gold. Mastery XP and other currencies are not counted.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\AwaySummary\AwaySummary.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\AwaySummary[/font]. Your save is never changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3 or newer. The game is in early access. An update can break the mod until it is rebuilt. If that happens, look for [font=Courier New][AwaySummary] Stopped[/font] in MelvorModLoader.log. The game and your other mods keep running.
+It uses the game's own textures, fonts and colours. It gives no items, XP or bonuses.
+Open source (MIT), with the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/AwaySummary]Away Summary on GitHub[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]GitHub issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.

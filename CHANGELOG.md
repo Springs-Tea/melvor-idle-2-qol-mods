@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Away Summary**, a new mod: come back to the game after a while in another window, and a summary in the
+  look of the game's own "Welcome Back" window says what changed while you were away: the XP and levels,
+  the items gained and used, gold, and when an action stopped or what a defeat cost.
 - **Item Sources**: a tooltip kept open with Alt has a Make button for anything a skill makes from materials.
   Enter how many you want and it lists every step down to what you gather or find, under its skill: how many
   are needed, what your bank already covers, what is still to make or get, and how long each step takes at

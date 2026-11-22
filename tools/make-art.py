@@ -292,6 +292,7 @@ MODS = [   # the banner's list: name, what the mod adds to the screen
     ('Item Encyclopedia', 'window'),
     ('Recipe Rates', 'tooltip'),
     ('Astrology Overview', 'window'),
+    ('Away Summary', 'window'),
     ('Combat Goals', 'window'),
     ('Kills in Combat', 'tag'),
     ('Dungeon Completions', 'tag'),
@@ -305,7 +306,7 @@ def banner():
     top = 112
     bottom = round(top + 32 + len(MODS) * (line + gap) - gap + 12)
     w, h = 1000, bottom + 32
-    art = Art(w, h, "Melvor Idle 2 Mods: eight quality-of-life mods in the game's own look. Separate downloads. "
+    art = Art(w, h, "Melvor Idle 2 Mods: nine quality-of-life mods in the game's own look. Separate downloads. "
                     'Your save is never changed.')
     frame(art, 0, 0, w, h)
     title = 'Melvor Idle 2 Mods'
@@ -392,6 +393,7 @@ WINDOWS = {   # the title of each mod's own page
     'item-encyclopedia': 'Item Encyclopedia',
     'recipe-rates': 'Recipe Rates',
     'astrology-overview': 'Astrology Overview',
+    'away-summary': 'Away Summary',
     'combat-goals': 'Combat Goals',
     'kills-in-combat': 'Kills in Combat',
     'dungeon-completions': 'Dungeon Completions',

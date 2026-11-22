@@ -41,6 +41,7 @@ HEADERS = {
     'ItemEncyclopedia': ('h-item-encyclopedia.svg', 'What is this item, what is it good for, and where do I get it?'),
     'RecipeRates': ('h-recipe-rates.svg', 'Which recipe gives more XP per hour?'),
     'AstrologyOverview': ('h-astrology-overview.svg', 'Which constellation is closest to its next unlock?'),
+    'AwaySummary': ('h-away-summary.svg', 'What changed while I was away?'),
     'CombatGoals': ('h-combat-goals.svg', 'How long until Magic 20, while I am also training Hitpoints and Defence?'),
     'KillsInCombat': ('h-kills-in-combat.svg', 'How many of these have I killed?'),
     'DungeonCompletions': ('h-dungeon-completions.svg', 'How many times have I cleared this dungeon?'),

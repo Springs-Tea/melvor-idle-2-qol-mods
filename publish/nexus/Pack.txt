@@ -11,12 +11,12 @@ REQUIREMENT
 Melvor Mod Loader, 0.1.3 or newer
 
 SUMMARY (the short line under the name)
-Eight quality-of-life mods in one zip: a combat simulator, where items come from and what uses them, an encyclopedia of every item, XP per hour on every recipe, an overview of your constellations, level goals for combat skills, and kill and dungeon counters. They look like the game, and none of them changes your save.
+Nine quality-of-life mods in one zip: a combat simulator, where items come from and what uses them, an encyclopedia of every item, XP per hour on every recipe, an overview of your constellations, a recap of your time away, level goals for combat skills, and kill and dungeon counters. They look like the game, and none of them changes your save.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Quality of Life Mods[/b][/size]
-Eight mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all eight.
+Nine mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all nine.
 
 [list]
 [*][b]Combat Simulator[/b]: what an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Compare loadouts, items and spells, find the best place to train a skill, look at earlier scans again.
@@ -24,6 +24,7 @@ Eight mods that show what the game already knows but does not tell you. Each one
 [*][b]Item Encyclopedia[/b]: every item of the game in one window, with a search and filters by kind, slot, combat style, weapon, skill and source, and everything about each item: stats, requirements, where it drops and how likely, what it is made from and what it is used in.
 [*][b]Recipe Rates[/b]: XP per hour on every recipe of a skill's list, and the whole hour in the XP tooltip.
 [*][b]Astrology Overview[/b]: your constellations in one window, those with a node choice ready first, then the shortest study time to the next unlock, with the knowledge it needs, the bonus every minor node gives, and what a locked one still misses.
+[*][b]Away Summary[/b]: switch to another app or minimise the game while your character trains, and come back to how long you were away and what changed: XP and levels, items gained and used, gold, and when an action stopped.
 [*][b]Combat Goals[/b]: XP per hour and the time left to a level goal, for every combat skill you are training.
 [*][b]Kills in Combat[/b]: how many times you have killed the enemy you are fighting, next to its name.
 [*][b]Dungeon Completions[/b]: how many times you have completed each dungeon, in the combat areas menu.
