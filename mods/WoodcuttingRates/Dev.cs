@@ -160,6 +160,10 @@ public partial class WoodcuttingRatesMod
     sealed record DevOwn<T>(T Value);
     DevOwn<WoodcuttingRecipeCategory?>? _devOwnFilter;
     DevOwn<int?>? _devOwnScroll;
+    // The filter the owned scroll was read under: a scroll belongs to the list of one category, so once the page shows
+    // another category than this one, whoever put it there, the scroll is the player's list's and is never written
+    // (review 4: a category click of his after the request's filter was back).
+    WoodcuttingRecipeCategory? _devScrollUnder;
     // A press of the request's that changes the page, not settled yet: the frame it was made in, and whether it was a
     // change of the request's (Both: what it left on both parts is read once it settled) or a put-back's press (only the
     // scroll the request still owns is read again: the press laid the list out anew). Read on the first tick at least two
@@ -438,6 +442,12 @@ public partial class WoodcuttingRatesMod
                 _devHis.Add("scroll");
             }
         }
+        if (_devOwnScroll != null && !ReferenceEquals(action.SelectedCategory, _devScrollUnder))
+        {
+            moved.Add($"the scroll (the page shows {action.SelectedCategory?.Id ?? "all"} now, the request's scroll was of {_devScrollUnder?.Id ?? "all"})");
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
+        }
         if (_devOwnScroll is { } scroll && DevScrollNow() is var now && now != scroll.Value)
         {
             moved.Add($"the scroll (now {now?.ToString() ?? "-"}, the request left {scroll.Value?.ToString() ?? "-"})");
@@ -462,8 +472,13 @@ public partial class WoodcuttingRatesMod
         {
             _devOwnFilter = new(action.SelectedCategory);
             _devOwnScroll = new(DevScrollNow());
+            _devScrollUnder = action.SelectedCategory;
         }
-        else if (_devOwnScroll != null) _devOwnScroll = new(DevScrollNow());
+        else if (_devOwnScroll != null)
+        {
+            _devOwnScroll = new(DevScrollNow());
+            _devScrollUnder = action.SelectedCategory;
+        }
         DevLog($"page | settled after the request's {(settle.Both ? "press" : "put-back's press")}: the request owns the filter " +
             $"{(_devOwnFilter is { } f ? f.Value?.Id ?? "all" : "(none)")} and the scroll {(_devOwnScroll is { } s ? s.Value?.ToString() ?? "-" : "(none)")}");
     }
@@ -1394,6 +1409,13 @@ public partial class WoodcuttingRatesMod
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Woodcutting page is gone: its scroll NOT AS IT WAS (not put back)";
         if (_devOwnFilter is { } filter && !ReferenceEquals(filter.Value, origin.Filter))
             return "the scroll left with the request's filter, which is not put back: both stay the request's own for the final put-back";
+        if (!ReferenceEquals(_woodcutting!.Action.SelectedCategory, _devScrollUnder))
+        {
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
+            return $"the scroll is left: the page shows {_woodcutting.Action.SelectedCategory?.Id ?? "all"} now, and the request's scroll was of " +
+                $"{_devScrollUnder?.Id ?? "all"}, so the list on the screen is the player's";
+        }
         int? now = DevScrollNow();
         if (now != own.Value)
         {
@@ -1419,6 +1441,7 @@ public partial class WoodcuttingRatesMod
             return $"the scroll put back to {back}";
         }
         _devOwnScroll = new(after);
+        _devScrollUnder = _woodcutting!.Action.SelectedCategory;
         return $"the scroll NOT AS IT WAS (put back to {back}, it reads {after?.ToString() ?? "-"}); what the request's write left stays its own";
     }
 
