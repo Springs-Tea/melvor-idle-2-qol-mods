@@ -10,6 +10,19 @@ using Godot;
 
 namespace MiningRates;
 
+/// <summary>How the card of a rock the Mining page shows stands against the mod's window over it (Native.Place).</summary>
+enum CardSight
+{
+    /// <summary>The whole card is inside its list, and the window covers none of it.</summary>
+    Clear,
+    /// <summary>A scroll of its list shows the whole card clear of the window: a click on its line makes it.</summary>
+    Scroll,
+    /// <summary>No scroll of its list shows the whole card clear of the window, though one shows it without the window.</summary>
+    UnderWindow,
+    /// <summary>No scroll of its list shows the whole card, window or not: a game window smaller than a card.</summary>
+    NoRoom,
+}
+
 // Read-only access to the parts of the game's Mining page it keeps to itself, in one place, as Thieving Overview keeps
 // its own (mods/ThievingOverview/Native.cs). Only member names and types from tools/ApiDump are used here. A member
 // that is gone after a game update throws when it is first used: for a click on a line that switches the clicks off
@@ -42,11 +55,76 @@ internal static class Native
         return null;
     }
 
-    /// <summary>The whole card is shown inside its list, as it is now.</summary>
-    internal static bool InSight(Control card)
+    /// <summary>
+    /// Where a control is drawn, in its viewport's own coordinates: through its canvas, so that a card of the page and
+    /// the mod's window, which is on a canvas layer of its own (GameWindow.Layer), are measured alike.
+    /// </summary>
+    internal static Rect2 Drawn(Control control) => control.GetGlobalTransformWithCanvas() * new Rect2(Vector2.Zero, control.Size);
+
+    // Less than a pixel at an edge is not a cover: the edges of the page's list and of the window let one through.
+    const float Edge = 1;
+
+    /// <summary>
+    /// How a card the page shows stands in its list against the part of the screen the mod's window covers (null: no
+    /// window on the screen), and the scroll of its list that shows the whole card clear of the window, the nearest to
+    /// the scroll it has (for <see cref="CardSight.Scroll"/>; otherwise the scroll it has). The list scrolls up and
+    /// down only: a card in a column the window lies across stands clear above or below the window, any other card
+    /// anywhere in the list.
+    /// </summary>
+    internal static CardSight Place(Control card, Rect2? cover, out int scroll)
     {
-        if (!card.IsVisibleInTree() || ScrollOf(card) is not { } scroll || !scroll.IsVisibleInTree()) return false;
-        return scroll.GetGlobalRect().Grow(1).Encloses(card.GetGlobalRect());
+        Rect2 at = Drawn(card), view = card.GetViewportRect();
+        int now = 0, least = 0, most = 0;
+        // How far the card moves on the screen for one step of its list's scroll.
+        float step = 0;
+        if (ScrollOf(card) is { } list)
+        {
+            view = view.Intersection(Drawn(list));
+            now = least = most = list.ScrollVertical;
+            step = Math.Abs(list.GetGlobalTransformWithCanvas().Scale.Y);
+            if (list.VerticalScrollMode != ScrollContainer.ScrollMode.Disabled && step > 0)
+            {
+                VScrollBar bar = list.GetVScrollBar();
+                least = (int)Math.Ceiling(bar.MinValue);
+                most = Math.Max(least, (int)Math.Floor(bar.MaxValue - bar.Page));
+            }
+        }
+        scroll = now;
+        bool across = cover is { } over && over.Position.X + Edge < at.End.X && at.Position.X < over.End.X - Edge;
+        if (view.Grow(Edge).Encloses(at) && !(across && cover!.Value.Grow(-Edge).Intersects(at))) return CardSight.Clear;
+
+        // Where the card's top may be: inside the list, and above or below a window that lies across its column, to the
+        // pixel (the leeway above is only for a card that is there already). The list does not scroll sideways, so a
+        // card cut off at a side is never whole.
+        float top = view.Position.Y, bottom = view.End.Y, high = at.Size.Y;
+        bool wide = at.Position.X >= view.Position.X - Edge && at.End.X <= view.End.X + Edge;
+        (float From, float To) whole = (top, bottom - high);
+        var spans = new List<(float From, float To)>();
+        if (across)
+        {
+            Rect2 w = cover!.Value;
+            spans.Add((top, Math.Min(bottom, w.Position.Y) - high));
+            spans.Add((Math.Max(top, w.End.Y), bottom - high));
+        }
+        else spans.Add(whole);
+        int? best = null;
+        if (wide)
+            foreach (var span in spans)
+                if (Reach(span) is { } to && (best == null || Math.Abs(to - now) < Math.Abs(best.Value - now))) best = to;
+        // A scroll to where it is would change nothing: a part of a pixel the test above did not let through.
+        if (best is { } nearest) { if (nearest == now) return CardSight.Clear; scroll = nearest; return CardSight.Scroll; }
+        return wide && Reach(whole) != null ? CardSight.UnderWindow : CardSight.NoRoom;
+
+        // The scroll nearest to the one the list has that puts the card's top inside a span, within what the list can
+        // scroll to; null when none does.
+        int? Reach((float From, float To) span)
+        {
+            if (span.From > span.To) return null;
+            if (step <= 0) return at.Position.Y >= span.From && at.Position.Y <= span.To ? now : null;
+            double from = now + (at.Position.Y - span.To) / step, to = now + (at.Position.Y - span.From) / step;
+            int first = Math.Max(least, (int)Math.Ceiling(from - 0.001)), last = Math.Min(most, (int)Math.Floor(to + 0.001));
+            return first > last ? null : Math.Clamp(now, first, last);
+        }
     }
 
     /// <summary>

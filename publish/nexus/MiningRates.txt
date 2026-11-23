@@ -33,7 +33,7 @@ One line per rock the Mining page shows you, starting with the rock's picture an
 [*][b]Gold[/b]: what the ore and the other items of an hour sell for.
 [/list]
 The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best rocks on top. The rock you are mining has a lit outline. A rock you cannot mine yet is greyed, with the level it needs. A rock you hid on the Mining page is listed only while the page lists hidden rocks too.
-Click a line to see that rock on the Mining page: the page's category filter goes to the rock's category when it is on another one, and its list of rocks scrolls to the rock's card. Nothing is started or stopped, and the window stays open.
+Click a line to see that rock on the Mining page: the page's category filter goes to the rock's category when it is on another one, and its list of rocks scrolls until the rock's whole card is in sight beside the window. When the page has no room for that, the line's tooltip says so: drag the window aside. Nothing is started or stopped, and the window stays open.
 
 [size=4][b]In the tooltip of a line[/b][/size]
 The whole hour at that rock: the time of a hit, how many hits a break takes and the breaks of an hour, the XP per hour and per hit, the break chance and the ore of a break and of an hour, every item of a hit with its chance per hit and how many an hour brings, and the gold.

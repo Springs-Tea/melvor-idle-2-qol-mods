@@ -31,9 +31,10 @@ more ore, and a rock's own stone, essence or bar are not counted; the tooltip sa
 you have one. Mining has no mastery XP in this game, so there is no column for it.
 
 Click a line to see that rock on the Mining page: the page's category filter goes to the
-rock's category when it is on another one, and its list of rocks scrolls to the rock's card.
-Nothing is started or stopped, and the window stays open. A rock the game has no picture
-for yet shows none.
+rock's category when it is on another one, and its list of rocks scrolls until the rock's
+whole card is in sight beside the window. When the page has no room for that, the line's
+tooltip says so: drag the window aside. Nothing is started or stopped, and the window stays
+open. A rock the game has no picture for yet shows none.
 
 Drag the window to move it, drag its bottom right corner to resize it, fold it down to its
 title with the button beside the X. On another page it steps aside and comes back on the

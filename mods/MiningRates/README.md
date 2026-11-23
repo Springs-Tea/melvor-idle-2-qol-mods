@@ -53,9 +53,15 @@ category, and:
   selected line, so it can be found in a sorted list.
 - **Click a line to see that rock on the Mining page**: when the page's category filter is on another
   category, it goes to the rock's category, as the page's own category button does, and the page's list of
-  rocks scrolls until the rock's card is in sight. Mining is not started or stopped, and the window stays
-  open. The pointer turns into a hand over a line a click changes something for, the rock you are mining
-  included when its card is out of sight; on a rock whose card is in sight already, a click does nothing.
+  rocks scrolls until the rock's whole card is in sight beside the window, above or below it when the window
+  lies across the card's column. Mining is not started or stopped, and the window stays open where it is.
+  The pointer turns into a hand over a line a click changes something for, the rock you are mining included
+  when its card is out of sight; on a rock whose card is in sight beside the window already, a click does
+  nothing.
+- **When the page has no room for a card beside the window**, the line's tooltip says so, and a click does
+  not scroll to it: drag the window aside, off the rocks' cards. The card of a rock of another category is
+  measured once its category is shown: a click on its line changes the filter, and from then on its tooltip
+  says when there is no room.
 - **A rock you cannot mine yet is greyed**, with the Mining level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
   marked best. In a list sorted by a number, the locked rocks come last.
@@ -84,6 +90,8 @@ Put the pointer on a line for the whole hour at that rock:
 | **Not counted, the rock's own stone, essence or bar you have a chance at:** | Each with its chance, when you have one and the game does not list it among a hit's items. |
 | **Not counted: your ...** | A bonus of yours the window does not count, by the name the Mining page gives it in its list of bonuses. |
 | **Click to show this rock on the Mining page. Mining is not started.** | What a click on the line does. Not there when a click changes nothing. |
+| **The Mining page has no room for this rock's card beside this window: drag the window aside.** | Instead of the line above, when no scroll of the page's list shows the rock's whole card clear of the window. |
+| **The Mining page has no room to show this rock's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
 
 ## What is counted
 
@@ -137,6 +145,7 @@ How many hits a break takes rests on the words the Mining page shows on a rock's
 | `-` in a line | The game gives no time of a hit for that rock yet, or (Time, Ore, Gold) its minimum break bar is not a part of the bar, and the tooltip says so. |
 | A line without a picture | The game has no picture for that rock yet, only its grey stand-in, and the window shows none rather than the stand-in. |
 | "Not counted: a chance ..." instead of a name | The window has not read the name from the Mining page's list of bonuses yet. If it never does, `MelvorModLoader.log` says the game was updated. |
+| A line's tooltip says the page has no room for the card beside this window | The window lies over the rock's card, and the page's list cannot scroll the card above or below it. Drag the window aside, off the rocks' cards. |
 | A click on a line only scrolls, or does nothing | `MelvorModLoader.log` says why when a game update changed the Mining page: "the category filter was not found", "the category button did not set its category", or "A click on a line shows nothing from now on". The numbers still work. |
 | No button and no window at all | Look for `[MiningRates] Stopped` in `MelvorModLoader.log`: the mod switched itself off after a game update. |
 

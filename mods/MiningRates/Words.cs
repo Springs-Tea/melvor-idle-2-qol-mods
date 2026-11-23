@@ -103,8 +103,14 @@ static class Words
     // break chance by a rule the game states or one measured on a character's mining (the code review of turn 2, fault 3).
     public static string How(RuleSource source) => source == RuleSource.Measured ? "worked out by a rule measured in the game" : "worked out by the game's own rule";
 
-    // What a click on the line does, when it changes what the Mining page shows.
-    static string? Click(RockRates r) => r.Clickable ? "Click to show this rock on the Mining page. Mining is not started." : null;
+    // What a click on the line does, when it changes what the Mining page shows; otherwise why it cannot show the rock's
+    // card when the page has no room for it clear of this window (review 4), and nothing when it is in sight already.
+    static string? Click(RockRates r) => r.Clickable ? "Click to show this rock on the Mining page. Mining is not started." : r.Sight switch
+    {
+        CardSight.UnderWindow => "The Mining page has no room for this rock's card beside this window: drag the window aside.",
+        CardSight.NoRoom => "The Mining page has no room to show this rock's whole card.",
+        _ => null,
+    };
 
     // "  Topaz, 1% of hits: 12", with the number a hit gives when it is not one.
     static string Item(RockRates.Drop d)

@@ -129,6 +129,11 @@ sealed class RockRates
     public bool Hidden { get; init; }
     /// <summary>A click on the line changes what the Mining page shows (MiningRatesMod.ClickChanges).</summary>
     public bool Clickable { get; set; }
+    /// <summary>
+    /// How the rock's card stands against the window when the Mining page shows it (Native.Place), null when it does
+    /// not: the tooltip says when the page has no room to show it clear of the window.
+    /// </summary>
+    public CardSight? Sight { get; set; }
 
     /// <summary>The game's time of a hit, in seconds (MiningActionStats.Interval, kept in milliseconds).</summary>
     public double HitSeconds { get; private set; }

@@ -76,15 +76,23 @@ namespace MiningRates;
 //     Ore column's quote is still the game's words, and the filter's words and buttons. "Dev: hidden": every rock not
 //     listed, and why. "Dev: lit". "Dev: tips": the longest line of every tip against Fishing Rates' longest. "Dev: cut"
 //     over every label of the picture. crop-mining-window.png and, when the list scrolls, crop-mining-window-end.png.
-//  7. Rests the pointer on a line, then on the name of the column with the longest tip: shot-mining-tooltip.png,
-//     shot-mining-header-tooltip.png and "Dev: tooltip". A tooltip that does not come up in 20 s is one line, and the
-//     request goes on. Then clicks "XP": "Dev: order" and crop-mining-sorted.png.
+//     "Dev: room": the window's place as drawn, the page's list, and every line's card against them (Native.Place):
+//     in sight clear of the window, a scroll that shows it clear, or no room beside the window; MISMATCH when the line
+//     is clickable otherwise than that says, NOT SAID when a line without room does not say so in its tooltip.
+//  7. Rests the pointer on a line, one whose card has no room beside the window when there is one (its tooltip says
+//     so), then on the name of the column with the longest tip: shot-mining-tooltip.png, shot-mining-header-tooltip.png
+//     and "Dev: tooltip". A tooltip that does not come up in 20 s is one line, and the request goes on. Then clicks
+//     "XP": "Dev: order" and crop-mining-sorted.png.
 //  8. "Dev: click": on a page whose filter is on all categories, first presses the page's own button of one category
 //     with the pointer, as a player would, so that a card can be under another category (only when the page's "All"
-//     button is found, to put it back). Then clicks a line whose rock's card is under another category or out of sight,
-//     and reads back the page's category filter, whether the card is now in sight, the lit line, the window and what
-//     mining is doing (shot-mining-clicked.png). MINING STARTED, MINING STOPPED, THE ROCK MINED CHANGED, NOT SHOWN, THE
-//     WINDOW CLOSED and SHOW HIDDEN CHANGED mark what must not happen. Puts the filter back (by hand if its signal did
+//     button is found, to put it back). Then clicks a line, first one whose card the page shows and a scroll brings
+//     clear of the mod's window, else one whose card is under another category, and reads back the page's category
+//     filter, how the card stands against the window (the card, its list and the window as drawn), the lit line, the
+//     window and what mining is doing (shot-mining-clicked.png, the card proved over its part beside the window).
+//     MINING STARTED, MINING STOPPED, THE ROCK MINED CHANGED, NOT SHOWN (the card is not clear of the window, and the
+//     filter did not change or the line's tooltip does not say there is no room), THE WINDOW CLOSED and SHOW HIDDEN
+//     CHANGED mark what must not happen; NOT CLEAR OF THE WINDOW is a card of another category the page has no room
+//     for beside the window, which the line's tooltip then says. Puts the filter back (by hand if its signal did
 //     not), and the scroll two drawn frames later, presses the page's own category button for the same category with
 //     the pointer as a player would, and compares (DIFFER); then puts the filter and the scroll back again, each only if
 //     it is still as the request left it. Until each of these presses is made, the page as it is then is what it puts
@@ -571,6 +579,7 @@ public partial class MiningRatesMod
             DevLit();
             DevTips("open");
             DevSize("open");
+            DevRoom("open");
             return true;
         });
         Add("picture of the window", () =>
@@ -603,8 +612,12 @@ public partial class MiningRatesMod
         {
             if (_list!.DevScroll.ScrollVertical != 0) return false;
             var lines = _list.DevLines().ToList();
-            target = (lines.FirstOrDefault(l => !l.Rock.Locked).Button ?? lines.FirstOrDefault().Button)
+            // A line whose card has no room beside the window first, so that the picture shows what its tooltip says then.
+            target = (lines.FirstOrDefault(l => !l.Rock.Locked && l.Rock.Sight is CardSight.UnderWindow or CardSight.NoRoom).Button ??
+                lines.FirstOrDefault(l => !l.Rock.Locked).Button ?? lines.FirstOrDefault().Button)
                 ?? throw new InvalidOperationException("No line to point at.");
+            DevLog($"tooltip | the line pointed at: {lines.First(l => l.Button == target).Rock.Rock.Recipe.Id}, " +
+                DevCardSight(Native.Card(_page!, lines.First(l => l.Button == target).Rock.Rock), false));
             _list.DevScroll.EnsureControlVisible(target);
             _devTipSince = 0;
             return true;
@@ -784,7 +797,10 @@ public partial class MiningRatesMod
         Add("a line to click", () =>
         {
             var lines = _list!.DevLines().Select(l => l.Rock).Where(r => r.Clickable).ToList();
-            clicked = lines.FirstOrDefault(r => Native.Card(_page!, r.Rock) is { Visible: false }) ?? lines.FirstOrDefault();
+            // First a line whose card the page shows and a scroll brings clear of the window, what this click must do
+            // (review 4); then one under another category, as check-3 clicked.
+            clicked = lines.FirstOrDefault(r => r.Sight == CardSight.Scroll) ?? lines.FirstOrDefault(r => Native.Card(_page!, r.Rock) is { Visible: false }) ??
+                lines.FirstOrDefault();
             if (clicked == null) { DevLog("click | no line shows something a click would change: none is clicked."); return true; }
             _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             miningBefore = DevMiningState();
@@ -825,7 +841,19 @@ public partial class MiningRatesMod
             _devInFlight = false;
             Refresh();
             MiningRockSelectView? card = Native.Card(_page!, rock);
-            bool inSight = card != null && Native.InSight(card);
+            CardSight? sight = card != null && card.IsVisibleInTree() ? Native.Place(card, Cover(), out _) : null;
+            // A card the page has no room for beside the window can only come after a click that changed the filter;
+            // then the line's tooltip must say so (ScrollToCard).
+            string tip = DevLineOf(clicked).TooltipText;
+            string shown = sight switch
+            {
+                CardSight.Clear => "",
+                CardSight.UnderWindow or CardSight.NoRoom when !ReferenceEquals(filterBeforeClick, action.SelectedCagtegory) && tip.Contains("has no room") =>
+                    "  NOT CLEAR OF THE WINDOW: the page has no room for it there, as the line's tooltip now says",
+                CardSight.UnderWindow or CardSight.NoRoom => "  NOT SHOWN: no room for it clear of the window" + (tip.Contains("has no room") ? "" : ", AND THE LINE'S TOOLTIP DOES NOT SAY SO"),
+                CardSight.Scroll => "  NOT SHOWN: a scroll would still show it clear of the window",
+                _ => "  NOT SHOWN",
+            };
             var lit = _list!.DevLines().Where(l => l.Rock.OnPage).Select(l => l.Rock.Rock.Recipe.Id).ToList();
             string mining = DevMiningState();
             ours = DevFilterState(rock);
@@ -834,7 +862,7 @@ public partial class MiningRatesMod
             var litMeant = new List<string>();
             if (action.CurrentRock is { } mined && _list.DevLines().Any(l => ReferenceEquals(l.Rock.Rock, mined))) litMeant.Add(mined.Recipe.Id);
             DevLog($"click | after the click on the line of {rock.Recipe.Id}: {DevPageState(rock)}; the game's events [{ourEvents}]; {mining}" +
-                (inSight ? "" : "  NOT SHOWN") + (mining == miningBefore ? "" : "  MINING CHANGED") +
+                shown + (mining == miningBefore ? "" : "  MINING CHANGED") +
                 (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
                 (IsOpen ? "" : "  THE WINDOW CLOSED") + DevHiddenMoved("the click on the line"));
             Shot("clicked");
@@ -1086,10 +1114,51 @@ public partial class MiningRatesMod
             (card == null ? "NOT ON THE PAGE" : card.Visible ? "shown" : "hidden");
     }
 
-    string DevPageState(MiningRock rock)
+    string DevPageState(MiningRock rock) =>
+        DevFilterState(rock) + $", {DevCardSight(Native.Card(_page!, rock), true)}, the list scrolled to {DevScrollNow()?.ToString() ?? "-"}";
+
+    // How a card stands against the mod's window, as a click on its line reads it (Native.Place); with places: the
+    // card's, its list's and the window's, all as drawn (Native.Drawn), the window's read from its frame (Cover).
+    string DevCardSight(MiningRockSelectView? card, bool places)
     {
-        MiningRockSelectView? card = Native.Card(_page!, rock);
-        return DevFilterState(rock) + $", in sight {(card != null && Native.InSight(card))}, the list scrolled to {DevScrollNow()?.ToString() ?? "-"}";
+        if (card == null) return "no card";
+        if (!card.IsVisibleInTree()) return "its card not shown";
+        CardSight sight = Native.Place(card, Cover(), out int to);
+        string said = sight switch
+        {
+            CardSight.Clear => "its card in sight, clear of the window",
+            CardSight.Scroll => $"its card not in sight clear of the window, a scroll to {to} shows it",
+            CardSight.UnderWindow => "its card not in sight clear of the window, and no scroll shows it beside the window",
+            _ => "its card not in sight, and no scroll shows it whole",
+        };
+        if (!places) return said;
+        string list = Native.ScrollOf(card) is { } scroll
+            ? $"its list at {Native.Drawn(scroll)} scrolled to {scroll.ScrollVertical} of {scroll.GetVScrollBar().MinValue:0}..{Math.Max(0, scroll.GetVScrollBar().MaxValue - scroll.GetVScrollBar().Page):0}"
+            : "no list";
+        return $"{said} (the card at {Native.Drawn(card)}, {list}, the window at {Cover()?.ToString() ?? "none, not on the screen"})";
+    }
+
+    // Every line's card against the window, and what its line says of it: a line is clickable for a card the page shows
+    // only when a scroll shows it clear (MISMATCH otherwise), and the tooltip of a line whose card has no room says so
+    // (NOT SAID otherwise). The window's place and the page's list are said once.
+    void DevRoom(string when)
+    {
+        var said = new List<string>();
+        MiningRockSelectView? any = null;
+        foreach (var (r, button, _, _) in _list!.DevLines())
+        {
+            MiningRockSelectView? card = Native.Card(_page!, r.Rock);
+            string sight = card is { Visible: true } ? DevCardSight(card, false) : card == null ? "no card" : "its card under another category";
+            if (card is { Visible: true }) any ??= card;
+            bool room = r.Sight is CardSight.UnderWindow or CardSight.NoRoom, tells = button.TooltipText.Contains("has no room");
+            string marks = (card is { Visible: true } && card.IsVisibleInTree() && r.Clickable != (r.Sight == CardSight.Scroll) ? "  MISMATCH: its line clickable " + r.Clickable : "") +
+                (room && !tells ? "  NOT SAID in its tooltip" : "") + (!room && tells ? "  SAID in its tooltip WITH ROOM" : "");
+            said.Add($"{r.Rock.Recipe.LocalId}: {sight}, its line clickable {r.Clickable}{marks}");
+        }
+        string places = any != null ? DevCardSight(any, true) : "no card shown";
+        DevLog($"room | {when} | the window at {Cover()?.ToString() ?? "none, not on the screen"}, from its frame {(_window is { IsAlive: true } w ? w.Root.GetGlobalRect().ToString() : "-")} " +
+            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}; the first card shown: {places}");
+        DevLog($"room | {when} | {string.Join("; ", said)}");
     }
 
     // The page's filter as the page draws it: the buttons of its filter shown pressed (its box for hidden rocks apart)
@@ -1390,7 +1459,7 @@ public partial class MiningRatesMod
             Texture2D? shown = CardPicture(card).Texture;
             bool sameRock = ReferenceEquals(CardRock(card), rock);
             DevLog($"game | card {rock.Recipe.Id} '{CardName(card).Text}' ('{CardCategory(card).Text}'){(sameRock ? "" : "  BOUND TO ANOTHER ROCK")} | " +
-                $"shown={card.Visible}, in sight={Native.InSight(card)}, locked part shown={CardLocked(card).IsVisibleInTree()}, being mined={CardActive(card).IsVisibleInTree()}, " +
+                $"shown={card.Visible}, {DevCardSight(card, false)}, locked part shown={CardLocked(card).IsVisibleInTree()}, being mined={CardActive(card).IsVisibleInTree()}, " +
                 $"hide button pressed={CardHideButton(card).ButtonPressed}, its button reads '{CardMineButton(card).Text}' | " +
                 $"time: game {R(interval.Seconds)} s '{IntervalLabel(interval).Text}', ours {R(ours.HitSeconds)} s{(Math.Abs(interval.Seconds - ours.HitSeconds) < 0.0005 ? "" : "  DIFFER")} | " +
                 $"XP: game '{((Node)XpLabel(xp) as Label)?.Text}' ({XpLabel(xp).Value}), ours {R(ours.XpEach)} a hit: {DevXpSame(XpLabel(xp).Value, ours.XpEach)} | " +
@@ -1844,7 +1913,8 @@ public partial class MiningRatesMod
         MiningRock? mined = action.IsStarted || DevMiningNow() ? action.CurrentRock : null;
         var cards = RockList(_page!).GetChildren().OfType<MiningRockSelectView>()
             .Where(c => GodotObject.IsInstanceValid(c) && c.Visible && CardRock(c) != null && !ReferenceEquals(CardRock(c), mined) &&
-                !CardLocked(c).IsVisibleInTree() && Native.InSight(c) && CardBreak(c).IsVisibleInTree() && DevSight(CardBreak(c)).HasArea()).ToList();
+                !CardLocked(c).IsVisibleInTree() && c.IsVisibleInTree() && Native.Place(c, Cover(), out _) == CardSight.Clear &&
+                CardBreak(c).IsVisibleInTree() && DevSight(CardBreak(c)).HasArea()).ToList();
         if (cards.Count == 0)
         {
             why = mined == null ? "no card of a rock that can be mined is wholly in sight"

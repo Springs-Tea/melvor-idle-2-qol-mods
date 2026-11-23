@@ -17,8 +17,9 @@ namespace MiningRates;
 /// Mining XP and the gold of an hour, from the game's own numbers for each rock (RockRates), the hits a break takes by
 /// the rule the card's break chance states in the game's words (RockRates.Settled). The best number of each column is
 /// gold, a click on a column's name sorts by it, the rock the Mining page shows has a lit outline, and a line's tooltip
-/// has the whole hour. A click on a line shows that rock on the Mining page, as the player's own clicks there would
-/// (ShowOnPage); nothing is started or stopped from it. Built the way Fishing Rates is (mods/FishingRates).
+/// has the whole hour. A click on a line shows that rock on the Mining page, clear of the window, as the player's own
+/// clicks there would (ShowOnPage); nothing is started or stopped from it. Built the way Fishing Rates is
+/// (mods/FishingRates).
 /// </summary>
 public partial class MiningRatesMod : IMod
 {
@@ -262,7 +263,8 @@ public partial class MiningRatesMod : IMod
         {
             if (!action.Rocks.TryGetValue(recipe, out MiningRock? rock) || !RockRates.Listed(rock, action)) continue;
             RockRates r = RockRates.Read(rock, _mining, Shown);
-            r.Clickable = ClickChanges(rock);
+            r.Clickable = ClickChanges(rock, out CardSight? sight);
+            r.Sight = sight;
             rocks.Add(r);
         }
         return rocks;
@@ -362,18 +364,19 @@ public partial class MiningRatesMod : IMod
     // on a line shows that rock on the Mining page, and does what the player's own clicks there would, nothing more.
     // The page has no rock that is selected without being mined (a card's only button starts or stops mining), so
     // "shows" is: the page's category filter on the rock's category when it is on another one, as the page's own
-    // category button sets it (CategoryFilter), and the page's list of rocks scrolled so that the rock's card is in
-    // sight, once the page has laid its cards out again (ScrollToCard). Mining is not started or stopped, no rock is
-    // selected, hidden or shown, and the window stays open. The rock being mined is no exception: its card can be out of
-    // sight too, and the click then only scrolls to it. The development request compares the click with the page's own
-    // category button.
+    // category button sets it (CategoryFilter), and the page's list of rocks scrolled so that the rock's whole card is
+    // in sight clear of this window, beside it as the Fishing page's spot panel is (review 4: check-3's clicked card was
+    // 85% under the window), once the page has laid its cards out again (ScrollToCard). Mining is not started or
+    // stopped, no rock is selected, hidden or shown, and the window stays open and where the player put it. The rock
+    // being mined is no exception: its card can be out of sight too, and the click then only scrolls to it. The
+    // development request compares the click with the page's own category button.
     void ShowOnPage(RockRates line)
     {
         if (!PageShown || _clicksOff) return;
         MiningRock rock = line.Rock;
         var action = _mining!.Action;
         // As it is now, not as it was at the last tick.
-        if (!ClickChanges(rock)) return;
+        if (!ClickChanges(rock, out _)) return;
         try
         {
             if (Native.Card(_page!, rock) is not { } card) return;
@@ -393,16 +396,24 @@ public partial class MiningRatesMod : IMod
     static bool OnFilter(MiningActionComponent action, MiningRock rock) =>
         action.SelectedCagtegory == null || ReferenceEquals(action.SelectedCagtegory, rock.Category);
 
-    // A click on the rock's line would change what the page shows: its card is not wholly in sight now, and the page
-    // can show it (its card is there, or a category button of the page can bring it). Read on every tick, for the
-    // line's look and its tooltip.
-    bool ClickChanges(MiningRock rock)
+    // A click on the rock's line would change what the page shows. A card the page shows: when a scroll of its list shows
+    // the whole card clear of this window and it is not so now (Native.Place); a card under another category: when the
+    // page's own category button can bring it. Read on every tick, for the line's look and its tooltip, and again at the
+    // click. sight: how a card the page shows stands (null for one it does not show), which the tooltip says when no
+    // scroll shows it clear. A card in its list but under the window does not count as in sight (review 4).
+    bool ClickChanges(MiningRock rock, out CardSight? sight)
     {
+        sight = null;
         if (_clicksOff || !PageShown) return false;
         try
         {
             if (Native.Card(_page!, rock) is not { } card) return false;
-            if (card.Visible) return !Native.InSight(card);
+            if (card.Visible)
+            {
+                if (!card.IsVisibleInTree()) return false;
+                sight = Native.Place(card, Cover(), out _);
+                return sight == CardSight.Scroll;
+            }
             return !OnFilter(_mining!.Action, rock) && CanPress(CategoryButton(rock.Category));
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
@@ -411,6 +422,10 @@ public partial class MiningRatesMod : IMod
             return false;
         }
     }
+
+    // The part of the screen this window covers, read from the window as it is drawn now (its frame, at the size it is
+    // shown, wherever the player dragged it); null while it is not on the screen.
+    Rect2? Cover() => _window is { IsAlive: true, Visible: true } window ? Native.Drawn(window.Root) : null;
 
     // The page's own button of a category (MiningCategoryFilterView), or null when the game has none. The filter is
     // looked for once per page; when it is not there, that is said once and remembered until the page is found again,
@@ -456,8 +471,12 @@ public partial class MiningRatesMod : IMod
         return false;
     }
 
-    // Two drawn frames after a click: the page has laid its cards out for the filter, and the list is scrolled so that
-    // the card is in sight, as far as the list can scroll (ScrollContainer.EnsureControlVisible).
+    // Two drawn frames after a click: the page has laid its cards out for the filter, and the list is scrolled as little
+    // as it takes to show the whole card clear of this window (Native.Place): above or below the window when the window
+    // lies across the card's column. A card the page has no room for there can only come after a click that changed the
+    // filter (the line of a card the page shows is clickable only when there is room): it is brought into its list as far
+    // as the list can scroll (ScrollContainer.EnsureControlVisible), and from the next tick on its line's tooltip says
+    // that the window is in the way.
     void ScrollToCard()
     {
         MiningRock? rock = _scrollTo;
@@ -466,7 +485,9 @@ public partial class MiningRatesMod : IMod
         try
         {
             if (Native.Card(_page!, rock) is not { } card || !card.IsVisibleInTree() || Native.ScrollOf(card) is not { } scroll) return;
-            scroll.EnsureControlVisible(card);
+            CardSight sight = Native.Place(card, Cover(), out int to);
+            if (sight == CardSight.Scroll) scroll.ScrollVertical = to;
+            else if (sight != CardSight.Clear) scroll.EnsureControlVisible(card);
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
         {
