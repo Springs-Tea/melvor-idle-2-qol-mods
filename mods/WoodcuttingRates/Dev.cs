@@ -1268,9 +1268,19 @@ public partial class WoodcuttingRatesMod
             said.Add($"{t.Tree.Recipe.LocalId}: {sight}, its line clickable {t.Clickable}{marks}");
         }
         string places = any != null ? DevCardSight(any, true) : "no card shown";
+        // Where it opened: at the first place (FirstPlace) when the player had not placed it, or at his own.
+        string opened = _firstPlace is { } first ? $"opened at the first place {first} (nothing saved by the player)"
+            : _settings is { X: { } x, Y: { } y } ? $"at the player's own place ({x:0}, {y:0}) from settings.json" : "in the middle (no first place could be measured)";
+        string strip = _opener?.GetParent() is Control buttons ? Native.Drawn(buttons).ToString() : "not found";
         DevLog($"room | {when} | the window at {Cover()?.ToString() ?? "none, not on the screen"}, from its frame {(_window is { IsAlive: true } w ? w.Root.GetGlobalRect().ToString() : "-")} " +
-            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}; the first card shown: {places}");
+            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}, {opened}; the strip of round buttons at {strip}; the first card shown: {places}");
         DevLog($"room | {when} | {string.Join("; ", said)}");
+        // How many lines a click can show where the window is: the review's aim is the most possible.
+        var lines = _list.DevLines().Select(l => l.Tree).ToList();
+        int shown = lines.Count(t => t.Sight != null), clear = lines.Count(t => t.Sight == CardSight.Clear), scroll = lines.Count(t => t.Sight == CardSight.Scroll),
+            under = lines.Count(t => t.Sight == CardSight.UnderWindow), none = lines.Count(t => t.Sight == CardSight.NoRoom);
+        DevLog($"room | {when} | of the {shown} cards the page shows, {clear + scroll} can be seen whole beside the window ({clear} in sight, {scroll} after a scroll), " +
+            $"{under} have no room beside it, {none} no room at all; {lines.Count(t => t.Clickable)} of the {lines.Count} lines are clickable");
     }
 
     // The page's filter as the page draws it: the buttons of its filter shown pressed (its box for hidden trees apart)
@@ -1627,6 +1637,13 @@ public partial class WoodcuttingRatesMod
             try { DevCard(tree, card, trees.TryGetValue(tree, out TreeRates? listed) ? listed : TreeRates.Read(tree, _woodcutting, Shown)); }
             catch (Exception e) { DevLog($"game | card of {tree.Recipe.Id} could not be read: {e.GetType().Name}: {e.Message}"); }
         }
+        // The rules settled by the cards' own words, against every card the page shows, in one line.
+        var held = cards.Where(c => GodotObject.IsInstanceValid(c.Value) && c.Value.IsVisibleInTree())
+            .Select(c => (c.Key.Recipe.LocalId, Words: DevRuleWords(c.Value, c.Key))).ToList();
+        var notHeld = held.Where(h => h.Words.Contains("NOT AS SETTLED")).ToList();
+        DevLog($"game | the settled rules against the cards' lists: {held.Count - notHeld.Count} of the {held.Count} cards shown as settled (the logs under " +
+            $"'{TreeRates.LogsRule?.Quote}', the items of a hit under '{TreeRates.HitItemsRule?.Quote}')" +
+            (notHeld.Count == 0 ? "" : $"  NOT AS SETTLED on [{string.Join("; ", notHeld.Select(h => $"{h.LocalId}: {h.Words}"))}]"));
         // The page's own order of cards, left to right and top to bottom, against the window's.
         var order = DevNative.CardBox(_page!).GetChildren().OfType<WoodcuttingTreeSelectView>().Where(c => c.Visible).Select(c => DevNative.Tree(c)?.Recipe.Id ?? "?").ToList();
         var oursOrder = ReadTrees().Where(t => Native.Card(_page!, t.Tree) is { Visible: true }).Select(t => t.Tree.Recipe.Id).ToList();
@@ -1655,11 +1672,39 @@ public partial class WoodcuttingRatesMod
             $"{(bound == null ? "no time" : ReferenceEquals(bound, tree.Stats.Interval) ? "the tree's time of a hit (WoodcuttingActionStats.Interval)" : $"another time ({R(bound.Value)} ms)")}; " +
             $"its tooltip '{xpWords}' | {DevXpPerSecond(xpWords, t)} | " +
             $"per hit: {DevGrants(DevNative.PerHit(card), tree)} | per cut: {DevGrants(DevNative.PerCut(card), tree)} | " +
+            $"the settled rules against its lists: {DevRuleWords(card, tree)} | " +
             $"its picture {DevTexture(shown)}, ours {DevTexture(t.Picture)}" +
             (t.Picture == null || ReferenceEquals(shown, t.Picture) || shown?.ResourcePath == t.Picture.ResourcePath ? "" : "  MISMATCH") +
             $" | its overgrowth [{DevEffectIcons(DevNative.Overgrowth(card))}]");
         DevStatRows($"card {tree.Recipe.Id}", DevNative.Stats(card), tree);
     }
+
+    // The rules settled by the card's own words, held against this card: the list that holds the logs (bound to the
+    // tree's ProductQuantity) must be headed by the quote of TreeRates.LogsRule ("Full Cut"), and the one that holds the
+    // items of a hit (bound to its OnHitItemChances) by the quote of HitItemsRule ("Per Hit"). AS SETTLED, or NOT AS
+    // SETTLED with the headings read.
+    static string DevRuleWords(WoodcuttingTreeSelectView card, WoodcuttingTree tree)
+    {
+        WoodcuttingActionStats stats = tree.Stats;
+        GrantsContainer[] lists = [DevNative.PerHit(card), DevNative.PerCut(card)];
+        string Check(string what, Func<GrantsContainer, bool> holds, RuleSource? source, string? quote)
+        {
+            if (source != RuleSource.GameWords || string.IsNullOrEmpty(quote)) return $"{what}: no rule settled by the card's words";
+            GrantsContainer? list = lists.FirstOrDefault(holds);
+            if (list == null) return $"{what} on neither of its lists  NOT AS SETTLED";
+            var heads = DevListWords(list);
+            return heads.Contains(quote) ? $"{what} under '{quote}', AS SETTLED" : $"{what} under [{string.Join(", ", heads.Select(h => $"'{h}'"))}]  NOT AS SETTLED ('{quote}')";
+        }
+        return Check("the logs", g => DevNative.GrantQuantities(g)?.Keys.Any(k => ReferenceEquals(k, stats.ProductQuantity)) == true,
+                TreeRates.LogsRule?.Source, TreeRates.LogsRule?.Quote) + "; " +
+            Check("the items of a hit", g => DevNative.GrantChances(g)?.Keys.Any(k => ReferenceEquals(k, stats.OnHitItemChances)) == true,
+                TreeRates.HitItemsRule?.Source, TreeRates.HitItemsRule?.Quote);
+    }
+
+    // The words the card writes over one of its lists: the labels beside it, not those of its own items.
+    static List<string> DevListWords(GrantsContainer list) =>
+        (list.GetParent()?.FindChildren("*", "Label", true, false).OfType<Label>() ?? [])
+        .Where(l => !list.IsAncestorOf(l) && l.Text.Length > 0).Select(l => DevWordsOf(l.Text)).ToList();
 
     // The big panel: the tree it shows, its time, health, XP and the two lists of what a hit and a cut bring.
     void DevBigPanel()
@@ -1713,11 +1758,14 @@ public partial class WoodcuttingRatesMod
     }
 
     // The game's tag is a whole number (Int32FormattedLabel), while its XP is not (ExperienceComponent.Xp is a Double).
+    // The tag is ours cut down to a whole number: 57.99999999999999 shows "+57" (check-4: Wood Debris and Treant
+    // Remains), as 9.28 shows "+9"; a value a hair under a whole number is not lifted to it first.
     static string DevXpSame(int game, double ours)
     {
-        int down = (int)Math.Floor(ours + 1e-9);
-        return game == down ? Math.Abs(ours - down) < 1e-9 ? "the same" : "the tag is ours rounded down"
-            : game == (int)Math.Round(ours) ? "the tag is ours rounded" : "DIFFER";
+        int down = (int)Math.Floor(ours);
+        if (game == down) return ours - down < 1e-9 ? "the same" : "the tag is ours rounded down";
+        if (game == (int)Math.Floor(ours + 1e-9)) return "the same, to the last digit of the arithmetic";
+        return game == (int)Math.Round(ours) ? "the tag is ours rounded" : "DIFFER";
     }
 
     // Which rule the game's own XP tooltip follows: every number in it against the XP per second and per hour with the XP
@@ -1823,9 +1871,10 @@ public partial class WoodcuttingRatesMod
         // The quote of a settled rule, still in the game's words, or not (after a game update).
         static string Flat(string text) => Regex.Replace(text, @"\s+", " ").Trim();
         string heard = Flat(string.Join(" ", read));
-        foreach (var (name, quote, source) in new (string, string?, RuleSource?)[] { ("logs", TreeRates.LogsRule?.Quote, TreeRates.LogsRule?.Source), ("hits", TreeRates.HitsRule?.Quote, TreeRates.HitsRule?.Source) })
-            DevLog($"words | the quote of the {name} rule: " + (source != RuleSource.GameWords || string.IsNullOrEmpty(quote) ? "none (the rule is not settled by the game's words)"
-                : heard.Contains(Flat(quote), StringComparison.Ordinal) ? $"'{quote}' is in the game's words read here" : $"'{quote}' NOT IN THE GAME'S WORDS read here (the card's are in 'card stats')"));
+        // The logs' and the items' rules quote the headings of the cards' lists, held against every card in "Dev: game".
+        var (quote, source) = (TreeRates.HitsRule?.Quote, TreeRates.HitsRule?.Source);
+        DevLog("words | the quote of the hits rule: " + (source != RuleSource.GameWords || string.IsNullOrEmpty(quote) ? "none (the rule is not settled by the game's words)"
+            : heard.Contains(Flat(quote), StringComparison.Ordinal) ? $"'{quote}' is in the game's words read here" : $"'{quote}' NOT IN THE GAME'S WORDS read here (the card's are in 'card stats')"));
         // Every button of the page's filter, and which is which: the All button the put-back would press is found by the
         // game's word only (DevAllButton).
         try

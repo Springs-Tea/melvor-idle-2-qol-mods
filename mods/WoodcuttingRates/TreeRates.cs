@@ -83,18 +83,21 @@ sealed record Settled<T>(T Reading, RuleSource Source, string Quote);
 /// Mining Rates' light check) and of its names (its event of a hit, TreeDamagedEventArgs, is its ActionPerformedEventArgs).
 /// What a hit takes from the tree, and so how many hits a cut takes, rests on a rule (<see cref="HitsRule"/>), and so does
 /// what the logs come with (<see cref="LogsRule"/>); while a part is not settled, what rests on it is null and the window
-/// shows "-", never a formula of the mod's own (the review of pull request #61). The items of a hit are counted once a hit
-/// until what they come with is settled (<see cref="HitItemsRule"/>): the tooltip names that reading, and the gold, which
-/// would rest on it, is not counted.
+/// shows "-", never a formula of the mod's own (the review of pull request #61). What the logs and the items of a hit come
+/// with is settled by the headings of the card's two lists (<see cref="LogsRule"/>, <see cref="HitItemsRule"/>); how much
+/// a hit takes is not, so the logs of an hour, the time of a log and the gold are still null.
 /// </summary>
 sealed class TreeRates
 {
     /// <summary>
-    /// What the logs come with, and what backs it: set here, in this one place, once the light check's "Dev: words" and
-    /// "Dev: card stats" (the words the page shows on a card and on its lists) or the watch's "LOGS ON ..." settle it.
-    /// Null: the logs of an hour, the time of a log and the gold are not counted.
+    /// What the logs come with, and what backs it: set here, in this one place. Settled by the game's own words: every
+    /// tree's card on the Woodcutting page has two lists, headed "Per Hit" and "Full Cut", and the logs are in the one
+    /// headed "Full Cut" (the light check of 23 Nov 2026, check-4, "Dev: game": "per cut: [the words beside it 'Full Cut';
+    /// shows MelvorBase:OakLog x1, ...; bound to the tree's ProductQuantity (THE LOGS), ...]", the same on every card).
+    /// The quote is the heading, which the Logs column's tip names; every light check holds it against the card again.
+    /// The logs of an hour still rest on the cuts of an hour, so on <see cref="KnownHits"/>.
     /// </summary>
-    static readonly Settled<LogsWith>? KnownLogs = null;
+    static readonly Settled<LogsWith>? KnownLogs = new(LogsWith.Cut, RuleSource.GameWords, "Full Cut");
 
     /// <summary>
     /// How much a hit takes from a tree, and what backs it: set here, in this one place, once the page's words or the
@@ -105,11 +108,12 @@ sealed class TreeRates
 
     /// <summary>
     /// What the items of a hit come with, and what backs it: set here, in this one place, with the same evidence as the
-    /// logs (the words over the card's list that shows them and what it is bound to, "Dev: game"; the watch's "ITEMS OF A
-    /// HIT ..."). Null: they are counted once a hit, the window's reading of the game's name for their list
-    /// (OnHitItemChances), and the line's tooltip says so; the gold, which would rest on that reading, is not counted.
+    /// logs (the code review of turn 2, fault 5): the card's list that shows them is headed "Per Hit" (check-4, "Dev:
+    /// game": "per hit: [the words beside it 'Per Hit'; shows MelvorBase:BirdNest x1 at 0.003; bound to the tree's
+    /// OnHitItemChances (1)]"). Null would count them once a hit as the window's reading, said in the tooltip, with the
+    /// gold that rests on them not counted.
     /// </summary>
-    static readonly Settled<HitItemsWith>? KnownHitItems = null;
+    static readonly Settled<HitItemsWith>? KnownHitItems = new(HitItemsWith.EveryHit, RuleSource.GameWords, "Per Hit");
 
     /// <summary>What the logs come with, or null while nothing has settled it (<see cref="KnownLogs"/>).</summary>
     public static Settled<LogsWith>? LogsRule => KnownLogs;

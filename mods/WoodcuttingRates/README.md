@@ -28,9 +28,11 @@ title, the button opens it up again. It is lit while the window is open and not 
 The button is only there on the Woodcutting page. On any other page the window steps aside; back on the
 Woodcutting page, it is there again as you left it, open or folded.
 
-Drag the window to move it, drag its bottom right corner to resize it, or fold it down to its title with the
-button beside the X. It is never larger than fits above the game's bottom bar, and a list of more than 14
-trees scrolls. Its place, size, fold and sort order are kept in `settings.json` in the mod's folder.
+Until you move it, the window opens at the right side of the page, over its big panel and clear of the round
+buttons, at the height where the most of the trees' cards can be shown whole beside it. Drag the window to
+move it, drag its bottom right corner to resize it, or fold it down to its title with the button beside the X.
+It is never larger than fits above the game's bottom bar, and a list of more than 14 trees scrolls. Its place,
+size, fold and sort order are kept in `settings.json` in the mod's folder.
 
 ## What the window shows
 
@@ -44,9 +46,9 @@ category, and:
 | **XP** | Woodcutting XP per hour. |
 | **Gold** | What the logs and the other items of an hour sell for. |
 
-- **Time, Logs and Gold show `-`.** The window does not know how much a hit takes from a tree, or what its
-  logs come with: a hit, a cut, or each hit point a hit takes. So it does not count the hits a cut takes, and
-  it shows `-` rather than a guess. A note under the list says so.
+- **Time, Logs and Gold show `-`.** The logs come with a cut, as a tree's card lists them under "Full Cut".
+  But the window does not know how much a hit takes from a tree, so it does not count the hits a cut takes,
+  nor the cuts of an hour, and it shows `-` rather than a guess. A note under the list says so.
 - **The best number of each column is gold.**
 - **Click a column's name to sort by it.** The first click puts the best trees on top, the next turns the
   order around. "Tree" goes back to the order of the page. The name the list is sorted by is gold, with the
@@ -84,11 +86,11 @@ Put the pointer on a line for the hour at that tree, as far as it is counted:
 | **Woodcutting XP: 14,400 an hour, 10 a hit.** | Per hour, and for one hit. |
 | **Hit points: 30, with your bonuses.** | The tree's hit points, as its card shows them. |
 | **Your chances that change the hits a cut takes, not counted:**, and a line per chance | Your chances of double damage, of a weak spot and of an instant cut at that tree, by the names the Woodcutting page gives them, when you have any. |
-| **Logs: Oak Logs, 1 at a time, with your bonuses.** | The tree's logs, and how many come at a time. |
-| **Every hit, a chance of (once a hit: the window's reading):**, and a line per item | Each item a hit can bring besides the logs, with its chance per hit, how many it brings when it is more than one, and how many an hour brings if every hit rolls it once. That is the window's reading, not settled: a hit could also roll its items once for every hit point it takes. |
+| **Logs: Oak Logs, 1 a cut.** | The tree's logs, and how many a cut brings with your bonuses. |
+| **Every hit, a chance of:**, and a line per item | Each item a hit can bring, as the tree's card lists them under "Per Hit": its chance per hit, how many it brings when it is more than one, and how many an hour brings. |
 | **Every cut, a chance of:**, and a line per item | Each item a cut can bring, with its chance per cut. Not per hour, as the cuts of an hour are not counted. |
 | **The doubling chance (5%) is counted in the items.** | Only when you have one. |
-| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, when everything of the hour that sells is counted by a settled rule, not by the mod's reading. |
+| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, once the cuts of an hour are counted. |
 | **Overgrowth on this tree now, its bonuses in the numbers above:**, and a line per effect | The overgrowth on the tree, by the game's names, with the stacks each has left. |
 | **Click to show this tree on the Woodcutting page. Woodcutting is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Woodcutting page has no room for this tree's card beside this window: drag the window aside.** | Instead of the line above, on two lines, when no scroll of the page's list shows the tree's whole card clear of the window. |
@@ -106,12 +108,12 @@ level, equipment, potions and every other bonus, so the list moves with them.
 | A hit takes the tree's time of a hit. | The game's value for the tree. |
 | The hits of an hour are an hour over the time of a hit. | The mod's. |
 | Every hit gives the tree's XP. | The mod's reading of the XP tag's words, "The Skill XP gained per action.", taking a hit as the action. |
-| The items of a hit come at their chance once a hit, and the items of a cut at theirs on every cut. | The game's chances, from its two lists for the tree. That one comes once a hit and the other on every cut is the mod's reading of their names, not settled: a hit could also roll its items once for every hit point it takes. So the gold, which would rest on it, is not counted. |
+| The items of a hit come at their chance on every hit, and the items of a cut at theirs on every cut. | The game's chances, and the game's own words: a tree's card lists the one under "Per Hit" and the other under "Full Cut". |
 | The doubling chance doubles the items. | The mod's reading of the game's words for it, "Your chance to double the output". |
 | The overgrowth on a tree now is in its numbers. | The mod's reading: the game keeps a tree's numbers with its overgrowth. Overgrowth a cut may put on later is not counted. |
 | How much a hit takes from a tree, and so the hits a cut takes. | Not counted: the window does not know it. Time, Logs and Gold show `-`. |
-| What the logs come with: every hit, a cut, or each hit point a hit takes. | Not counted. Time, Logs and Gold show `-`. |
-| Gold is what the logs and the items sell for. | The game's sell prices; shown only when everything of the hour that sells is counted by a settled rule, not by the mod's reading. |
+| The logs come with a cut, as many as the game's quantity for the tree. | The game's own words: a tree's card lists the logs under "Full Cut". The logs of an hour still need the cuts of an hour, so the hits a cut takes. |
+| Gold is what the logs and the items sell for. | The game's sell prices; shown only when everything of the hour that sells is counted. |
 | Chances count as their long-run average. | The mod's. |
 
 ## Questions it answers

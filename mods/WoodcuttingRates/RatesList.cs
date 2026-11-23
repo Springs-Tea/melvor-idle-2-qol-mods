@@ -46,7 +46,13 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
             logs.Add($"{what}: {Words.How(rule.Source)}{(quoted ? ", in the game's words:" : "")}");
             if (quoted) logs.AddRange(rule.Quote.Split('\n').Select(line => $"\"{line}\""));
         }
-        Rule(TreeRates.LogsRule, "What they come with");
+        // What the logs come with, in the card's own words: the heading of the list that holds them.
+        if (TreeRates.LogsRule is { } with)
+        {
+            string each = with.Reading switch { LogsWith.EveryHit => "every hit", LogsWith.Cut => "every cut", _ => "every hit point a hit takes" };
+            logs.Add($"With {each}, " + (with.Source == RuleSource.GameWords && with.Quote.Length > 0
+                ? $"as the tree's card lists them under \"{with.Quote}\"" : "by a rule measured in the game"));
+        }
         if (TreeRates.LogsRule?.Reading != LogsWith.EveryHit) Rule(TreeRates.HitsRule, "The hits a cut takes");
         return
         [

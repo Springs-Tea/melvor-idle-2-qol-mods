@@ -10,9 +10,9 @@ its category, and:
   - XP: Woodcutting XP per hour.
   - Gold: what the logs and the other items of an hour sell for.
 
-Time, Logs and Gold show -: the window does not know how much a hit takes from a tree, or
-what its logs come with, so it does not count the hits a cut takes and does not guess
-them. A note under the list says so.
+Time, Logs and Gold show -: the logs come with a cut, as a tree's card lists them under
+"Full Cut", but the window does not know how much a hit takes from a tree, so it does not
+count the hits a cut takes and does not guess them. A note under the list says so.
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. A tree you cannot cut yet is greyed, with the level it needs. The
@@ -23,9 +23,9 @@ cut can bring with its chance, and the overgrowth on the tree now.
 
 The numbers come from the game's own values for each tree, so whatever changes those
 changes the window too. That every hit gives the tree's XP is the window's reading of the
-game's words for the XP tag, "The Skill XP gained per action." So is counting the items of
-a hit once a hit, which the tooltip says; a hit could also roll them for every hit point it
-takes, so the gold, which would rest on that, is not counted. Chances count as their
+game's words for the XP tag, "The Skill XP gained per action." The items of a hit come on
+every hit and those of a cut on every cut, as the card lists them under "Per Hit" and "Full
+Cut". Chances count as their
 long-run average. It is an estimate, not a promise. A tree you hid on the Woodcutting page
 is listed only while the page lists hidden trees too.
 
@@ -34,6 +34,7 @@ card is hidden, and its list scrolls until the whole card is in sight beside the
 When the page has no room for the card there, the line's tooltip says so: drag the window
 aside. Nothing is started or stopped, and the window stays open where it is.
 
+Until you move it, the window opens at the right side of the page, beside the trees' cards.
 Drag the window to move it, drag its bottom right corner to resize it, fold it down to its
 title with the button beside the X. On another page it steps aside and comes back on the
 Woodcutting page. Its place, size, fold and sort order are kept in settings.json in the

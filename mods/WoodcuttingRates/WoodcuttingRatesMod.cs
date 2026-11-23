@@ -67,6 +67,8 @@ public partial class WoodcuttingRatesMod : IMod
     // there (a game update), that is remembered until the page is found again (_filterLooked).
     WoodcuttingCategoryFilterView? _filter;
     bool _filterLooked;
+    // Where the window was put when it opened without a place of the player's (FirstPlace), or null.
+    Vector2? _firstPlace;
 
     string SettingsFile => Path.Combine(_ctx.Directory, "settings.json");
 
@@ -312,6 +314,11 @@ public partial class WoodcuttingRatesMod : IMod
             scale = largest;
         }
         var window = _window;
+        // While the player has not placed the window himself, it opens where the trees' cards have the most room beside
+        // it (FirstPlace), once its size is measured; as if dragged there, but nothing is saved, so his own drag is still
+        // what is kept.
+        _firstPlace = at == null && !window.Minimised ? FirstPlace(window.Root.GetCombinedMinimumSize()) : null;
+        if (_firstPlace is { } first) window.MoveTo(first);
         window.CloseRequested += () => Click(Close);
         window.MinimisedChanged += folded => Click(() =>
         {
@@ -428,6 +435,49 @@ public partial class WoodcuttingRatesMod : IMod
     // The part of the screen this window covers, read from the window as it is drawn now (its frame, at the size it is
     // shown, wherever the player dragged it); null while it is not on the screen.
     Rect2? Cover() => _window is { IsAlive: true, Visible: true } window ? Native.Drawn(window.Root) : null;
+
+    // Where the window opens while the player has not placed it himself (review 4 of the orchestrator: in the middle it
+    // lay across both columns of the trees' cards, and nearly no line could be clicked). At the right side of the page,
+    // over its big panel, its right edge as far from the strip of round buttons as the strip is from the screen's edge,
+    // so it never covers a round button; then, of the two heights the page's list leaves for it (level with the list's
+    // top, or with its bottom above the game's bottom bar), the one where the most of the cards the page shows can be
+    // shown whole beside it (Native.Place: in sight, or after a scroll; the top when they are equal). Everything is
+    // measured from the page as it is drawn now: its list, its cards, the strip, the screen and the bottom bar. Null when
+    // the page shows no card: the window then opens in the middle, as before.
+    Vector2? FirstPlace(Vector2 size)
+    {
+        if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
+        try
+        {
+            var cards = (Native.TreeViews(_page!)?.Values ?? Enumerable.Empty<WoodcuttingTreeSelectView>())
+                .Where(c => GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion() && c.IsVisibleInTree()).ToList();
+            if (cards.Count == 0 || Native.ScrollOf(cards[0]) is not { } list) return null;
+            Rect2 screen = _ctx.Tree.Root.GetVisibleRect(), page = Native.Drawn(list);
+            float right = screen.End.X;
+            if (GodotObject.IsInstanceValid(_opener) && _opener!.GetParent() is Control strip && strip.IsVisibleInTree())
+            {
+                Rect2 buttons = Native.Drawn(strip);
+                right = buttons.Position.X - Math.Max(0, screen.End.X - buttons.End.X);
+            }
+            float bottom = screen.End.Y - FooterHeight();
+            float x = Math.Max(screen.Position.X, right - size.X), lowest = Math.Max(screen.Position.Y, bottom - size.Y);
+            Vector2? best = null;
+            int most = -1;
+            foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
+            {
+                float y = Math.Clamp(top, screen.Position.Y, lowest);
+                var cover = new Rect2(x, y, size);
+                int room = cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
+                if (room > most) { most = room; best = new Vector2(x, y); }
+            }
+            return best?.Round();
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+            return null;
+        }
+    }
 
     // The page's own button of a category (WoodcuttingCategoryFilterView), or null when the game has none. The filter is
     // looked for once per page; when it is not there, that is said once and remembered until the page is found again,
