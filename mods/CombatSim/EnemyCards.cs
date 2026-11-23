@@ -735,7 +735,7 @@ sealed class EnemyCards
 
     // The button itself, or a part of it that passes mouse events up to it (MouseFilter Pass all the way) and is
     // no button of its own.
-    static bool DevPassesOn(Control? over, Control button)
+    internal static bool DevPassesOn(Control? over, Control button)
     {
         for (Node? node = over; node != null; node = node.GetParent())
         {
@@ -746,7 +746,7 @@ sealed class EnemyCards
         return false;
     }
 
-    static string DevName(Control? control) => control == null ? "nothing"
+    internal static string DevName(Control? control) => control == null ? "nothing"
         : $"{control.Name} ({control.GetType().Name}{(control is Label label ? $" '{label.Text}'" : "")}, mouse filter {control.MouseFilter})";
 
     // ---- the combat screen ------------------------------------------------------------------------------------

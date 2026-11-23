@@ -83,27 +83,92 @@ sealed partial class SimView
         _stanceHolder.AddChild(row);
     }
 
-    // The two boxes one over the other: both captions as wide as the wider one, so the two drop-downs start and end in
-    // line, and each drop-down as wide as its choices need beside it (FitBeside). The Spell box alone, without a Stance
-    // box over it (Best for, a weapon of one stance), stays exactly as it always was.
+    // Each drop-down as wide as its choices need beside its caption, and never wider than its row (FitBeside). The two
+    // boxes one over the other: both captions as wide as the wider one, so the two drop-downs start and end in line. The
+    // Spell box alone (Best for, a weapon of one stance) is fitted the same way: with Godot's own fit to its longest choice
+    // it made the Setup column, and the window, 54 px wider at size 0.6 and 13 px at 1.10 (issue #44).
     void LineUpChoices()
     {
-        if (_stance == null || _stanceCaption == null) return;
-        if (_spell != null && _spellCaption != null)
+        bool spell = _spell != null && _spellCaption != null;
+        if (_stance != null && _stanceCaption != null)
         {
-            float wide = MathF.Ceiling(Widest(GameStyle.SemiBold, _s.Px(12), _stanceCaption.Text, _spellCaption.Text));
-            _stanceCaption.CustomMinimumSize = _spellCaption.CustomMinimumSize = new Vector2(wide, 0);
-            FitBeside(_spell, _spellCaption);
+            if (spell)
+            {
+                float wide = MathF.Ceiling(Widest(GameStyle.SemiBold, _s.Px(12), _stanceCaption.Text, _spellCaption!.Text));
+                _stanceCaption.CustomMinimumSize = _spellCaption.CustomMinimumSize = new Vector2(wide, 0);
+            }
+            FitBeside(_stance, _stanceCaption);
         }
-        FitBeside(_stance, _stanceCaption);
+        if (!spell) return;
+        OptionButton box = _spell!;
+        FitBeside(box, _spellCaption!);
+        ShowWhole(box, i => SpellFaces(box.GetItemText(i), box.GetItemIcon(i), i == 0 ? _state.SpellNow : null));
     }
+
+    // The words on the box itself are whole at every size (issue #44). FitBeside keeps the box within its row, so the choice
+    // it shows can be wider than the box: "As now: Dracolith Flameburst" asked 101 px of the 93 the Spell box has for words
+    // at size 0.6, and 186 of 181 at 1.10. Then the box shows the first of the choice's shorter faces that fits (faces,
+    // from the choice's own words down), and its tooltip names the choice in full first. The list keeps every choice's own
+    // words and picture: it is as wide as its longest.
+    void ShowWhole(OptionButton box, Func<int, IEnumerable<(string Words, Texture2D? Picture)>> faces)
+    {
+        string tip = box.TooltipText;
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(box) || box.Size.X <= 0 || box.Selected < 0) return;
+            string own = box.GetItemText(box.Selected);
+            var (words, picture, _) = Face(box, faces(box.Selected));
+            if (box.Text != words) box.Text = words;
+            if (box.Icon != picture) box.Icon = picture;
+            box.TooltipText = words == own ? tip : $"{own}\n{tip}";
+        }
+        Fit();
+        box.Resized += Fit;
+        box.ThemeChanged += Fit;
+        // A choice made puts its own words and picture on the box (OptionButton.Select).
+        box.ItemSelected += _ => Fit();
+    }
+
+    // The faces of a Spell box choice, from its own words down, each naming the spell whole: "As now: Air Strike" (now is
+    // the spell it stands for), then that spell's picture and name, then its name alone; a spell's picture and name, then
+    // its name alone.
+    static IEnumerable<(string Words, Texture2D? Picture)> SpellFaces(string words, Texture2D? picture, (string Name, Texture2D? Icon)? now)
+    {
+        yield return (words, picture);
+        if (now is { } spell)
+        {
+            if (spell.Icon != null) yield return (spell.Name, spell.Icon);
+            yield return (spell.Name, null);
+        }
+        else if (picture != null) yield return (words, null);
+    }
+
+    // The first face that fits the box's room for words (its width less its margins and arrow, AroundText), or else the
+    // last, which the box cuts (ClipText).
+    static (string Words, Texture2D? Picture, bool Whole) Face(OptionButton box, IEnumerable<(string Words, Texture2D? Picture)> faces)
+    {
+        float room = box.Size.X - AroundText(box);
+        (string Words, Texture2D? Picture) last = ("", null);
+        foreach (var face in faces)
+        {
+            last = face;
+            if (ChoiceWidth(box, face.Words, face.Picture != null) <= room + 0.01f) return (face.Words, face.Picture, true);
+        }
+        return (last.Words, last.Picture, false);
+    }
+
+    // How wide a choice's words are on the box, in its own font and size, with the picture beside them and the spacing
+    // Godot keeps between the two.
+    static float ChoiceWidth(OptionButton box, string words, bool picture) =>
+        box.GetThemeFont("font").GetStringSize(words, HorizontalAlignment.Left, -1, box.GetThemeFontSize("font_size")).X
+        + (picture ? box.GetThemeConstant("icon_max_width") + Math.Max(0, box.GetThemeConstant("h_separation")) : 0);
 
     // The Setup column gets no wider for a box, at any size (CombatSimMod.FullWidth). Godot's own fit to the longest choice
     // asks about 30 px more than the words (SimViewRanges.FitChoices), and the margins and arrow of the game's drop-down
     // keep their size while the words shrink with the window. So the box asks for its longest choice, with the picture
     // beside it, its margins and its arrow, measured as FitChoices measures them, and never for more than its row has
     // beside the caption, as the loadout's drop-down beside A and B does (SimViewCompare.LoadoutRow): a longer name is
-    // cut, where the column would otherwise grow.
+    // cut, where the column would otherwise grow (the Spell box shows shorter words instead, ShowWhole).
     void FitBeside(OptionButton box, Label caption)
     {
         box.FitToLongestItem = false;
@@ -488,8 +553,10 @@ public partial class CombatSimMod
 
     // stance=weapon: a pick in the Weapon slot, as pick= makes it (DevPick, the picker's own row), of a weapon of another
     // kind than the one the slots show, with more than one stance, that the character can wear: owned ones first, then by
-    // name, as the picker lists them. With +spell, one that casts spells first, for a picture of the Stance and the Spell
-    // box together. False, with one line, when there is none.
+    // name, as the picker lists them. With +spell, first one whose Spell box shows (a spell of its elements that the
+    // character can cast, DevCastable), for a picture of the Stance and the Spell box together and for Best for's tallest
+    // state (issue #44): an element alone is not enough, as no spell of it may be unlocked. False, with one line, when
+    // there is none.
     bool DevStanceWeapon(bool spells)
     {
         if (_game == null || _state.Gear.FirstOrDefault(g => g.SlotName.Equals("Weapon", StringComparison.OrdinalIgnoreCase)) is not { } slot)
@@ -504,7 +571,9 @@ public partial class CombatSimMod
             .Where(c => c.CanWear)
             .Select(c => (Choice: c, Weapon: Of(c.ItemId)))
             .Where(x => x.Weapon?.Type is { } type && type.Id != kindNow && type.Stances.Count > 1)
-            .OrderByDescending(x => spells && x.Weapon!.Elements.Count > 0)
+            .Select(x => (x.Choice, x.Weapon, Castable: DevCastable(x.Weapon!)))
+            .OrderByDescending(x => spells && x.Castable > 0)
+            .ThenByDescending(x => spells && x.Weapon!.Elements.Count > 0)
             .ThenByDescending(x => x.Choice.Owned > 0)
             .ThenBy(x => x.Choice.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -513,16 +582,40 @@ public partial class CombatSimMod
             _ctx.Log($"Dev: stance: weapon: no weapon the character can wear is of another kind than {kindNow ?? "-"} and has more than one stance.");
             return false;
         }
-        var (choice, wielded) = found[0];
+        var (choice, wielded, castable) = found[0];
+        if (spells)
+        {
+            var showing = found.Where(x => x.Castable > 0).Select(x => $"{x.Choice.Name} ({x.Castable})").ToList();
+            _ctx.Log($"Dev: stance: weapon: {showing.Count} weapons of several stances whose Spell box would show (spells the character can cast): " +
+                     $"{(showing.Count == 0 ? "NONE" : string.Join(", ", showing.Take(12)) + (showing.Count > 12 ? ", ..." : ""))}; " +
+                     $"with an element but no spell to cast: {found.Count(x => x.Castable == 0 && x.Weapon!.Elements.Count > 0)}.");
+        }
         _ctx.Log($"Dev: stance: weapon: {found.Count} weapons of another kind than {kindNow ?? "-"} with more than one stance; picking {choice.Name} ({choice.ItemId}), " +
                  $"of the kind {wielded!.Type!.Id} with the stances {string.Join(", ", wielded.Type.Stances.Select(s => s.DisplayName.Text))}, " +
-                 $"{(wielded.Elements.Count > 0 ? "casts spells" : "casts no spells")}, {(choice.Owned > 0 ? $"{choice.Owned} owned" : "not owned")}" +
-                 $"{(spells && wielded.Elements.Count == 0 ? "; NONE OF THEM CASTS SPELLS: the Spell box will not show" : "")}.");
+                 $"{(wielded.Elements.Count > 0 ? $"casts spells ({castable} the character can cast)" : "casts no spells")}, {(choice.Owned > 0 ? $"{choice.Owned} owned" : "not owned")}" +
+                 $"{(spells && castable == 0 ? "; NONE OF THEM HAS A SPELL THE CHARACTER CAN CAST: the Spell box will not show" : "")}.");
         DevPick($"Weapon={choice.ItemId}");
         // The slots are made again from the pick: the Weapon slot shows it when it happened.
         if (_state.Gear.FirstOrDefault(g => g.SlotId == slot.SlotId)?.ItemId == choice.ItemId) return true;
         _ctx.Log($"Dev: stance: weapon: the Weapon slot does not show {choice.Name} after the pick.");
         return false;
+    }
+
+    // How many spells the Spell box would list for this weapon: those of its elements, of the books that are unlocked, that
+    // the character can cast, by the rule CombatSimMod.BuildGear lists them with. Read only.
+    int DevCastable(WeaponCapability weapon)
+    {
+        if (_combat == null || weapon.Elements.Count == 0) return 0;
+        try
+        {
+            return _combat.MagicSpells.ActiveSpellBooks.Values.Where(book => book.Data.Requirements is not { AreMet: false })
+                .Sum(book => book.Spells.Count(spell => weapon.Elements.Contains(spell.Element) && spell.UnlockRequirements is not { AreMet: false }));
+        }
+        catch (Exception e)
+        {
+            if (_reported.Add("dev castable")) _ctx.Log("Dev: stance: weapon: the spells could not be counted: " + e.Message);
+            return 0;
+        }
     }
 
     // The pictures of stance=shot under way: what is called after every drawn frame until they are taken, and since when.

@@ -332,8 +332,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         }
         catch (Exception e) { _ctx.Log("The spells could not be listed (the game was updated?): " + e.Message); }
         if (_state.Spells.All(s => s.Id != _state.SpellId)) _state.SpellId = "";
-        string? casting = _state.LoadoutId == worn && _state.Overrides.Count == 0 ? _combat.MagicSpells.SelectedSpell?.DisplayName.Text : null;
-        _state.SpellDefault = casting != null ? $"As now: {casting}" : "As the loadout has it";
+        ActiveMagicSpell? casting = _state.LoadoutId == worn && _state.Overrides.Count == 0 ? _combat.MagicSpells.SelectedSpell : null;
+        _state.SpellNow = casting != null ? (casting.DisplayName.Text, casting.Icon) : null;
+        _state.SpellDefault = casting != null ? $"As now: {casting.DisplayName.Text}" : "As the loadout has it";
 
         _state.Skills.Clear();
         foreach (string id in SimEngine.CombatSkills)
@@ -519,6 +520,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         KeepTitleRoom();
 #if DEVTOOLS
         _view.DevLog = _ctx.Log;
+        _devBuiltAt = ((long)Engine.GetFramesDrawn(), (long)Time.GetTicksMsec());
         LogFold();
 #endif
     }
@@ -570,35 +572,47 @@ public partial class CombatSimMod : IMod, ISimLookup
         return 0;
     }
 
-    // At full size the window is at most 1408 wide (Best for, with a stance on every line) and 889 high (Best
-    // for, with the Train and the Spell box); larger, a few pixels more or less than that in proportion, every
-    // length being rounded on its own. It is never larger than the screen above the game's bottom bar,
-    // whatever size was chosen on another screen or dragged to: the largest size that fits, in the same steps
-    // of 5% the corner resizes in.
+    // The size the window plans with. It is never larger than the screen above the game's bottom bar, whatever size was
+    // chosen on another screen or dragged to: the largest size that fits, in the same steps of 5% the corner resizes in.
+    // The rule is one for every state of the window, so its size never changes when a row of the Setup column comes or
+    // goes (Undo changes after a swap, a tick): the window does not jump. From full size up a length is in proportion;
+    // below it a part keeps its size (the margins of the game's theme), and every length is rounded on its own: the 12 px
+    // words are 8 px at 0.65, which is 0.67 of their size.
     //
-    // Below full size the height is not quite in proportion. The Setup column sets it, and its buttons and drop-downs
-    // keep the margins of the game's theme at every size: the same Best for list was 544 px high at size 0.6 and
-    // 780 at 0.9, which is 787 px that shrink with the window and 72 that do not (907 and 867 at full size). With
-    // the Spell box, one drop-down more, and the rounding of every length at the sizes between, 100 of the 895 are
-    // counted as keeping their size.
-    //
-    // Fights with the Stance and the Spell box (issue #51) stays under that at every size: its Stance box is one row of a
-    // caption beside a drop-down, where Best for has Train's caption over its drop-down (one caption and one spacing more,
-    // with the same drop-down's margins), and its line above Simulate is one line where Best for's is two. Neither box
-    // makes the Setup column wider (SimViewStance.FitBeside).
-    const float FullWidth = 1414, FullHeight = 895, KeptHeight = 100;
+    // The states that decide it, window width x height on a 2019x1080 game screen, measured at every size from 0.6 to 1.10
+    // in steps of 5% (issue #44):
+    // - the tallest, Best for with the Train box, the Spell box and Undo changes: 588 high at 0.6, 641 at 0.65, 920 at 1.0
+    //   and 1011 at 1.10. It needs the most at 0.65: 641 = 108 + 820 x 0.65, which is FullHeight 928 with 108 of it keeping
+    //   its size (12 px to spare at 0.6, 8 at 1.0, none at 0.65);
+    // - the widest, Best for with a stance on every line and Undo changes: 860 wide at 0.6 and 1408 at 1.0, which needs
+    //   FullWidth 1410.7 at most (at 0.6, with 34 of it keeping its size);
+    // - the tallest of Fights, with the Stance box or the Spell box and Undo changes: 552 high at 0.6 and 866 at 1.0.
+    // Compare adds neither height nor width (SimViewCompare.Hang, LoadoutRow, SimViewColumns.EnemyPart). Best for with a
+    // weapon of several stances and the Spell box is no taller than the tallest (its line above Simulate stays one line,
+    // SimView.Refresh) and no wider than the widest (the Spell box gets no wider than its row, SimViewStance.FitBeside).
+    // Not counted: words that wrap onto one more line than measured, a food line with a long plural name and a large
+    // count, or a message under Simulate of two lines. On a 1080-high game screen with its 44 px bar the largest size is
+    // 1.10: 1036 / 928 = 1.12.
+    const float FullWidth = 1414, KeptWidth = 34, FullHeight = 928, KeptHeight = 108;
 
     float LargestScale(float footer)
     {
         Vector2 screen = _ctx.Tree.Root.GetVisibleRect().Size;
-        float room = screen.Y - footer;
-        float high = room >= FullHeight ? room / FullHeight : (room - KeptHeight) / (FullHeight - KeptHeight);
-        float fits = Math.Min(screen.X / FullWidth, high);
+        float fits = Math.Min(Fits(screen.X, FullWidth, KeptWidth), Fits(screen.Y - footer, FullHeight, KeptHeight));
         return Math.Clamp(MathF.Floor(fits * 20f) / 20f, GameWindow.MinScale, GameWindow.MaxScale);
     }
 
+    // The largest size at which a length of the rule fits into the room (the other way round of SizeAt).
+    static float Fits(float room, float full, float kept) => room >= full ? room / full : (room - kept) / (full - kept);
+
+    // A length of the rule at this size: in proportion from full size up, below it with the part that keeps its size.
+    static float SizeAt(float scale, float full, float kept) => scale >= 1 ? full * scale : (full - kept) * scale + kept;
+
+    /// <summary>How wide the window may be at this size, by the rule LargestScale goes by.</summary>
+    static float WidthAt(float scale) => SizeAt(scale, FullWidth, KeptWidth);
+
     /// <summary>How high the window may be at this size, by the rule LargestScale goes by.</summary>
-    static float HeightAt(float scale) => scale >= 1 ? FullHeight * scale : (FullHeight - KeptHeight) * scale + KeptHeight;
+    static float HeightAt(float scale) => SizeAt(scale, FullHeight, KeptHeight);
 
     void SaveChoices()
     {
@@ -930,7 +944,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
         // The pictures of stance=shot are taken first: nothing else changes the window, nor is it built again, meanwhile.
-        if (DevStanceShooting()) return;
+        // So is the game's pop-up of popup= measured and closed again (SizeProbe.cs).
+        if (DevStanceShooting() || DevPopupMeasuring()) return;
         if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1
             && _run == null && !_state.Running && !_engine.Running) DevPutBack();
         if (_devCommands.Count == 0 && File.Exists(request))
@@ -955,6 +970,8 @@ public partial class CombatSimMod : IMod, ISimLookup
             if (command == "wait=progress" && _state.Running && _state.Done == 0) return;
             // Also the run of "twice=", which is not the window's.
             if (command == "wait=finished" && (_state.Running || _engine.Running)) return;
+            // size=log: once the window has been drawn twice since it was last built (SizeProbe.cs).
+            if (DevSizeWaits(command, now)) return;
             _devCommands.Dequeue();
             if (command == "wait=progress" && (!_state.Running || _state.Done == _state.Total))
             {
@@ -1051,12 +1068,7 @@ public partial class CombatSimMod : IMod, ISimLookup
             foreach (Node child in _window.Layer.GetChildren())
                 if (child is PanelContainer { Visible: true } panel && panel != _window.Root) frame = frame.Merge(panel.GetGlobalRect());
             _ctx.Log($"Dev: rect = {(int)frame.Position.X},{(int)frame.Position.Y},{(int)frame.End.X},{(int)frame.End.Y}");
-            // The sizes LargestScale goes by must cover the window as it really is, at every size.
-            Vector2 full = _window.Root.Size / _window.Style.Scale, screen = _ctx.Tree.Root.GetVisibleRect().Size;
-            float bar = FooterHeight(), scale = _window.Style.Scale, wide = FullWidth * scale, high = HeightAt(scale);
-            _ctx.Log($"Dev: window {_window.Root.Size.X:0}x{_window.Root.Size.Y:0} at size {scale:0.##} (chosen {_settings.Scale:0.##}, largest {LargestScale(bar):0.##}), {full.X:0}x{full.Y:0} at full size; " +
-                     $"LargestScale allows {wide:0.#}x{high:0.#} at this size" +
-                     $"{(_window.Root.Size.X > wide + 0.5f || _window.Root.Size.Y > high + 0.5f ? "  LARGER THAN LargestScale ALLOWS" : ", it fits")}; screen {screen.X:0}x{screen.Y:0}, bottom bar {bar:0}, window bottom at {_window.Root.GetGlobalRect().End.Y:0}");
+            DevLogWindow("the run request");
             foreach (SimResult r in _state.Results.Values.OrderByDescending(r => r.XpPerHour))
                 _ctx.Log($"Dev: [{r.SetupLabel}] {r.Target.Name + " " + r.Target.StanceName,-30} {string.Join(" ", r.Xp.Select(x => x.Key.Replace("MelvorBase:", "") + "=" + (x.Value / Math.Max(r.Hours, 1e-9)).ToString("N0")))} kills {r.KillsPerHour,7:N0}  xp {r.XpPerHour,8:N0}  gold {r.GoldPerHour,8:N0}  food {r.FoodPerHour,6:N1}  deaths {r.DeathsPerHour,5:N1}  " +
                          $"eaten {r.FoodEaten} / killed {r.Kills} = {r.FoodPerKill:0.####}  healed {r.Healed}  food gone {(r.FoodGoneSeconds < 0 ? "-" : $"{r.FoodGoneSeconds:0}s, {r.FoodGoneKills} kills")}  " +
@@ -1068,7 +1080,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   setup=<run request>   the setup of a run request, without starting it; "simulate" starts it
     //   minimise, close, button   a click on the fold button, on the X, on the round button on the right edge
     //   wait=progress, wait=finished   the next lines wait for the first finished fight, or for the end
-    //   cancel, select=first, sort=<column>, scale=min|max
+    //   cancel, select=first, sort=<column>, scale=min|max|<size such as 1.05>
     //   shot=<name>   shot-<name>.png and crop-<name>.png once drawn, the window's state in shot-<name>.txt
     //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
     //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
@@ -1083,6 +1095,9 @@ public partial class CombatSimMod : IMod, ISimLookup
     //                 under As the game has it; game: As the game has it); log only logs; view#2 shows the second scan of
     //                 History; shot takes the pictures of the box, of its list and of Details' stance line, and reads their
     //                 pixels back
+    //   size=log, size=every, popup=<statistics|milestones|...>, spellnow=longest   the window against its size rule and the
+    //                 game's bars, without a run: at its size, or at every size; a pop-up of the game beside it; the Spell box
+    //                 with the longest first choice it can get, in the simulator's words only (SizeProbe.cs, issue #44)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1118,7 +1133,8 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("wear=", StringComparison.Ordinal)) DevTickWear(command[5..].Trim());
                 else if (command.StartsWith("upgrades=", StringComparison.Ordinal)) DevUpgradesCommand(command[9..].Trim());
                 else if (command.StartsWith("stance=", StringComparison.Ordinal)) DevStance(command[7..].Trim());
-                else if (!DevGearCommand(command)) return false;   // pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
+                // size=, scale=<size>, popup= (SizeProbe.cs); pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
+                else if (!DevSizeCommand(command) && !DevGearCommand(command)) return false;
                 break;
         }
         return true;
@@ -1233,6 +1249,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _ctx.Log($"Dev: the choice of Find upgrades put back to {DevChoice(_state.UpgradeChoice)}, and the tab to {(_state.BestMode ? "Best for" : "Fights")}, as settings.json has it.");
         _state.WearSetup = _settings.WearSetupFirst;
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
+        DevSpellNowBack();   // after spellnow= (SizeProbe.cs)
         if (_window is { IsAlive: true } window)
         {
             bool shown = window.Visible;

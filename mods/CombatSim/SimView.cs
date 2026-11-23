@@ -73,6 +73,11 @@ sealed partial class SimState
     public string SpellId = "";
     /// <summary>What the "" choice stands for, in words.</summary>
     public string SpellDefault = "";
+    /// <summary>
+    /// The spell "As now: ..." stands for, with its picture: the one the game has selected, when the setup is the loadout
+    /// worn without changes. Null otherwise ("As the loadout has it").
+    /// </summary>
+    public (string Name, Texture2D? Icon)? SpellNow;
 
     /// <summary>
     /// False: what the fights of the chosen areas give. True: look for the best place to train, by trying
@@ -289,6 +294,9 @@ sealed partial class SimView
     Control BuildSetup()
     {
         Control column = _s.Column("Setup", out VBoxContainer body, SetupWidth);
+#if DEVTOOLS
+        _devSetup = (column, body);
+#endif
 
         // Two questions the window answers: "what does this area give me" and "where should I train".
         var modes = _s.Spaced(new HBoxContainer(), 4);
@@ -1376,9 +1384,17 @@ sealed partial class SimView
             ? "Never runs out: what a fight gives and uses while you keep it supplied."
             : "Uses your bank: how far your food, ammo and runes get you.";
         // With the stances the line is about as wide as the column and broke inside the time ("about 2" | "min"): the
-        // time goes on a line of its own.
+        // time goes on a line of its own. Not with the Spell box too: Best for with the Train and the Spell box is the
+        // Setup column at its tallest, and a second line there would make it higher than the window's size rule allows
+        // (CombatSimMod.FullHeight, issue #44). There the line is one line, as Compare's is (RefreshPair), and the stances
+        // are in its tooltip.
+        string count = $"{fights} {(fights == 1 ? "fight" : "fights")}", stances = $" ({_state.Stances.Count} stances each)";
+        bool oneLine = _state.PerStance && _state.Spells.Count > 0;
         _estimate.Text = fights == 0 ? "Nothing to simulate here"
-            : $"{fights} {(fights == 1 ? "fight" : "fights")}{(_state.PerStance ? $" ({_state.Stances.Count} stances each)\n" : "  ·  ")}{Estimate(fights, hours)}";
+            : _state.PerStance && !oneLine ? $"{count}{stances}\n{Estimate(fights, hours)}"
+            : $"{count}  ·  {Estimate(fights, hours)}";
+        _estimate.TooltipText = oneLine && fights > 0 && !_state.Compare ? $"{count}{stances}\n{Estimate(fights, hours)}" : "";
+        _estimate.MouseFilter = _estimate.TooltipText == "" ? Control.MouseFilterEnum.Ignore : Control.MouseFilterEnum.Pass;
 
         _go.Text = _state.Running ? "Cancel" : "Simulate";
         _go.ThemeTypeVariation = _state.Running ? "TexturedButtonCancel8x" : "TexturedActionButtonGreen8x";
@@ -1402,6 +1418,83 @@ sealed partial class SimView
 
 #if DEVTOOLS
     public Button? DevFirstRow => _rows.GetChildren().OfType<Button>().FirstOrDefault(b => !b.IsQueuedForDeletion());
+
+    // The Setup column and the box of its rows, as BuildSetup made them, for DevSetupShows.
+    (Control Column, VBoxContainer Body)? _devSetup;
+
+    /// <summary>
+    /// Development (issue #44), for the "Dev: window" line: the tab and which of the Setup column's rows that show only
+    /// sometimes are on screen, read from the controls themselves; how many lines its wrapped words take; the column's
+    /// width against the width it is planned with, with its widest line, which is what makes it wider when it is; and the
+    /// Spell box's words against its room (DevSpellWords), given the names and pictures of every spell of the game's books.
+    /// </summary>
+    public string DevSetupShows(IReadOnlyCollection<(string Name, Texture2D? Icon)> gameSpells)
+    {
+        static string On(Control? c) => c != null && GodotObject.IsInstanceValid(c) && c.IsVisibleInTree() ? "shown" : "not shown";
+        static string Lines(Label l) => !l.IsVisibleInTree() || l.Text == "" ? "empty" : $"{l.GetLineCount()} {(l.GetLineCount() == 1 ? "line" : "lines")} {l.Size.Y:0} px high";
+        string compare = _compareBox.ButtonPressed ? $"ticked (A {On(_sideA)}, B {On(_sideB)})" : "not ticked";
+        string tip = _estimate.TooltipText == "" ? "" : $" (its tooltip '{_estimate.TooltipText.Replace("\n", " | ")}')";
+        string shows = $"{(_modeBest.ButtonPressed ? "Best for" : "Fights")}; Train {On(_train)}, Stance {On(_stanceHolder)}, Spell {On(_spellHolder)}, " +
+                       $"Undo changes {On(_reset)}, Compare {compare}; the food line {Lines(_food)}, the line above Simulate {Lines(_estimate)}{tip}, under Simulate {Lines(_status)}";
+        if (_devSetup is not ({ } setup, { } body) || !GodotObject.IsInstanceValid(body) || body.GetParent() is not PanelContainer panel)
+            return shows + "; the column's lines were not found";
+        StyleBox frame = panel.GetThemeStylebox("panel");
+        float planned = _s.Px(SetupWidth), room = planned - frame.GetMargin(Side.Left) - frame.GetMargin(Side.Right);
+        Control? widest = body.GetChildren().OfType<Control>().Where(c => c.IsVisibleInTree()).MaxBy(c => c.GetCombinedMinimumSize().X);
+        string name = widest == null ? "-" : widest == _gearHolder ? "the slots"
+            : widest.FindChildren("*", "", true, false).Prepend(widest).Select(n => n switch { Label l => l.Text, Button b => b.Text, _ => "" })
+                .FirstOrDefault(text => text != "")?.Split('\n')[0] ?? "-";
+        return shows + $"; the column {setup.Size.X:0} wide where {planned:0} are planned, its widest line '{name}' asks {widest?.GetCombinedMinimumSize().X ?? 0:0} of {room:0}" +
+               DevSpellWords(gameSpells);
+    }
+
+    // The Spell box's words against the room it has for them (issue #44: the box is fitted to its row, FitBeside, and shows a
+    // choice too wide for it in shorter words, ShowWhole). What it shows now, with "for" the choice when the words are
+    // shorter and the first line of its tooltip; then the words each of these gets on the box, by the same rule (Face): its
+    // first choice ("As the loadout has it" or "As now: ..."), its longest choice, and the widest spell name of the game's
+    // books, chosen and after "As now: ". Each whole or CUT. The room is the box's width less its margins and arrow
+    // (AroundText); a picture takes its width and spacing of it (ChoiceWidth).
+    string DevSpellWords(IReadOnlyCollection<(string Name, Texture2D? Icon)> gameSpells)
+    {
+        if (_spell is not { } box || !GodotObject.IsInstanceValid(box) || !box.IsVisibleInTree()) return "";
+        float room = box.Size.X - AroundText(box);
+        string Shown(string words, bool picture, string own)
+        {
+            float wide = ChoiceWidth(box, words, picture);
+            return $"'{words}' {wide:0.#}{(picture ? " with its picture" : "")}{(words == own ? "" : $" for '{own}'")} {(wide > room + 0.01f ? "CUT" : "whole")}";
+        }
+        string Gets(string own, IEnumerable<(string Words, Texture2D? Picture)> faces)
+        {
+            var (words, picture, _) = Face(box, faces);
+            return Shown(words, picture != null, own);
+        }
+        string Choice(int i) => Gets(box.GetItemText(i), SpellFaces(box.GetItemText(i), box.GetItemIcon(i), i == 0 ? _state.SpellNow : null));
+        int[] choices = Enumerable.Range(0, box.ItemCount).Where(i => !box.IsItemSeparator(i)).ToArray();
+        int longest = choices.DefaultIfEmpty(0).MaxBy(i => ChoiceWidth(box, box.GetItemText(i), box.GetItemIcon(i) != null));
+        var game = gameSpells.DefaultIfEmpty(("", null)).MaxBy(s => ChoiceWidth(box, s.Name, s.Icon != null));
+        string own = box.Selected >= 0 ? box.GetItemText(box.Selected) : box.Text;
+        string tip = box.Text == own ? "" : $" (its tooltip first '{box.TooltipText.Split('\n')[0]}')";
+        return $"; the Spell box {box.Size.X:0}x{box.Size.Y:0}, {room:0.#} of its width for words and picture: it shows {Shown(box.Text, box.Icon != null, own)}{tip}, " +
+               $"its first choice {Choice(0)}, its longest choice {Choice(longest)}" +
+               (game.Name == "" ? ", the game's spells not read"
+                   : $", the longest spell of the game's books {Gets(game.Name, SpellFaces(game.Name, game.Icon, null))} and " +
+                     Gets("As now: " + game.Name, SpellFaces("As now: " + game.Name, null, game)));
+    }
+
+    /// <summary>
+    /// Development (issue #44), spellnow=longest: the Spell box's first choice made to read "As now: " and the widest spell
+    /// name of the game's books, with that spell's picture, for the box's words and picture with the longest first choice it
+    /// can get. Only the simulator's own words change (SimState.SpellNow and SpellDefault); the game's selected spell is
+    /// not touched. Null, with nothing changed, when the Spell box is not on show. The caller builds the window again.
+    /// </summary>
+    public string? DevSpellNowLongest(IReadOnlyCollection<(string Name, Texture2D? Icon)> gameSpells)
+    {
+        if (_spell is not { } box || !GodotObject.IsInstanceValid(box) || !box.IsVisibleInTree() || gameSpells.Count == 0) return null;
+        var spell = gameSpells.MaxBy(s => ChoiceWidth(box, "As now: " + s.Name, false));
+        _state.SpellNow = spell;
+        _state.SpellDefault = "As now: " + spell.Name;
+        return spell.Name;
+    }
 
     /// <summary>
     /// Development: opens the areas, the earlier scans, the newest scan, or the item picker of a slot;

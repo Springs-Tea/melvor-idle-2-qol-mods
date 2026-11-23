@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: at its largest size the window no longer comes down over the game's bottom bar after
+  you swap an item (Undo changes); that size is now 110% instead of 115%. A weapon's Spell box no longer makes
+  the window wider, and a spell with a long name shows whole in it.
 - **Combat Simulator**: in Fights, a **Stance** box under the slots chooses the attack stance to fight in,
   from the game's own stances of the weapon on the left (a swapped weapon of another kind brings its own).
   Its first choice is the one the game has selected, "As now: Accurate" when it can tell. Every result names

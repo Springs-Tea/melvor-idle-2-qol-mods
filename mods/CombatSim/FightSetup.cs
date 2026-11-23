@@ -1265,8 +1265,9 @@ public partial class CombatSimMod
 
     // What the picture is to be compared with: the game's names for the slots and for what its loadouts hold (its own
     // words, LoadoutComponent.GetLoadoutDescriptions), how many lines the words above Fight take, the window's size
-    // against the size LargestScale allows at this size (HeightAt, as DevRequests compares it), and what each column
-    // needs (SimView.DevLogThreeColumns, as the Columns requests log it), so it shows which one sets the window's height.
+    // against the size LargestScale allows at this size and the bottom bar (DevLogWindow, the run request's own line),
+    // and what each column needs (SimView.DevLogThreeColumns, as the Columns requests log it), so it shows which one sets
+    // the window's height.
     void DevLayout(string file)
     {
         _ctx.Log($"Dev: {file}: the game's slots: " + string.Join(", ", _game!.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects().Select(s => $"{s.Id}='{s.DisplayName.Text}'")));
@@ -1278,12 +1279,10 @@ public partial class CombatSimMod
         }
         catch (Exception e) { _ctx.Log($"Dev: {file}: the game's loadout descriptions could not be read: {e.Message}"); }
         Label note = _view!.DevFightNote, report = _view.DevWearReport;
-        float scale = _window!.Style.Scale, wide = FullWidth * scale, high = HeightAt(scale);
-        Vector2 size = _window.Root.Size, full = size / scale;
+        float scale = _window!.Style.Scale, asks = _window.Root.GetCombinedMinimumSize().Y;
         _ctx.Log($"Dev: {file}: the words above Fight take {(note.IsVisibleInTree() ? note.GetLineCount() : 0)} lines, the report {(report.IsVisibleInTree() ? report.GetLineCount() : 0)}; " +
-                 $"the details list keeps {_view.DevDetailsList.Size.Y:0} px; window {size.X:0}x{size.Y:0} at size {scale:0.##}, {full.X:0}x{full.Y:0} at full size; " +
-                 $"LargestScale allows {wide:0.#}x{high:0.#} at this size{(size.X > wide + 0.5f || size.Y > high + 0.5f ? "  LARGER THAN LargestScale ALLOWS" : ", it fits")}; " +
-                 $"the window asks for {_window.Root.GetCombinedMinimumSize().Y:0} high ({_window.Root.GetCombinedMinimumSize().Y / scale:0} at full size)");
+                 $"the details list keeps {_view.DevDetailsList.Size.Y:0} px; the window asks for {asks:0} high ({asks / scale:0} at full size)");
+        DevLogWindow(file);
         _view.DevThreeColumns($"Dev: {file}");
     }
 
