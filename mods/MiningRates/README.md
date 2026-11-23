@@ -1,15 +1,12 @@
 # Mining Rates
 
-> Where do I mine for the most XP, ore or gold per hour?
+> Where do I mine for the most XP per hour?
 
 Every rock has its own time per hit, its own XP and its own ore, and some give gems or other items on the
 side. To compare them you would open the rocks one by one and work out the hour in your head. Mining Rates
-puts them side by side: one line per rock, with what an hour there gives your character, from the game's own
-numbers. Click a line to see that rock on the Mining page.
-
-This first version counts the hits and the XP of an hour. How many hits it takes to break a rock, and so how
-much ore an hour brings, is not a number the game shows: the time of an ore, the ore and the gold show `-`
-until it is known (see [What is counted](#what-is-counted)).
+puts them side by side: one line per rock, with the time of a hit and the Mining XP an hour there gives your
+character, from the game's own numbers. Hover a line for the rest: the ore of a break and every item a hit
+can bring. Click a line to see that rock on the Mining page.
 
 ## Contents
 
@@ -20,7 +17,6 @@ until it is known (see [What is counted](#what-is-counted)).
 - [Questions it answers](#questions-it-answers)
 - [Good to know](#good-to-know)
 - [When something is off](#when-something-is-off)
-- [Install](#install)
 
 ## Where it is
 
@@ -38,16 +34,14 @@ rocks scrolls. Its place, size, fold and sort order are kept in `settings.json` 
 ## What the window shows
 
 One line per rock the Mining page shows you, in the order of the page: the rock's picture, its name, its
-category, and per hour:
+category, and:
 
 | Column | What it is |
 | --- | --- |
-| **Time** | How long one ore takes: the time of a hit, times the hits a break takes, over the ore of a break. `-` for now. |
-| **Ore** | The rock's ore per hour, which comes with a break. `-` for now. |
-| **XP** | Mining XP per hour: the XP of the rock's XP tag on every hit. |
-| **Gold** | What the ore and the items of an hour sell for. `-` while the ore's hour is not known. |
+| **Time** | How long one hit takes, with your bonuses. |
+| **XP** | Mining XP per hour. |
 
-- **The best number of each column is gold**: the shortest time, the most ore, XP and gold.
+- **The best number of each column is gold**: the shortest time and the most XP.
 - **Click a column's name to sort by it.** The first click puts the best rocks on top, the next turns the
   order around. "Rock" goes back to the order of the page. The name the list is sorted by is gold, with the
   game's small arrow after it.
@@ -56,14 +50,17 @@ category, and per hour:
 - **Click a line to see that rock on the Mining page**: when the page's category filter is on another
   category, it goes to the rock's category, as the page's own category button does, and the page's list of
   rocks scrolls until the rock's card is in sight. Mining is not started or stopped, and the window stays
-  open. The pointer turns into a hand over a line a click changes something for; on the rock you are mining,
-  and on a rock whose card is in sight already, a click does nothing.
+  open. The pointer turns into a hand over a line a click changes something for, the rock you are mining
+  included when its card is out of sight; on a rock whose card is in sight already, a click does nothing.
 - **A rock you cannot mine yet is greyed**, with the Mining level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
   marked best. In a list sorted by a number, the locked rocks come last.
 - Rocks the game keeps hidden from you are not listed until the game shows them. A rock you hid yourself on
-  the Mining page is listed only while the page's **Show hidden** box is ticked, so the window lists the
-  rocks the page does.
+  the Mining page is listed only while the page lists hidden rocks too, so the window lists the rocks the
+  page does.
+
+How many hits it takes to break a rock is not a number the game shows. The ore of an hour, the time of one
+ore and the gold of an hour all rest on it, so the window does not count them.
 
 ## The tooltip of a line
 
@@ -72,35 +69,32 @@ Put the pointer on a line for the whole hour at that rock:
 | Line | What it is |
 | --- | --- |
 | **Locked: ...** | What the rock is missing, in the game's own words. Only on a locked rock. |
-| **Hidden on the Mining page: ...** | Only on a rock you hid yourself, while Show hidden is ticked. |
+| **You hid this rock on the Mining page.** | Only on a rock you hid yourself. |
 | **The rock the Mining page shows.** | Only on the line with the lit outline. |
 | **One hit every 3s: 1,200 hits an hour.** | The game's time of a hit for the rock, with your bonuses. |
-| **Break chance 25%, as its card shows it.** | The rock's break chance, and that the hits a break takes are not shown by the game. |
 | **Mining XP** | Per hour, and for one hit. |
-| **Every break**, and the ore | The ore a break gives, and how many an hour brings (`-` for now). |
+| **Every break (break chance 25%)**, and the ore | The rock's break chance and the ore a break gives. |
 | **Every hit**, and a line per item | Each item a hit can bring, with its chance per hit, how many a hit brings when it is more than one, and how many an hour brings. |
-| **The doubling chance (5%) is counted in the ore and the items of a hit.** | Only when you have one. |
-| **Gold** | What the hour sells for; while the ore's hour is not known, `-` and what the items of a hit sell for. |
-| **Not counted: ...** | A bonus of yours the window does not count, by the name the Mining page gives it in its list of bonuses, or a stone, essence or bar you have a chance at. |
+| **The doubling chance (5%) is counted in the items of a hit.** | Only when you have one. |
+| **Not counted, as the game does not say whether a hit or a break brings them:** | The rock's own stone, essence or bar that you have a chance at, when the game does not list it among a hit's items, each with its chance. |
+| **Not counted: your ...** | A bonus of yours the window does not count, by the name the Mining page gives it in its list of bonuses. |
 | **Click to show this rock on the Mining page. Mining is not started.** | What a click on the line does. Not there when a click changes nothing. |
 
 ## What is counted
 
-The numbers start from the game's own values for each rock, the ones its card on the Mining page shows: the
-time of a hit, the XP of a hit, the break chance, the ore and how many a break gives, the items of a hit with
-their chances, and the doubling chance. They already hold your level, equipment, potions and every other
-bonus, so the list moves with them.
+The numbers start from the game's own values for each rock: the time of a hit, the XP, the break chance, the
+ore and how many a break gives, the items of a hit with their chances, and the doubling chance. They already
+hold your level, equipment, potions and every other bonus, so the list moves with them.
 
-| Rule the hour rests on | Where it comes from |
+| Rule | Where it comes from |
 | --- | --- |
-| A hit takes the rock's interval. | The game's value, the one its card shows. |
-| Every hit gives the XP of the rock's XP tag. | The game's words: its XP tag is "The Skill XP gained per action", and a hit is the game's action for Mining. |
-| The ore comes with a break, and a break gives the rock's ore quantity. | The game's value for the quantity; that it comes with a break, the card's own "per break" list. |
-| How many hits a break takes. | Not shown by the game: it keeps how the break bar grows, and when a rock breaks, to itself. The time of an ore, the ore and the gold are `-` until it is known. |
-| The items of a hit come at their chance on every hit. | The game's values, the card's own "per hit" list. |
-| The doubling chance doubles the ore and the items of a hit. | The mod's: the game hands the doubling chance on when it adds a hit's items; for the ore, nothing the game shows says otherwise. |
+| A hit takes the rock's time of a hit. | The game's value for the rock. |
+| Every hit gives the rock's XP, whether it breaks the rock or not. | The mod's reading: a hit is the game's action for Mining, and the game keeps one XP value for each rock. |
+| The items of a hit come at their chance on every hit. | The game's chances, from its list of the items of a hit. |
+| The doubling chance doubles the items of a hit. | The mod's reading: the game hands the doubling chance on when it adds a hit's items. |
+| A break gives the rock's ore, as many as the game's quantity for it. | The game's value for the quantity; that the ore comes with a break is the mod's reading. |
+| How many hits a break takes. | Not counted: the game does not show it. The ore of an hour, its time and its gold are left out. |
 | Chances count as their long-run average. | The mod's. |
-| Gold is what the ore and the items sell for, in gold pieces. | The game's sell prices. |
 
 ## Questions it answers
 
@@ -113,28 +107,24 @@ bonus, so the list moves with them.
 ## Good to know
 
 - It is an estimate, not a promise: chances average out over many hits, not over ten.
-- How many hits it takes to break a rock is not a number the game shows. The window does not make one up, so
-  the time of an ore, the ore per hour and the gold show `-` for now.
+- How many hits it takes to break a rock is not a number the game shows, and the window does not make one up:
+  it counts no ore, time of an ore or gold per hour.
 - A chance to shatter a rock and a chance of more ore are not counted. The tooltip says so when you have one,
   by the name the Mining page gives it.
-- A stone, essence or bar of the rock that you have a chance at, but that the game does not list among a
-  hit's items, is named in the tooltip as not counted: the game does not say whether it comes on a hit or on
-  a break.
 - Mining has no mastery XP in this game (its Mastery Guild counts ranks, points and tasks), so there is no
   column for it.
 - The window starts nothing. A click on a line only changes the page's category filter and where its list of
-  rocks is scrolled; mining, the rocks you hid and the Show hidden box are left as they are.
+  rocks is scrolled; mining, the rocks you hid and whether the page lists them are left as they are.
 
 ## When something is off
 
 | You see | What it means |
 | --- | --- |
 | No round button on the Mining page | It comes a moment after the page opens. If it never comes, look for `[MiningRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
-| `-` under Time, Ore and Gold | The game does not show how many hits a break takes (see [What is counted](#what-is-counted)). |
-| `-` in every column of a line | The game gives no time of a hit for that rock yet. |
+| `-` in a line | The game gives no time of a hit for that rock yet. |
 | A line without a picture | The game has no picture for that rock yet, only its grey stand-in, and the window shows none rather than the stand-in. |
 | "Not counted: a chance ..." instead of a name | The window has not read the name from the Mining page's list of bonuses yet. If it never does, `MelvorModLoader.log` says the game was updated. |
-| A click on a line does nothing | `MelvorModLoader.log` says "A click on a line shows nothing from now on" when a game update changed the Mining page; the numbers still work. |
+| A click on a line only scrolls, or does nothing | `MelvorModLoader.log` says why when a game update changed the Mining page: "the category filter was not found", "the category button did not set its category", or "A click on a line shows nothing from now on". The numbers still work. |
 | No button and no window at all | Look for `[MiningRates] Stopped` in `MelvorModLoader.log`: the mod switched itself off after a game update. |
 
 ## Install

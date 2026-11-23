@@ -13,9 +13,10 @@ namespace MiningRates;
 
 /// <summary>
 /// Which rock gives what per hour. On the Mining page a round button in the strip on the right edge of the screen opens
-/// a window with one line per rock the page shows: the rock's picture, its category, and per hour the time of an ore,
-/// the ore, Mining XP and the gold, from the game's own numbers for each rock (RockRates). The best number of each column
-/// is gold, a click on a column's name sorts by it, the rock the Mining page shows has a lit outline, and a line's tooltip
+/// a window with one line per rock the page shows: the rock's picture, its category, the time of a hit and the Mining
+/// XP of an hour, from the game's own numbers for each rock (RockRates); and the time of an ore, the ore and the gold of
+/// an hour once a rule for the hits a break takes is settled (RockRates.Settled). The best number of each column is
+/// gold, a click on a column's name sorts by it, the rock the Mining page shows has a lit outline, and a line's tooltip
 /// has the whole hour. A click on a line shows that rock on the Mining page, as the player's own clicks there would
 /// (ShowOnPage); nothing is started or stopped from it. Built the way Fishing Rates is (mods/FishingRates).
 /// </summary>
@@ -56,12 +57,16 @@ public partial class MiningRatesMod : IMod
     Vector2 _fullSize;
     // The player opened the window and has not closed it: it is there whenever the Mining page is.
     bool _wanted, _fitPending, _clicksOff, _stopped;
+    // The page's category button did not set its category: a click on a line no longer changes the filter.
+    bool _filterOff;
     // A click on a line: the rock whose card the page's list scrolls to once the page has laid out its cards again
     // (two drawn frames after the click), and the frame the click came in.
     MiningRock? _scrollTo;
     long _scrollAfter;
-    // The page's category filter, found once per page: not looked for in the page's tree on every tick.
+    // The page's category filter, looked for once per page: not in the page's tree on every tick, and when it is not
+    // there (a game update), that is remembered until the page is found again (_filterLooked).
     MiningCategoryFilterView? _filter;
+    bool _filterLooked;
 
     string SettingsFile => Path.Combine(_ctx.Directory, "settings.json");
 
@@ -125,6 +130,7 @@ public partial class MiningRatesMod : IMod
         if (GodotObject.IsInstanceValid(_page)) _page!.VisibilityChanged -= PageVisibilityChanged;
         _page = null;
         _filter = null;
+        _filterLooked = false;
         _scrollTo = null;
         if (_window is { IsAlive: true }) _window.Visible = false;
         if (GodotObject.IsInstanceValid(_opener)) _opener!.Visible = false;
@@ -256,7 +262,7 @@ public partial class MiningRatesMod : IMod
         {
             if (!action.Rocks.TryGetValue(recipe, out MiningRock? rock) || !RockRates.Listed(rock, action)) continue;
             RockRates r = RockRates.Read(rock, _mining, Shown);
-            r.Clickable = !r.OnPage && ClickChanges(rock);
+            r.Clickable = ClickChanges(rock);
             rocks.Add(r);
         }
         return rocks;
@@ -358,15 +364,16 @@ public partial class MiningRatesMod : IMod
     // "shows" is: the page's category filter on the rock's category when it is on another one, as the page's own
     // category button sets it (CategoryFilter), and the page's list of rocks scrolled so that the rock's card is in
     // sight, once the page has laid its cards out again (ScrollToCard). Mining is not started or stopped, no rock is
-    // selected, hidden or shown, and the window stays open. The development request compares the click with the page's
-    // own category button.
+    // selected, hidden or shown, and the window stays open. The rock being mined is no exception: its card can be out of
+    // sight too, and the click then only scrolls to it. The development request compares the click with the page's own
+    // category button.
     void ShowOnPage(RockRates line)
     {
         if (!PageShown || _clicksOff) return;
         MiningRock rock = line.Rock;
         var action = _mining!.Action;
         // As it is now, not as it was at the last tick.
-        if (ReferenceEquals(action.CurrentRock, rock) || !ClickChanges(rock)) return;
+        if (!ClickChanges(rock)) return;
         try
         {
             if (Native.Card(_page!, rock) is not { } card) return;
@@ -405,41 +412,48 @@ public partial class MiningRatesMod : IMod
         }
     }
 
-    // The page's own button of a category (MiningCategoryFilterView), or null when the game has none.
+    // The page's own button of a category (MiningCategoryFilterView), or null when the game has none. The filter is
+    // looked for once per page; when it is not there, that is said once and remembered until the page is found again,
+    // so a hidden card does not walk the page's tree twice a second.
     Button? CategoryButton(MiningRecipeCategory? category)
     {
-        if (category == null) return null;
-        if (!GodotObject.IsInstanceValid(_filter)) _filter = GameAccess.FindNode<MiningCategoryFilterView>(_page!);
-        if (_filter is not { } filter) return null;
-        return Native.CategoryButtons(filter) is { } buttons && buttons.TryGetValue(category, out Button? button) && GodotObject.IsInstanceValid(button) ? button : null;
+        if (category == null || _filterOff) return null;
+        if (!GodotObject.IsInstanceValid(_filter))
+        {
+            // Looked for when the page is new, or when the filter it had was freed: never twice for one that is not there.
+            if (_filter == null && _filterLooked) return null;
+            _filter = GameAccess.FindNode<MiningCategoryFilterView>(_page!);
+            _filterLooked = true;
+            if (_filter == null)
+            {
+                Report("The Mining page's category filter was not found (the game was updated?): a click on a line no longer changes it.");
+                return null;
+            }
+        }
+        return Native.CategoryButtons(_filter!) is { } buttons && buttons.TryGetValue(category, out Button? button) && GodotObject.IsInstanceValid(button) ? button : null;
     }
 
-    // A category button the player could click now: shown and not disabled. No button at all (the game was updated)
-    // leaves the filter to the member a button sets (CategoryFilter).
-    static bool CanPress(Button? button) => button == null || (!button.Disabled && button.IsVisibleInTree());
+    // A category button the player could click now: there, shown and not disabled.
+    static bool CanPress(Button? button) => button != null && !button.Disabled && button.IsVisibleInTree();
 
     // The category filter on a category, the way the player's click on its button sets it: that very button pressed (a
     // toggle button first goes down, which lets the others of its group go, as a click does), as Thieving Overview
-    // presses the page's own Select button (ThievingOverviewMod.OpenPlace). If the game's button did not set it, the
-    // filter is set through the member the button sets (MiningActionComponent.SelectedCagtegory), with one line in the
-    // log. False when neither can be done.
+    // presses the page's own Select button (ThievingOverviewMod.OpenPlace). The filter is never set behind the page's
+    // buttons: the page's buttons would then say another category than its cards show (the code review of turn 1).
+    // If the button did not set it, one line in the log, and from then on a click on a line no longer changes the
+    // filter (_filterOff): it only scrolls to a card the page shows. False when the filter is not on the category.
     bool CategoryFilter(MiningRecipeCategory? category)
     {
         if (category == null) return false;
         var action = _mining!.Action;
         Button? button = CategoryButton(category);
         if (!CanPress(button)) return false;
-        if (button != null)
-        {
-            if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
-            button.EmitSignal(BaseButton.SignalName.Pressed);
-        }
+        if (button!.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        button.EmitSignal(BaseButton.SignalName.Pressed);
         if (ReferenceEquals(action.SelectedCagtegory, category)) return true;
-        Report(button == null
-            ? "The Mining page's category buttons were not found (the game was updated?): a click on a line sets the category filter itself."
-            : "The Mining page's category button did not set its category when pressed (the game was updated?): a click on a line sets the category filter itself.");
-        action.SelectedCagtegory = category;
-        return ReferenceEquals(action.SelectedCagtegory, category);
+        _filterOff = true;
+        Report("The Mining page's category button did not set its category when pressed (the game was updated?): a click on a line no longer changes the filter.");
+        return false;
     }
 
     // Two drawn frames after a click: the page has laid its cards out for the filter, and the list is scrolled so that
@@ -550,7 +564,8 @@ public partial class MiningRatesMod : IMod
         _ctx.Frame -= OnFrame;
         _ctx.Log("Stopped (the game was updated?): " + e);
 #if DEVTOOLS
-        try { DevUnwatchAll(); } catch { }
+        // A request that runs ends with its done file, so the check does not wait its whole time for it.
+        try { DevStopped(); } catch { }
 #endif
         try { Detach(); } catch { }
     }

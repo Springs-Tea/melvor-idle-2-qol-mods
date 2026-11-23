@@ -37,15 +37,16 @@ static class Words
     }
 
     /// <summary>
-    /// The whole hour at a rock: the time of a hit, the break, the XP, the ore of a break and the items of a hit with
-    /// their chance and number, the gold. nameOf gives the game's name of a bonus that is not counted, when it has been
-    /// read (BonusNames).
+    /// The whole hour at a rock: the time of a hit, the XP, the ore of a break and the items of a hit with their chance
+    /// and number; once a rule for the hits a break takes is settled (RockRates.Settled), the breaks, the ore and the
+    /// gold of an hour too. nameOf gives the game's name of a bonus that is not counted, when it has been read
+    /// (BonusNames). No line is longer than Fishing Rates' longest (94 characters): Godot's tooltip does not wrap.
     /// </summary>
     public static string Tooltip(RockRates r, Func<string, string?> nameOf)
     {
         var lines = new List<string> { r.Category.Length > 0 ? $"{r.Name} ({r.Category})" : r.Name };
         if (r.Locked) lines.Add(r.Needs == "Locked" ? "Locked" : "Locked: " + r.Needs);
-        if (r.Hidden) lines.Add("Hidden on the Mining page: listed while its Show hidden box is ticked.");
+        if (r.Hidden) lines.Add("You hid this rock on the Mining page.");
         if (r.OnPage) lines.Add("The rock the Mining page shows.");
         if (!r.HasTime)
         {
@@ -55,41 +56,53 @@ static class Words
         }
 
         lines.Add($"One hit every {Seconds(r.HitSeconds)}: {Number(r.HitsPerHour)} hits an hour.");
-        lines.Add(r.HitsPerBreak is { } hits
-            ? $"A break every {Number(hits)} hits on average; break chance {Percent(r.BreakChance)}."
-            : $"Break chance {Percent(r.BreakChance)}, as its card shows it. How many hits a break takes, the game does not show: the ore, its time and the gold are - for now.");
+        if (r.HitsPerBreak is { } hits && r.BreaksPerHour is { } breaks && RockRates.Settled is { } settled)
+            lines.Add($"A break every {Number(hits)} hits on average, {How(settled.Source)}: {Number(breaks)} an hour.");
         lines.Add($"Mining XP: {Number(r.XpPerHour)} an hour, {Number(r.XpEach)} a hit.");
 
         lines.Add("");
         if (r.Ore != null)
         {
-            lines.Add("Every break:");
-            lines.Add($"  {r.OreName}, {r.OreQuantity} a break: {(r.OrePerHour is { } ore ? Number(ore) : "-")}");
+            if (r.OrePerHour is { } ore)
+            {
+                lines.Add("Every break:");
+                lines.Add($"  {r.OreName}, {r.OreQuantity} a break: {Number(ore)}");
+            }
+            else
+            {
+                lines.Add($"Every break (break chance {Percent(r.BreakChance)}):");
+                lines.Add($"  {r.OreName}, {r.OreQuantity}");
+            }
         }
         if (r.PerHit.Count > 0)
         {
             lines.Add("Every hit:");
             lines.AddRange(r.PerHit.Select(Item));
         }
-        if (r.Doubling > 0) lines.Add($"The doubling chance ({Percent(r.Doubling)}) is counted in the ore and the items of a hit.");
+        // Only where a number of the tooltip has it in.
+        if (r.Doubling > 0 && (r.OrePerHour != null || r.PerHit.Count > 0))
+            lines.Add($"The doubling chance ({Percent(r.Doubling)}) is counted in {(r.OrePerHour != null ? "the ore and " : "")}the items of a hit.");
 
         lines.Add("");
         if (r.GoldPerHour is { } gold)
             lines.Add(r.OrePrice != null && r.PerHitGoldPerHour > 0
-                ? $"Gold: {Number(gold)} an hour, what the ore and the items sell for; {Number(r.PerHitGoldPerHour)} of it from the items of a hit."
+                ? $"Gold: {Number(gold)} an hour, what the ore and items sell for; {Number(r.PerHitGoldPerHour)} of it from items of a hit."
                 : $"Gold: {Number(gold)} an hour, what {(r.OrePrice != null ? "the ore sells" : "the items of a hit sell")} for.");
-        else
-            lines.Add(r.PerHitGoldPerHour > 0
-                ? $"Gold: -, the ore's hour is not known; the items of a hit sell for {Number(r.PerHitGoldPerHour)} an hour."
-                : "Gold: -, the ore's hour is not known.");
-        foreach (RockRates.Side side in r.NotCountedItems)
-            lines.Add($"Not counted: {side.Name}, {Percent(side.Chance)}; whether it comes on a hit or a break, the game does not say.");
+        if (r.NotCountedItems.Count > 0)
+        {
+            lines.Add("Not counted, as the game does not say whether a hit or a break brings them:");
+            lines.AddRange(r.NotCountedItems.Select(side => $"  {side.Name}, {Percent(side.Chance)}"));
+        }
         // The game's own names, as the Mining page lists them among your bonuses.
         foreach (RockRates.Bonus bonus in r.NotCounted)
             lines.Add(nameOf(bonus.Key) is { } name ? $"Not counted: your {name}." : $"Not counted: {BonusNames.Kind(bonus.Key)}, which you have.");
+        if (lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
         if (Click(r) is { } click) lines.AddRange(["", click]);
         return string.Join("\n", lines);
     }
+
+    // What backs the hits a break takes, in plain words: never the game's own when it was measured.
+    static string How(RuleSource source) => source == RuleSource.Measured ? "as measured in the game" : "by the game's own rule";
 
     // What a click on the line does, when it changes what the Mining page shows.
     static string? Click(RockRates r) => r.Clickable ? "Click to show this rock on the Mining page. Mining is not started." : null;

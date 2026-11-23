@@ -33,54 +33,70 @@ namespace MiningRates;
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
 // everything back (-Text 'fail=click the line').
 // It only looks, points and clicks the mod's own controls and, in step 7, the Mining page's own category buttons: no rock is
-// selected, hidden or shown, nothing is started or stopped, and the page's "Show hidden" box is only read. The page's
-// category filter and the scroll of its list of rocks change only in step 7, and are put back. Built on Fishing Rates'
-// request (mods/FishingRates/Dev.cs): a click is made in two steps (DevPress): the pointer is put on the control, and a
-// later step presses only when the game says the pointer is on that control. Nothing is pointed at or pressed while
-// somebody is at the mouse: a step waits until the real pointer has been still for 5 s, and after 90 s the request
-// ends, which puts everything back. A picture of something just shown is taken two drawn frames later, and its pixels
-// prove what it shows (DevProof). The pictures go into the mod's folder (shot-mining-*.png, crop-mining-*.png).
+// selected, hidden or shown, nothing is started or stopped, and the page's box for hidden rocks (ShowHiddenRocks) is only
+// read, before and after every press of a game button (SHOW HIDDEN CHANGED if it moved). The page's category filter and
+// the scroll of its list of rocks change only in step 7, and are put back through the page's own buttons, never through
+// the member behind them; the page's "All" button is found by the game's own word for it (MiningCategoryFilterView.s_all),
+// never guessed, and when it is not found the request does not leave the filter on a category in the first place. Built
+// on Fishing Rates' request (mods/FishingRates/Dev.cs): a click is made in two steps (DevPress): the pointer is put on the
+// control, and a later step presses only when the game says the pointer is on that control; a control of the game under
+// the mod's own window is pointed at beside it, or not at all (said at once). Nothing is pointed at or pressed while
+// somebody is at the mouse: a step waits until the real pointer has been still for 5 s, and after 90 s the request ends,
+// which puts everything back. A picture of something just shown is taken two drawn frames later, and its pixels prove
+// what it shows (DevProof). The pictures go into the mod's folder (shot-mining-*.png, crop-mining-*.png).
 //  1. Remembers the page on the screen, whether the window was open and folded, the round button, settings.json as it
-//     is on disk, the Mining page's category filter and the scroll of its list of rocks, the "Show hidden" box, and what
-//     mining is doing (MiningActionComponent.IsStarted, CurrentRock).
+//     is on disk, the Mining page's category filter (the member and the page's buttons and cards as drawn), the scroll of
+//     its list of rocks, the box for hidden rocks, and what mining is doing (MiningActionComponent.IsStarted, CurrentRock).
 //  2. Opens the Mining page the way the sidebar does, if another page is open, and reads back that it is shown; stops
 //     with one line when Mining cannot be opened that way (then open it by hand and send the request again).
 //  3. "Dev: strip": every round button in the strip. Closes the window if it was open (a picture of the screen without
 //     it, for the proofs), presses the round button, and opens the window up with its own button if it opened folded;
 //     the round button must be lit.
-//  4. "Dev: row": every line's numbers as the game gives them (raw) and as counted, as drawn (with colours), and its
-//     tooltip. "Dev: game": for every card on the page, the game's own labels (interval, XP and its tooltip, break
-//     chance, the items and XP of its per-hit and per-break lists, its picture) beside ours, DIFFER on a difference, and
-//     the page's own order of cards against ours. "Dev: words": the page's own words for the rules the hour rests on.
-//     "Dev: hidden": every rock not listed, and why. "Dev: lit". "Dev: cut" over every label of the picture.
-//     crop-mining-window.png and, when the list scrolls, crop-mining-window-end.png with the list at its end.
-//  5. Rests the pointer on a line: shot-mining-tooltip.png and "Dev: tooltip". A tooltip that does not come up in 20 s
-//     is one line, and the request goes on.
-//  6. Clicks "XP": "Dev: order" and crop-mining-sorted.png.
+//  4. "Dev: row": every line's numbers as the game gives them (raw) and as counted, the hits a break takes by each
+//     reading of the break bar (RockRates.ExpectedHits), as drawn (with colours), and its tooltip. "Dev: game": for every
+//     card on the page, the game's own labels (interval, XP and its tooltip, break chance, the items and XP of its
+//     per-hit and per-break lists, its picture) beside ours, DIFFER on a difference, and the page's own order of cards
+//     against ours. "Dev: words": the page's own words for the rules the hour rests on, and its filter's words and
+//     buttons. "Dev: hidden": every rock not listed, and why. "Dev: lit". "Dev: tips": the longest line of every tip
+//     against Fishing Rates' longest. "Dev: cut" over every label of the picture. crop-mining-window.png and, when the
+//     list scrolls, crop-mining-window-end.png with the list at its end.
+//  5. Rests the pointer on a line, then on the name of the column with the longest tip: shot-mining-tooltip.png,
+//     shot-mining-header-tooltip.png and "Dev: tooltip". A tooltip that does not come up in 20 s is one line, and the
+//     request goes on.
+//  6. Clicks "XP": "Dev: order" and crop-mining-sorted.png. Then the window as it looks once a rule for the hits a break
+//     takes is settled (RockRates.DevRule, for this one picture; its numbers rest on a reading nothing has settled):
+//     crop-mining-settled.png with "Dev: size" and "Dev: cut", and the window as it is again.
 //  7. "Dev: click": on a page whose filter is on all categories, first presses the page's own button of one category
-//     with the pointer, as a player would, so that a card can be under another category. Then clicks a line whose
-//     rock's card is under another category or out of sight, and reads back the
-//     page's category filter, whether the card is now in sight, the lit line, the window and what mining is doing
-//     (shot-mining-clicked.png). MINING STARTED, MINING STOPPED, THE ROCK MINED CHANGED, NOT SHOWN and THE WINDOW CLOSED
-//     mark what must not happen. Puts the filter and the scroll back, presses the page's own category button for the
-//     same category with the pointer as a player would, and compares (DIFFER); then puts the filter and the scroll back
-//     again, each only if it is still as the request left it.
+//     with the pointer, as a player would, so that a card can be under another category (only when the page's "All"
+//     button is found, to put it back). Then clicks a line whose rock's card is under another category or out of sight,
+//     and reads back the page's category filter, whether the card is now in sight, the lit line, the window and what
+//     mining is doing (shot-mining-clicked.png). MINING STARTED, MINING STOPPED, THE ROCK MINED CHANGED, NOT SHOWN, THE
+//     WINDOW CLOSED and SHOW HIDDEN CHANGED mark what must not happen. Puts the filter back, and the scroll two drawn
+//     frames later, presses the page's own category button for the same category with the pointer as a player would,
+//     and compares (DIFFER); then puts the filter and, two drawn frames later, the scroll back again, each only if it
+//     is still as the request left it.
 //  8. "Dev: size": the window at its smallest and at its largest size (crop-mining-smallest.png,
 //     crop-mining-largest.png), LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both.
 //  9. Closes the window with its X: shot-mining-closed.png.
 // 10. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
-//     closed and folded as it was, the page's category filter and scroll and the page on the screen (each only if it is
-//     still as the request left it: otherwise the player changed it, and it is left as he did), and the pointer where
-//     the real one is.
-// 11. Reads all of it back from the screen, the game and the disk, what mining is doing too, and says in its last line
-//     what was put back, with NOT AS IT WAS for anything that is not.
-// A step that fails jumps to 10: a failed request puts everything back too.
+//     closed and folded as it was, the page's category filter, its scroll two drawn frames later, and the page on the
+//     screen (each only if it is still as the request left it: otherwise the player changed it, and it is left as he
+//     did), and the pointer where the real one is.
+// 11. Reads all of it back from the screen, the game and the disk (the filter as the member has it and as the page
+//     draws it), what mining is doing too, and says in its last line what was put back, with NOT AS IT WAS for
+//     anything that is not.
+// A step that fails jumps to 10: a failed request puts everything back too. If the mod stops while a request runs, the
+// done file says so, and settings.json is written back from the copy (DevStopped).
 public partial class MiningRatesMod
 {
     const string RequestFile = "mining.request", DoneFile = "mining.done";
     // CombatGoals/DevWindowShots.cs and Fishing Rates: how long the real pointer must be still before a step points or
     // presses, and how long a step waits for that before the request ends.
     const ulong StillFor = 5000, GiveUpAfter = 90000, StepTime = 6000, PointerStepTime = GiveUpAfter + 10000;
+
+    // Fishing Rates' longest tip of a column's name, line by line, and the longest line of its tooltips, in characters
+    // (its Gold tip and its bait line, counted): Godot's tooltip does not wrap, so a longer line is a wider tooltip.
+    const int FishingTipMost = 82, FishingTooltipMost = 94;
 
     readonly List<(string Name, Func<bool> Run, ulong Timeout)> _devSteps = new();
     int _devAt, _devPutBackAt;
@@ -90,6 +106,18 @@ public partial class MiningRatesMod
     bool _devPutBackOk, _devOpenedPage;
     // The screen without the window, before it was opened: what the pictures of the window are proved against.
     Image? _devWithout;
+    // settings.json as the request found it on disk (null: not there), for DevStopped too.
+    string? _devSettingsCopy;
+    bool _devSettingsRead;
+    // What the request itself left on the page last, so that a put-back changes only that (null: nothing yet); and the
+    // scroll to put back two drawn frames after the filter (DevFilterBack, DevScrollBack).
+    (MiningRecipeCategory? Filter, int? Scroll)? _devLeft;
+    int? _devScrollBack;
+    // A press that can change the page's filter or scroll was made, and what it left is not read yet: a request that ends
+    // before it is takes what the page shows then as what the request left (the put-back).
+    bool _devInFlight;
+    // The page's box for hidden rocks just before the last press of a game button (DevHiddenMoved).
+    bool _devHiddenBefore;
 
     // ---- the game's own parts of the Mining page, read only (names and types from tools/ApiDump) -----------------------
 
@@ -107,6 +135,11 @@ public partial class MiningRatesMod
     static extern HBoxContainer FilterList(MiningCategoryFilterView filter);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ShowHiddenCheckBox")]
     static extern CheckBox ShowHiddenBox(MiningCategoryFilterView filter);
+    // The filter's own words: its "All" button's, by which the request finds that button, and its box's for hidden rocks.
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_all")]
+    static extern ref LocalizedString AllWords(MiningCategoryFilterView? filter);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_showHidden")]
+    static extern ref LocalizedString ShowHiddenWords(MiningCategoryFilterView? filter);
 
     // A rock's card.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Rock")]
@@ -238,6 +271,30 @@ public partial class MiningRatesMod
         if (_devHits != null) DevWatchEnd("stopped: another character was opened", summarise: false);
         _devSteps.Clear();
         _devAt = 0;
+        RockRates.DevRule = null;
+    }
+
+    // The mod stops (Stop) while a request runs: the done file says so, so that the check does not wait its whole time
+    // for it, and settings.json is written back from the copy. Nothing else is touched: the game's parts may be gone.
+    void DevStopped()
+    {
+        DevUnwatchAll();
+        RockRates.DevRule = null;
+        if (_devHits != null) DevWatchEnd("stopped: the mod stopped", summarise: false);
+        if (_devSteps.Count == 0) return;
+        string settings = "settings.json not read";
+        if (_devSettingsRead)
+        {
+            try
+            {
+                if (_devSettingsCopy == null) File.Delete(SettingsFile);
+                else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
+                settings = "settings.json put back byte for byte";
+            }
+            catch (Exception e) { settings = "settings.json NOT AS IT WAS: " + e.Message; }
+        }
+        string step = _devAt < _devSteps.Count ? _devSteps[_devAt].Name : "the end";
+        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; the window, the page's filter and scroll and the page were not put back  NOT ALL AS IT WAS");
     }
 
     void DevRequest()
@@ -279,6 +336,8 @@ public partial class MiningRatesMod
                 _devStarted = Time.GetTicksMsec();
                 _devHandSinceStep = false;
                 _devFrameMark = 0;
+                _devAim = null;
+                _devMisses = 0;
                 return;
             }
             DevUnwatchAll();
@@ -293,6 +352,7 @@ public partial class MiningRatesMod
         _devStarted = Time.GetTicksMsec();
         _devHandSinceStep = false;
         _devAim = null;
+        _devMisses = 0;
         _devFrameMark = 0;
         if (_devAt < _devSteps.Count) return;
         DevEnd($"{_devFailure ?? "ok"}; put back: {_devPutBackWords}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}");
@@ -305,6 +365,8 @@ public partial class MiningRatesMod
         _devAt = 0;
         _devWithout?.Dispose();
         _devWithout = null;
+        _devSettingsRead = false;
+        _devSettingsCopy = null;
         File.WriteAllText(Path.Combine(_ctx.Directory, DoneFile), result);
     }
 
@@ -327,9 +389,11 @@ public partial class MiningRatesMod
 
     static string One(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", " / ");
 
-    // What the request found, to be put back as it was.
+    static string DevJoin(params string[] parts) => string.Join(", ", parts.Where(p => p.Length > 0));
+
+    // What the request found, to be put back as it was. Look: the page's filter as the page draws it (DevFilterLook).
     sealed record DevBefore(GamePage? Page, bool Wanted, bool Shown, bool? Folded, bool? Lit, string? Settings,
-        MiningRecipeCategory? Filter, int? Scroll);
+        MiningRecipeCategory? Filter, int? Scroll, string? Look);
 
     void DevPlan(string asked)
     {
@@ -340,24 +404,31 @@ public partial class MiningRatesMod
         _devGuardSince = _devTipSince = 0;
         _devFrameMark = 0;
         _devAim = null;
+        _devMisses = 0;
+        _devLeft = null;
+        _devScrollBack = null;
+        _devInFlight = false;
+        RockRates.DevRule = null;
         _devWithout?.Dispose();
         _devWithout = null;
         _devStarted = Time.GetTicksMsec();
         GameView view = GameAccess.FindGameView() ?? throw new InvalidOperationException("No character is open.");
         var action = _mining!.Action;
+        // settings.json as it is on disk, the copy everything of the window is put back from (lesson 50).
+        _devSettingsCopy = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
+        _devSettingsRead = true;
         var before = new DevBefore(CurrentPage(view)?.Item1, _wanted, _window is { IsAlive: true, Visible: true },
             _window is { IsAlive: true } ? _window.Minimised : null, GodotObject.IsInstanceValid(_opener) ? _opener!.ButtonPressed : null,
-            File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null, action.SelectedCagtegory, DevScrollNow());
+            _devSettingsCopy, action.SelectedCagtegory, DevScrollNow(), DevFilterLook());
         string miningAtStart = DevMiningState();
         bool hiddenAtStart = action.ShowHiddenRocks;
-        // What the request itself left on the page last, so that the put-back changes only that (null: nothing yet).
-        (MiningRecipeCategory? Filter, int? Scroll)? left = null;
         void Add(string name, Func<bool> run, ulong timeout = StepTime) => _devSteps.Add((name, run, timeout));
         DevLog($"before: page {before.Page?.Id ?? "none"}, window {(before.Wanted ? "open" : "closed")}{(before.Shown ? " and on the screen" : "")}" +
             $"{(before.Folded == true ? ", folded" : "")}, round button {(before.Lit is { } lit ? lit ? "lit" : "unlit" : "not made yet")}, settings.json " +
             (before.Settings == null ? "not there" : $"{before.Settings.Length} characters: {before.Settings}") +
-            $" | {miningAtStart}; the page's category filter {before.Filter?.Id ?? "all"}, the list of rocks scrolled to {before.Scroll?.ToString() ?? "not found"}, " +
-            $"Show hidden {(hiddenAtStart ? "ticked" : "not ticked")} ({action.HiddenRockCount} rocks hidden by the player) | the real pointer at {DisplayServer.MouseGetPosition()}");
+            $" | {miningAtStart}; the page's category filter {before.Filter?.Id ?? "all"}, drawn {before.Look ?? "not read yet"}, " +
+            $"the list of rocks scrolled to {before.Scroll?.ToString() ?? "not found"}, the box for hidden rocks {(hiddenAtStart ? "ticked" : "not ticked")} " +
+            $"({action.HiddenRockCount} rocks hidden by the player) | the real pointer at {DisplayServer.MouseGetPosition()}");
 
         Add("open the Mining page", () =>
         {
@@ -375,9 +446,11 @@ public partial class MiningRatesMod
         Add("the round button", () =>
         {
             if (!PageShown || _opener?.IsVisibleInTree() != true) return false;
-            // The list of rocks of a page the request had to open is read now that it is there.
+            // The list of rocks and the filter of a page the request had to open are read now that they are there.
             if (before.Scroll == null) before = before with { Scroll = DevScrollNow() };
-            DevLog($"page | the page is {CurrentPage(view)?.Item1?.Id ?? "none"}, the Mining page is shown: {PageShown}; its list of rocks scrolled to {before.Scroll?.ToString() ?? "not found"}");
+            if (before.Look == null) before = before with { Look = DevFilterLook() };
+            DevLog($"page | the page is {CurrentPage(view)?.Item1?.Id ?? "none"}, the Mining page is shown: {PageShown}; its list of rocks scrolled to " +
+                $"{before.Scroll?.ToString() ?? "not found"}; its filter drawn {before.Look ?? "NOT FOUND"}");
             DevStrip();
             if (IsOpen) Close();
             return true;
@@ -406,6 +479,7 @@ public partial class MiningRatesMod
             DevWords();
             DevHidden();
             DevLit();
+            DevTips("open");
             DevSize("open");
             return true;
         });
@@ -433,8 +507,8 @@ public partial class MiningRatesMod
             scroll.ScrollVertical = 0;
             return true;
         });
-        Button? target = null;
-        Image? beforeTip = null;
+        Button? target = null, header = null;
+        Image? beforeTip = null, beforeHeader = null;
         Add("point at a line", () =>
         {
             if (_list!.DevScroll.ScrollVertical != 0) return false;
@@ -451,7 +525,22 @@ public partial class MiningRatesMod
             beforeTip = _ctx.Tree.Root.GetTexture().GetImage();
             return true;
         });
-        Add("tooltip", () => DevTooltip(target!, beforeTip), PointerStepTime);
+        Add("tooltip", () => DevTooltip(target!, beforeTip, "tooltip"), PointerStepTime);
+        // The name over a column whose tip is the longest: its tooltip is the widest of the names'.
+        Add("point at a column's name", () =>
+        {
+            header = _list!.DevHeaders.OrderByDescending(h => h.TooltipText.Split('\n').Max(l => l.Length)).First();
+            DevLog($"tooltip | the name with the longest tip: '{header.Text}'");
+            _devTipSince = 0;
+            return true;
+        });
+        Add("the screen before the name's tooltip", () =>
+        {
+            if (!DevFramesDrawn()) return false;
+            beforeHeader = _ctx.Tree.Root.GetTexture().GetImage();
+            return true;
+        });
+        Add("the name's tooltip", () => DevTooltip(header!, beforeHeader, "header-tooltip"), PointerStepTime);
 
         // Each click is waited for as a change of the sort, whatever the sort was before it.
         (string Key, bool Descending) sortWas = default;
@@ -479,29 +568,76 @@ public partial class MiningRatesMod
             return true;
         });
 
+        // The window as it looks once a rule for the hits a break takes is settled (RockRates.Settled): built again with
+        // a reading put in for this picture only, then built again as it is.
+        Add("the settled look", () =>
+        {
+            RockRates.DevRule = BreakRule.BarBeforeHit;
+            DevRebuild();
+            return true;
+        });
+        Add("picture the settled look", () =>
+        {
+            if (!IsOpen || _fitPending || !DevFramesDrawn()) return false;
+            DevLog($"settled | the window as it looks once a rule for the hits a break takes is settled, columns [{string.Join(", ", _list!.DevColumns)}]; " +
+                $"its numbers rest on the reading {RockRates.DevRule}, which NOTHING HAS SETTLED: the picture is for the look only");
+            foreach (var line in _list.DevLines()) DevLog($"settled | drawn {line.Drawn}");
+            DevLog($"settled | a tooltip: '{_list.DevLines().FirstOrDefault(l => !l.Rock.Locked).Button?.TooltipText ?? "none"}'");
+            DevSize("settled look");
+            DevCut("settled look");
+            DevTips("settled look");
+            Shot("settled", crop: true);
+            RockRates.DevRule = null;
+            DevRebuild();
+            return true;
+        });
+        Add("the window as it is again", () =>
+        {
+            if (!IsOpen || _fitPending) return false;
+            DevLog($"settled | the window as it is again, columns [{string.Join(", ", _list!.DevColumns)}]");
+            return true;
+        });
+
         // A click on a line whose rock's card is under another category, or out of sight, then the page's own category
-        // button for the same category, to compare. The page's filter and scroll are put back after each.
+        // button for the same category, to compare. The page's filter is put back after each, and its scroll two drawn
+        // frames later.
         RockRates? clicked = null;
         DevClickEvents? events = null;
         Image? beforeClick = null;
-        string miningBefore = "", ours = "", ourEvents = "";
-        bool filterChanged = false;
+        string miningBefore = "", ours = "", ourEvents = "", pageBack = "";
+        bool filterChanged = false, compareSkipped = false;
         MiningRecipeCategory? startFrom = null, filterBeforeClick = null;
+        Button? startButton = null;
         Add("a category to start from", () =>
         {
             var action = _mining!.Action;
+            if (startButton != null)
+                return _devInFlight = DevGamePress(startButton, $"the page's own category button of {startFrom!.Id} ('{startButton.Text}'), to start the click from it");
             if (action.SelectedCagtegory != null) { DevLog($"click | the page's filter is on {action.SelectedCagtegory.Id}: the click starts from it"); return true; }
             // On all categories no card is under another category: the page's own button of a category is pressed first,
-            // as a player would, so that the click on a line of another category has a filter to change. Put back at the end.
-            var rocks = _list!.DevLines().Select(l => l.Rock).Where(r => !r.OnPage && r.Rock.Category != null).ToList();
+            // as a player would, so that the click on a line of another category has a filter to change. Only when the
+            // page's "All" button is found by the game's word: it is what puts the filter back at the end.
+            if (DevAllButton(out string why) == null)
+            {
+                DevLog($"click | the page's filter is on all categories, and {why}: no category is pressed, so that the request never has to guess " +
+                    "the button that puts the filter back; the click only scrolls");
+                return true;
+            }
+            var rocks = _list!.DevLines().Select(l => l.Rock).Where(r => r.Rock.Category != null).ToList();
+            int under = 0;
             foreach (var (category, button) in Native.CategoryButtons(FilterView(_page!)) ?? new Dictionary<MiningRecipeCategory, Button>())
             {
                 if (!GodotObject.IsInstanceValid(button) || button.Disabled || !button.IsVisibleInTree()) continue;
                 if (!rocks.Any(r => !ReferenceEquals(r.Rock.Category, category))) continue;
+                // A button under the mod's own window is never pressed (the pointer would land on the window).
+                if (!DevSight(button).HasArea()) { under++; continue; }
                 startFrom = category;
-                return DevPress(button, $"the page's own category button of {category.Id} ('{button.Text}'), to start the click from it");
+                startButton = button;
+                return _devInFlight = DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}'), to start the click from it");
             }
-            DevLog("click | the page's filter is on all categories and no category button can be pressed: the click only scrolls");
+            DevLog(under > 0
+                ? $"click | the page's filter is on all categories, and the {under} category buttons that could start the click lie under the mod's own window: none is pressed, the click only scrolls"
+                : "click | the page's filter is on all categories and no category button can be pressed: the click only scrolls");
             return true;
         }, PointerStepTime);
         Add("the category to start from", () =>
@@ -509,9 +645,11 @@ public partial class MiningRatesMod
             if (startFrom == null) return true;
             var action = _mining!.Action;
             if (!ReferenceEquals(action.SelectedCagtegory, startFrom) && Time.GetTicksMsec() - _devStarted < 3000) return false;
-            left = (action.SelectedCagtegory, DevScrollNow());
-            DevLog($"click | after the page's own button of {startFrom.Id}: the filter {action.SelectedCagtegory?.Id ?? "all"}" +
-                (ReferenceEquals(action.SelectedCagtegory, startFrom) ? "" : "  NOT SET BY ITS OWN BUTTON") + "; put back at the end");
+            _devLeft = (action.SelectedCagtegory, DevScrollNow());
+            _devInFlight = false;
+            DevLog($"click | after the page's own button of {startFrom.Id}: the filter {action.SelectedCagtegory?.Id ?? "all"}, drawn {DevFilterLook() ?? "NOT FOUND"}" +
+                (ReferenceEquals(action.SelectedCagtegory, startFrom) ? "" : "  NOT SET BY ITS OWN BUTTON") + DevHiddenMoved("the page's own category button") +
+                "; put back at the end");
             Refresh();
             return true;
         });
@@ -523,7 +661,8 @@ public partial class MiningRatesMod
             _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             miningBefore = DevMiningState();
             filterBeforeClick = _mining!.Action.SelectedCagtegory;
-            DevLog($"click | the line of {clicked.Rock.Recipe.Id} ({clicked.Rock.Category?.Id ?? "no category"}); before: {DevPageState(clicked.Rock)}; {miningBefore}");
+            DevLog($"click | the line of {clicked.Rock.Recipe.Id} ({clicked.Rock.Category?.Id ?? "no category"}{(clicked.OnPage ? ", the rock being mined" : "")}); " +
+                $"before: {DevPageState(clicked.Rock)}; {miningBefore}");
             return true;
         });
         Add("the screen before the click", () =>
@@ -537,7 +676,8 @@ public partial class MiningRatesMod
         {
             if (clicked == null) return true;
             events ??= new DevClickEvents(_mining!.Action, DevLog);
-            return DevClickLine(clicked);
+            _devHiddenBefore = _mining!.Action.ShowHiddenRocks;
+            return _devInFlight = DevClickLine(clicked);
         }, PointerStepTime);
         Add("the rock shown", () =>
         {
@@ -546,6 +686,8 @@ public partial class MiningRatesMod
             if (_scrollTo != null || !DevFramesDrawn()) return false;
             var action = _mining!.Action;
             MiningRock rock = clicked.Rock;
+            _devLeft = (action.SelectedCagtegory, DevScrollNow());
+            _devInFlight = false;
             Refresh();
             MiningRockSelectView? card = Native.Card(_page!, rock);
             bool inSight = card != null && Native.InSight(card);
@@ -559,13 +701,19 @@ public partial class MiningRatesMod
             DevLog($"click | after the click on the line of {rock.Recipe.Id}: {DevPageState(rock)}; the game's events [{ourEvents}]; {mining}" +
                 (inSight ? "" : "  NOT SHOWN") + (mining == miningBefore ? "" : "  MINING CHANGED") +
                 (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
-                (IsOpen ? "" : "  THE WINDOW CLOSED"));
+                (IsOpen ? "" : "  THE WINDOW CLOSED") + DevHiddenMoved("the click on the line"));
             Shot("clicked");
             if (card != null && beforeClick != null) DevLog("click | the card in shot-mining-clicked.png: " + DevProof(beforeClick, card, "the card"));
             events.Dispose();
             events = null;
-            left = (action.SelectedCagtegory, DevScrollNow());
-            DevLog("click | the page's filter and scroll put back for the page's own button: " + DevPageBack(before, ref left));
+            pageBack = DevFilterBack(before);
+            return true;
+        });
+        Add("the page back after the click", () =>
+        {
+            if (clicked == null) return true;
+            if (_devScrollBack != null && !DevFramesDrawn()) return false;
+            DevLog($"click | the page's filter and scroll put back for the page's own button: {DevJoin(pageBack, DevScrollBack())}; drawn {DevFilterLook() ?? "NOT FOUND"}");
             return true;
         });
         Add("the page's category button", () =>
@@ -575,23 +723,37 @@ public partial class MiningRatesMod
             MiningRecipeCategory category = clicked.Rock.Category!;
             Button button = (Native.CategoryButtons(FilterView(_page!)) is { } buttons && buttons.TryGetValue(category, out Button? b) ? b : null)
                 ?? throw new InvalidOperationException($"the page has no category button for {category.Id}");
+            if (_devAim != button && !DevSight(button).HasArea())
+            {
+                compareSkipped = true;
+                DevLog($"click | the page's own category button of {category.Id} lies under the mod's own window: it is not pressed, and the click is not compared with it");
+                return true;
+            }
             events ??= new DevClickEvents(_mining!.Action, DevLog);
-            return DevPress(button, $"the page's own category button of {category.Id} ('{button.Text}')");
+            return _devInFlight = DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}')");
         }, PointerStepTime);
         Add("the page's button compared", () =>
         {
-            if (clicked == null || !filterChanged) return true;
+            if (clicked == null || !filterChanged || compareSkipped) return true;
             if (!DevFramesDrawn()) return false;
             var action = _mining!.Action;
+            _devLeft = (action.SelectedCagtegory, DevScrollNow());
+            _devInFlight = false;
             string game = DevFilterState(clicked.Rock), gameEvents = string.Join(", ", events!.Seen), mining = DevMiningState();
             DevLog($"click | after the page's own category button: {game}; the game's events [{gameEvents}]; {mining}" +
-                (mining == miningBefore ? "" : "  MINING CHANGED") + " | " +
+                (mining == miningBefore ? "" : "  MINING CHANGED") + DevHiddenMoved("the page's own category button") + " | " +
                 (game == ours ? "the filter as after the click on the line" : $"DIFFER from the click on the line ({ours})") + "; " +
                 (DevSameEvents(gameEvents, ourEvents) ? "the same events" : $"EVENTS DIFFER from the click on the line ([{ourEvents}])"));
             events.Dispose();
             events = null;
-            left = (action.SelectedCagtegory, DevScrollNow());
-            DevLog("click | the page's filter and scroll put back: " + DevPageBack(before, ref left));
+            pageBack = DevFilterBack(before);
+            return true;
+        });
+        Add("the page back after its own button", () =>
+        {
+            if (clicked == null || !filterChanged || compareSkipped) return true;
+            if (_devScrollBack != null && !DevFramesDrawn()) return false;
+            DevLog($"click | the page's filter and scroll put back: {DevJoin(pageBack, DevScrollBack())}; drawn {DevFilterLook() ?? "NOT FOUND"}");
             return true;
         });
         Add("smallest", () =>
@@ -640,10 +802,12 @@ public partial class MiningRatesMod
         });
 
         _devPutBackAt = _devSteps.Count;
+        string putBackPage = "";
         Add("put back", () =>
         {
             events?.Dispose();
             events = null;
+            RockRates.DevRule = null;
             if (before.Settings == null) File.Delete(SettingsFile);
             else ModFiles.WriteWhole(SettingsFile, before.Settings);
             _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
@@ -653,8 +817,15 @@ public partial class MiningRatesMod
             _list = null;
             _fitPending = false;
             _wanted = before.Wanted;
-            string page = DevPageBack(before, ref left);
-            DevLog("put back | the page's filter and scroll: " + page);
+            if (_devInFlight)
+            {
+                // The request ended between a press and its read-back: what the page shows now is what it left.
+                _devLeft = (_mining!.Action.SelectedCagtegory, DevScrollNow());
+                _devInFlight = false;
+                DevLog("put back | the request ended before it read back its last press: the page's filter and scroll as they are now are taken as what it left");
+            }
+            // The filter now, through the page's own buttons; its scroll two drawn frames later (the next step).
+            putBackPage = DevFilterBack(before);
             if (before.Page != null && _devOpenedPage && !ReferenceEquals(CurrentPage(view)?.Item1, before.Page))
             {
                 // Only the page the request opened itself: a page the player went to meanwhile is his.
@@ -664,6 +835,12 @@ public partial class MiningRatesMod
             Sync();
             SyncStripButton();
             DevPointerBack();
+            return true;
+        });
+        Add("put back the scroll", () =>
+        {
+            if (_devScrollBack != null && !DevFramesDrawn()) return false;
+            DevLog("put back | the page's filter and scroll: " + DevJoin(putBackPage, DevScrollBack()));
             return true;
         });
         Add("read back", () =>
@@ -690,9 +867,12 @@ public partial class MiningRatesMod
                 settings == null ? "not there" : $"{settings.Length} characters");
             var action = _mining!.Action;
             Say(ReferenceEquals(action.SelectedCagtegory, before.Filter), $"the page's category filter {before.Filter?.Id ?? "all"}", action.SelectedCagtegory?.Id ?? "all");
+            // The filter as the page draws it too, not only the member (the code review of turn 1, fault 2).
+            string? look = DevFilterLook();
+            Say(look != null && look == before.Look, $"the page's filter drawn {before.Look ?? "(not read at the start)"}", look ?? "not found");
             int? scroll = DevScrollNow();
             Say(scroll == before.Scroll, $"the page's list of rocks scrolled to {before.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
-            Say(action.ShowHiddenRocks == hiddenAtStart, $"Show hidden {(hiddenAtStart ? "ticked" : "not ticked")}", action.ShowHiddenRocks ? "ticked" : "not ticked");
+            Say(action.ShowHiddenRocks == hiddenAtStart, $"the box for hidden rocks {(hiddenAtStart ? "ticked" : "not ticked")}", action.ShowHiddenRocks ? "ticked" : "not ticked");
             string miningNow = DevMiningState();
             Say(miningNow == miningAtStart, miningAtStart, miningNow);
             said.Add("the pointer back where the real one is");
@@ -715,6 +895,15 @@ public partial class MiningRatesMod
             }
             else DevLog($"no step is called '{name}', so none fails on purpose. The steps: {string.Join(", ", _devSteps.Take(_devPutBackAt).Select(s => s.Name))}.");
         }
+    }
+
+    // The window built anew, as a resize builds it (Resize): with the columns of another rule.
+    void DevRebuild()
+    {
+        int scroll = _list?.ScrollAt ?? 0;
+        Build();
+        Sync();
+        _list!.ScrollAt = scroll;
     }
 
     Button DevFoldButton() => _window!.Root.FindChildren("*", "Button", true, false).OfType<Button>()
@@ -758,52 +947,115 @@ public partial class MiningRatesMod
         return DevFilterState(rock) + $", in sight {(card != null && Native.InSight(card))}, the list scrolled to {DevScrollNow()?.ToString() ?? "-"}";
     }
 
-    // The page's filter and scroll as they were, each only if it is still as the request left it: otherwise the player
-    // changed it meanwhile, and it is left as he did. The filter is set back through the page's own buttons, the way a
-    // click on a line sets it (CategoryFilter), or for all categories through the page's "All" button.
-    string DevPageBack(DevBefore before, ref (MiningRecipeCategory? Filter, int? Scroll)? left)
+    // The page's filter as the page draws it: the buttons of its filter shown pressed (its box for hidden rocks apart)
+    // and the number of cards it shows. Null when the page's parts are not there.
+    string? DevFilterLook()
     {
-        if (left is not { } was) return "nothing to put back: the request changed neither";
+        try
+        {
+            if (_page == null || !GodotObject.IsInstanceValid(_page)) return null;
+            MiningCategoryFilterView filter = FilterView(_page);
+            CheckBox box = ShowHiddenBox(filter);
+            var pressed = filter.FindChildren("*", "Button", true, false).OfType<Button>()
+                .Where(b => b != box && b.ButtonPressed).Select(b => $"'{b.Text}'");
+            int cards = Native.RockViews(_page)?.Values.Count(c => GodotObject.IsInstanceValid(c) && c.Visible) ?? -1;
+            return $"buttons pressed [{string.Join(", ", pressed)}], {cards} cards shown";
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException) { return null; }
+    }
+
+    // The page's "All" button, found by the game's own word for it (MiningCategoryFilterView.s_all): the one button of
+    // the page's filter whose words are that word, never its box for hidden rocks (ShowHiddenCheckBox) nor any other
+    // check box. Null, and why, when there is not exactly one: the request then never guesses a button (the code review
+    // of turn 1, fault 1).
+    Button? DevAllButton(out string why)
+    {
+        why = "";
+        MiningCategoryFilterView filter = FilterView(_page!);
+        string word;
+        try { word = DevWordsOf(AllWords(null).Text ?? ""); }
+        catch (MissingMemberException) { why = "the game's word for its All button (s_all) could not be read"; return null; }
+        if (word.Length == 0) { why = "the game's word for its All button (s_all) is empty"; return null; }
+        CheckBox box = ShowHiddenBox(filter);
+        var found = filter.FindChildren("*", "Button", true, false).OfType<Button>()
+            .Where(b => b is not CheckBox && b != box && string.Equals(DevWordsOf(b.Text), word, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (found.Count == 1) return found[0];
+        why = found.Count == 0 ? $"no button of the page's filter reads the game's word '{word}'" : $"{found.Count} buttons of the page's filter read the game's word '{word}'";
+        return null;
+    }
+
+    // A game button pressed the way a click on a line presses a category's (CategoryFilter): a toggle button first goes
+    // down, which lets the others of its group go, then its pressed signal.
+    static void DevSignalPress(Button button)
+    {
+        if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+    }
+
+    // A game button pressed with the pointer (DevPress), with the page's box for hidden rocks read just before it: the
+    // step after reads it again (DevHiddenMoved).
+    bool DevGamePress(Control target, string what)
+    {
+        _devHiddenBefore = _mining!.Action.ShowHiddenRocks;
+        return DevPress(target, what);
+    }
+
+    // The page's box for hidden rocks is the player's: after a press of a game button, against just before it.
+    string DevHiddenMoved(string what) => _mining!.Action.ShowHiddenRocks == _devHiddenBefore ? ""
+        : $"  SHOW HIDDEN CHANGED by {what} (it was {(_devHiddenBefore ? "ticked" : "not ticked")})";
+
+    // The page's filter as it was, only if it is still as the request left it (_devLeft): otherwise the player changed it
+    // meanwhile, and it is left as he did. Through the page's own buttons: the category's, or the "All" button found by
+    // the game's word (DevAllButton); never through the member behind them, and never a guessed button: when the button
+    // is not found the filter stays as the request left it, NOT AS IT WAS. The scroll is decided now (still what the
+    // request left, or moved by the player) and put back two drawn frames later (DevScrollBack), once the page has laid
+    // its cards out for the filter: a ScrollContainer cuts a value to the range it has at that moment.
+    string DevFilterBack(DevBefore before)
+    {
+        _devScrollBack = null;
+        if (_devLeft is not { } was) return "nothing to put back: the request changed neither";
+        _devLeft = null;
+        if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Mining page is gone: its filter and scroll NOT AS IT WAS (not put back)";
         var action = _mining!.Action;
         var said = new List<string>();
+        int? scroll = DevScrollNow();
+        if (scroll != was.Scroll && scroll != before.Scroll)
+            said.Add($"the scroll {scroll?.ToString() ?? "-"} is not what the request left ({was.Scroll?.ToString() ?? "-"}): the player moved it, and it is left");
+        else _devScrollBack = before.Scroll;
         if (ReferenceEquals(action.SelectedCagtegory, before.Filter)) said.Add("the filter as it was");
         else if (!ReferenceEquals(action.SelectedCagtegory, was.Filter))
             said.Add($"the filter {action.SelectedCagtegory?.Id ?? "all"} is not what the request left ({was.Filter?.Id ?? "all"}): the player changed it, and it is left");
         else
         {
-            if (before.Filter != null) CategoryFilter(before.Filter);
-            else DevAllButton();
-            said.Add(ReferenceEquals(action.SelectedCagtegory, before.Filter) ? "the filter put back" : $"the filter NOT AS IT WAS ({action.SelectedCagtegory?.Id ?? "all"})");
+            string why = "";
+            Button? button = before.Filter == null ? DevAllButton(out why)
+                : Native.CategoryButtons(FilterView(_page)) is { } buttons && buttons.TryGetValue(before.Filter, out Button? b) && GodotObject.IsInstanceValid(b) ? b : null;
+            if (button == null)
+                said.Add($"the filter NOT AS IT WAS: it stays on {action.SelectedCagtegory?.Id ?? "all"}, as the request left it, since " +
+                    (before.Filter == null ? why : $"the page has no button of {before.Filter.Id}") + "; it is never set behind the page's buttons");
+            else
+            {
+                bool hidden = action.ShowHiddenRocks;
+                DevSignalPress(button);
+                said.Add((ReferenceEquals(action.SelectedCagtegory, before.Filter)
+                    ? $"the filter put back with the page's own '{button.Text}' button"
+                    : $"the filter NOT AS IT WAS after the page's own '{button.Text}' button ({action.SelectedCagtegory?.Id ?? "all"})") +
+                    (action.ShowHiddenRocks == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press"));
+            }
         }
-        int? scroll = DevScrollNow();
-        if (scroll == before.Scroll) said.Add("the scroll as it was");
-        else if (scroll != was.Scroll) said.Add($"the scroll {scroll} is not what the request left ({was.Scroll}): the player moved it, and it is left");
-        else if (before.Scroll is { } back)
-        {
-            RockScroll(_page!).ScrollVertical = back;
-            said.Add($"the scroll put back to {back}");
-        }
-        left = null;
         return string.Join(", ", said);
     }
 
-    // The page's "All" button: the one of its filter buttons that is not a category's. Pressed as a click on a line
-    // presses a category's (CategoryFilter); if the filter is still on a category, it is set to all through the member.
-    void DevAllButton()
+    // Two drawn frames after DevFilterBack: the scroll put back, once the page has laid its cards out for the filter.
+    string DevScrollBack()
     {
-        MiningCategoryFilterView filter = FilterView(_page!);
-        var categories = Native.CategoryButtons(filter)?.Values.ToHashSet() ?? new HashSet<Button>();
-        Button? all = FilterList(filter).FindChildren("*", "Button", true, false).OfType<Button>().FirstOrDefault(b => !categories.Contains(b));
-        if (all != null)
-        {
-            if (all.ToggleMode && !all.ButtonPressed) all.ButtonPressed = true;
-            all.EmitSignal(BaseButton.SignalName.Pressed);
-        }
-        if (_mining!.Action.SelectedCagtegory != null)
-        {
-            DevLog($"put back | the page's All button {(all == null ? "was not found" : $"'{all.Text}' did not set all categories")}: set through the member");
-            _mining.Action.SelectedCagtegory = null;
-        }
+        if (_devScrollBack is not { } back) return "";
+        _devScrollBack = null;
+        if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Mining page is gone: its scroll NOT AS IT WAS (not put back)";
+        if (DevScrollNow() == back) return "the scroll as it was";
+        RockScroll(_page).ScrollVertical = back;
+        int? now = DevScrollNow();
+        return now == back ? $"the scroll put back to {back}" : $"the scroll NOT AS IT WAS (put back to {back}, it reads {now?.ToString() ?? "-"})";
     }
 
     Button DevLineOf(RockRates rock) => _list!.DevLines().First(l => ReferenceEquals(l.Rock.Rock, rock.Rock)).Button;
@@ -920,7 +1172,8 @@ public partial class MiningRatesMod
                 $"stone {r.Rock.Recipe.StoneItem?.Id ?? "none"} {R(stats.StoneItemChance?.Total.Value ?? double.NaN)}, essence {r.Rock.Recipe.EssenceItem?.Id ?? "none"} " +
                 $"{R(stats.EssenceItemChance?.Total.Value ?? double.NaN)}, bar {r.Rock.Recipe.BarItem?.Id ?? "none"} {R(stats.BarItemChance?.Total.Value ?? double.NaN)}, " +
                 $"items of a hit [{rawHit}], the recipe's base product chance {R(r.Rock.Recipe.BaseProductChance)}, base interval {r.Rock.Recipe.BaseInterval} | " +
-                $"counted: {R(r.HitSeconds)} s a hit, {R(r.HitsPerHour)} hits/h, break chance {R(r.BreakChance)}, hits a break {(r.HitsPerBreak is { } h ? R(h) : "-")}, " +
+                $"counted: {R(r.HitSeconds)} s a hit, {R(r.HitsPerHour)} hits/h, break chance {R(r.BreakChance)}, hits a break {(r.HitsPerBreak is { } h ? R(h) : "-")} " +
+                $"(the rule {(RockRates.Settled is { } settled ? $"{settled.Rule}, {settled.Source}" : "not settled")}; by each reading [{DevReadings(r)}]), " +
                 $"XP {R(r.XpEach)} a hit = {R(r.XpPerHour)}/h, ore {r.OreQuantity} a break x(1+{R(r.Doubling)}) = {R(r.OrePerBreak)}, ore/h {(r.OrePerHour is { } o ? R(o) : "-")}, " +
                 $"time per ore {(r.SecondsPerOre is { } s ? R(s) : "-")}, ore price {(r.OrePrice is { } p ? R(p) : "-")}, gold/h {(r.GoldPerHour is { } g ? R(g) : "-")} " +
                 $"({R(r.PerHitGoldPerHour)} of it from the items of a hit) | items of a hit [{string.Join(", ", r.PerHit.Select(d => $"{d.Item.Id} {R(d.Chance)} x{d.Quantity} each {R(d.Each)} = {R(d.PerHour)}/h, gold {(d.GoldPerHour is { } dg ? R(dg) : "-")}/h"))}] | " +
@@ -933,6 +1186,24 @@ public partial class MiningRatesMod
         DevLog($"rows | {when} | {count} lines, {DevRowsInSight()} in sight; the game has {_mining!.Action.Rocks.Count} rocks, {rocks.Count} listed, " +
             $"{rocks.Count(r => r.Locked)} locked" + (count != rocks.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
+    }
+
+    // The hits a break takes by each reading of the break bar, from the rock's own break chance and minimum.
+    static string DevReadings(RockRates r) => string.Join(", ", Enum.GetValues<BreakRule>().Select(rule =>
+        $"{rule} {(RockRates.ExpectedHits(rule, r.BreakChance, r.MinimumProspecting) is { } hits ? R(hits) : "never")}"));
+
+    // The longest line of every tip of the window in characters, against Fishing Rates' longest: Godot's tooltip does
+    // not wrap, so a longer line makes a wider tooltip than Fishing Rates' (the code review of turn 1, fault 3).
+    void DevTips(string when)
+    {
+        static string Longest(string text) => text.Split('\n').OrderByDescending(l => l.Length).First();
+        static string Over(string line, int most) => line.Length > most ? $"  LONGER THAN FISHING RATES' {most}" : "";
+        var heads = _list!.DevHeaders.Select(h => (h.Text, Line: Longest(h.TooltipText))).ToList();
+        var lines = _list.DevLines().Select(l => (l.Rock.Rock.Recipe.LocalId, Line: Longest(l.Button.TooltipText))).ToList();
+        string longest = heads.Select(h => h.Line).Concat(lines.Select(l => l.Line)).OrderByDescending(l => l.Length).First();
+        DevLog($"tips | {when} | the names' tips, the longest line of each: {string.Join(", ", heads.Select(h => $"{h.Text} {h.Line.Length}{Over(h.Line, FishingTipMost)}"))}" +
+            $" | the lines' tooltips: {string.Join(", ", lines.Select(l => $"{l.LocalId} {l.Line.Length}{Over(l.Line, FishingTooltipMost)}"))}" +
+            $" | the longest of all, {longest.Length}: '{longest}'");
     }
 
     // The game's own labels for every card of the page and for its big panel, next to ours; and the page's order.
@@ -1050,7 +1321,27 @@ public partial class MiningRatesMod
             Read("the rock break icon", () => BreakIconName(null).Text + ": " + BreakIconWords(null).Text),
             Read("the doubling icon", () => DoublingName(null).Text + ": " + DoublingWords(null).Text),
             Read("the XP tag", () => XpGainedWords(null).Text + " / " + XpPerSecondWords(null).Text),
+            Read("the filter's All button", () => AllWords(null).Text),
+            Read("the filter's box for hidden rocks", () => ShowHiddenWords(null).Text),
         }));
+        // Every button of the page's filter, and which is which: the All button the put-back would press is found by the
+        // game's word only (DevAllButton).
+        try
+        {
+            MiningCategoryFilterView filter = FilterView(_page!);
+            CheckBox box = ShowHiddenBox(filter);
+            var categories = Native.CategoryButtons(filter) ?? new Dictionary<MiningRecipeCategory, Button>();
+            Button? all = DevAllButton(out string why);
+            DevLog("words | the filter's buttons: " + string.Join(" | ", filter.FindChildren("*", "Button", true, false).OfType<Button>().Select(b =>
+                $"{b.GetType().Name} '{b.Text}'{(b.ToggleMode ? " toggle" : "")}{(b.ButtonPressed ? " pressed" : "")}{(b.IsVisibleInTree() ? "" : " (hidden)")}" +
+                (b == box ? ", the box for hidden rocks" : "") + (b == all ? ", the All button by the game's word" : "") +
+                (categories.FirstOrDefault(c => c.Value == b).Key is { } c ? $", the button of {c.Id}" : ""))) +
+                (all == null ? $" | NO ALL BUTTON: {why}" : ""));
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException)
+        {
+            DevLog("words | the filter's buttons could not be read: " + e.Message);
+        }
         void Rows(string what, MiningActionStatsView? stats)
         {
             if (stats == null || !GodotObject.IsInstanceValid(stats)) { DevLog($"words | {what}: none"); return; }
@@ -1198,6 +1489,10 @@ public partial class MiningRatesMod
     ulong _devHandAt, _devGuardSince, _devTipSince;
     Control? _devAim;
     Vector2 _devAimAt;
+    // How often in a row the game said the pointer is on another control than the one aimed at: something lies over it,
+    // and after MostMisses the step says so at once instead of waiting out its time.
+    int _devMisses;
+    const int MostMisses = 10;
 
     // Every tick of a request: where the real pointer is, and whether a mouse button is down. Both are the system's own,
     // which the request's pushed pointer does not change (CombatGoals/DevWindowShots.cs, WatchHand).
@@ -1242,7 +1537,8 @@ public partial class MiningRatesMod
         if (!GodotObject.IsInstanceValid(target) || !target.IsVisibleInTree()) throw new InvalidOperationException($"{what} is not on the screen to be clicked.");
         if (DevHandAtMouse(what)) return false;
         Rect2 rect = DevSight(target);
-        if (!rect.HasArea()) throw new InvalidOperationException($"no part of {what} is in sight.");
+        if (!rect.HasArea())
+            throw new InvalidOperationException($"no part of {what} is in sight{(DevUnderWindow(target) ? ": it lies under the mod's own window" : "")}.");
         if (_devAim != target || !rect.HasPoint(_devAimAt))
         {
             _devAim = target;
@@ -1253,6 +1549,8 @@ public partial class MiningRatesMod
         Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
         if (over == null || (over != target && !target.IsAncestorOf(over)))
         {
+            if (++_devMisses >= MostMisses)
+                throw new InvalidOperationException($"the pointer was put on {what} {MostMisses} times, and each time the game said it is on {DevName(over)}: nothing was pressed");
             DevLog($"the pointer is on {DevName(over)}, not on {what}: nothing was pressed, it is put there again");
             DevPointer(_devAimAt);
             return false;
@@ -1261,12 +1559,14 @@ public partial class MiningRatesMod
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = true, ButtonMask = MouseButtonMask.Left });
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = false });
         _devAim = null;
+        _devMisses = 0;
         DevLog($"pressed {what} at {_devAimAt}, the pointer on {DevName(over)}");
         return true;
     }
 
-    // The part of a control that can be seen: on the screen, inside the window's list when it is a line of it, and
-    // inside the page's list of rocks when it is in there.
+    // The part of a control that can be seen: on the screen, inside the window's list when it is a line of it, inside
+    // the page's list of rocks when it is in there, and, for a control of the game, beside the mod's own window, which
+    // lies over the page: the pointer put on the window's part would never be on the control.
     Rect2 DevSight(Control control)
     {
         Rect2 rect = control.GetGlobalRect().Intersection(_ctx.Tree.Root.GetVisibleRect());
@@ -1274,12 +1574,32 @@ public partial class MiningRatesMod
             rect = rect.Intersection(_list.DevScroll.GetGlobalRect());
         else if (Native.ScrollOf(control) is { } scroll)
             rect = rect.Intersection(scroll.GetGlobalRect());
+        if (DevUnderWindow(control)) rect = DevBeside(rect, _window!.Root.GetGlobalRect());
         return rect;
     }
 
-    // The pointer rests on a line and the game's tooltip comes up. A hand at the mouse moves it away: then it waits and
-    // points again. A tooltip that has not come up in 20 s of pointing is one line, and the request goes on.
-    bool DevTooltip(Button target, Image? before)
+    // A control that is not the mod's own window's, with the window on the screen over its place.
+    bool DevUnderWindow(Control control) => _window is { IsAlive: true, Visible: true } window && control != window.Root &&
+        !window.Root.IsAncestorOf(control) && control.GetGlobalRect().Intersects(window.Root.GetGlobalRect());
+
+    // The largest part of a place that a cover leaves free: left, right, above or below it. Empty when it covers all.
+    static Rect2 DevBeside(Rect2 place, Rect2 cover)
+    {
+        if (!place.Intersects(cover)) return place;
+        Rect2[] parts =
+        [
+            new Rect2(place.Position, new Vector2(cover.Position.X - place.Position.X, place.Size.Y)),
+            new Rect2(new Vector2(cover.End.X, place.Position.Y), new Vector2(place.End.X - cover.End.X, place.Size.Y)),
+            new Rect2(place.Position, new Vector2(place.Size.X, cover.Position.Y - place.Position.Y)),
+            new Rect2(new Vector2(place.Position.X, cover.End.Y), new Vector2(place.Size.X, place.End.Y - cover.End.Y)),
+        ];
+        return parts.Where(p => p.Size.X > 0 && p.Size.Y > 0).OrderByDescending(p => p.Size.X * p.Size.Y).FirstOrDefault();
+    }
+
+    // The pointer rests on a control and the game's tooltip comes up; its picture is shot-mining-<shot>.png. A hand at the
+    // mouse moves it away: then it waits and points again. A tooltip that has not come up in 20 s of pointing is one
+    // line, and the request goes on.
+    bool DevTooltip(Button target, Image? before, string shot)
     {
         if (DevHandAtMouse("the tooltip")) { _devTipSince = 0; return false; }
         if (_devTipSince == 0) _devTipSince = Time.GetTicksMsec();
@@ -1287,7 +1607,7 @@ public partial class MiningRatesMod
         if (over == null || (over != target && !target.IsAncestorOf(over)))
         {
             Rect2 rect = DevSight(target);
-            if (!rect.HasArea()) throw new InvalidOperationException("The line is outside the list.");
+            if (!rect.HasArea()) throw new InvalidOperationException($"No part of '{target.Text}' is in sight for its tooltip.");
             DevPointer(rect.GetCenter());
             return false;
         }
@@ -1297,18 +1617,18 @@ public partial class MiningRatesMod
         {
             // Two drawn frames after it came up, for the picture.
             if (!DevFramesDrawn()) return false;
-            DevLog("tooltip " + tooltip);
-            Shot("tooltip");
+            DevLog($"tooltip | {shot} | {tooltip}");
+            Shot(shot);
             if (before != null && DevTooltipRect() is { } at)
             {
                 using var now = _ctx.Tree.Root.GetTexture().GetImage();
-                DevLog("shot-mining-tooltip.png | " + DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE"));
+                DevLog($"shot-mining-{shot}.png | " + DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE"));
             }
             DevPointerBack();
             return true;
         }
         if (Time.GetTicksMsec() - _devTipSince < 20000) return false;
-        DevLog($"tooltip | NOT SHOWN in 20 s with the pointer on {DevName(over)}; its words are in the 'row ... tooltip' lines, and there is no picture of it");
+        DevLog($"tooltip | {shot} | NOT SHOWN in 20 s with the pointer on {DevName(over)}; its words are in the 'row' and 'tips' lines, and there is no picture of it");
         DevPointerBack();
         return true;
     }

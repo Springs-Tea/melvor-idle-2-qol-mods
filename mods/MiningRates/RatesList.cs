@@ -26,20 +26,35 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     };
 
     /// <summary>
-    /// The columns, left to right: the issue's (#70), with Fishing Rates' names where they mean the same. Mastery XP is
-    /// not a column: Mining in this game keeps no mastery XP (its Mastery Guild counts ranks, points and tasks). The time
-    /// of an ore, the ore and the gold rest on the hits a break takes, which the game does not show (RockRates.HitsPerBreak).
+    /// The columns, left to right: the issue's (#70), with Fishing Rates' names and widths where they mean the same.
+    /// Mastery XP is not a column: Mining in this game keeps no mastery XP by the game's names (its Mastery Guild counts
+    /// ranks, points and tasks). The time of an ore, the ore and the gold rest on the hits a break takes: while no rule
+    /// for them is settled (RockRates.Settled) they are not columns at all, rather than three columns of "-", and Time
+    /// is the time of a hit, as Fishing Rates' is the time of a catch. A tip's line is never longer than Fishing Rates'
+    /// longest (82 characters): Godot's tooltip does not wrap.
     /// </summary>
-    public static List<RateColumn> All() =>
-    [
-        new("time", "Time", "Seconds for one ore: the time of a hit, times the hits a break takes, over the ore of a break. " +
-            "- while the game does not show how many hits a break takes", 58, r => r.HasTime ? r.SecondsPerOre : null, Words.Seconds, Better.Less),
-        new("ore", "Ore", "The rock's ore per hour, which comes with a break. - while the game does not show how many hits a break takes", 66,
-            r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
-        new("xp", "XP", "Mining XP per hour: the XP of the rock's XP tag on every hit", 66, r => r.HasTime ? r.XpPerHour : null, Words.Number, Better.More),
-        new("gold", "Gold", "What the ore and the items of an hour sell for. - while the ore's hour is not known", 66,
-            r => r.HasTime ? r.GoldPerHour : null, Words.Number, Better.More),
-    ];
+    public static List<RateColumn> All()
+    {
+        var xp = new RateColumn("xp", "XP", "Mining XP per hour: the XP of a hit, on every hit", 66,
+            r => r.HasTime ? r.XpPerHour : null, Words.Number, Better.More);
+        if (RockRates.Settled is not { } settled)
+            return
+            [
+                new("time", "Time", "Seconds for one hit, with your bonuses", 58, r => r.HasTime ? r.HitSeconds : null, Words.Seconds, Better.Less),
+                xp,
+            ];
+        string how = settled.Source == RuleSource.Measured ? "as measured in the game" : "by the game's own rule";
+        return
+        [
+            new("time", "Time", "Seconds for one ore, with the hits a break takes counted in", 58,
+                r => r.HasTime ? r.SecondsPerOre : null, Words.Seconds, Better.Less),
+            new("ore", "Ore", $"The rock's ore per hour, the hits a break takes {how}", 66,
+                r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
+            xp,
+            new("gold", "Gold", "What the ore and the items of an hour sell for", 66,
+                r => r.HasTime ? r.GoldPerHour : null, Words.Number, Better.More),
+        ];
+    }
 }
 
 /// <summary>
@@ -237,7 +252,7 @@ sealed class RatesList
 
     // ---- the lines ---------------------------------------------------------------------------------------------------
 
-    // [rock] Copper Rock  Ores   Lv 15      -      -    1,200    -
+    // [rock] Copper Rock  Ores   Lv 15     3s    1,200
     Row BuildRow()
     {
         var row = new Row();
@@ -321,10 +336,12 @@ sealed class RatesList
     // The rock the Mining page shows has the look of a selected line in the Combat Simulator (its pressed one), so it can
     // be found in a sorted list. A line a click shows has the theme's own looks, lighter under the pointer, with the
     // pointing hand, as Astrology Overview's rows that open a constellation (OverviewRowView.Update); one that a click
-    // changes nothing for keeps its resting look in every state, with the arrow (Fishing Rates' Restyle).
+    // changes nothing for keeps its resting look in every state, with the arrow (Fishing Rates' Restyle). Unlike Fishing
+    // Rates' lit line, this one can be clicked: the card of the rock being mined can be out of sight on the Mining page,
+    // and a click then scrolls to it. It keeps its pressed look, lighter under the pointer (the theme's hover_pressed).
     void Restyle(Row row, bool lit, bool clickable)
     {
-        var look = (Lit: lit, Clickable: clickable && !lit);
+        var look = (Lit: lit, Clickable: clickable);
         if (row.Look == look || !row.Button.IsInsideTree()) return;
         // The theme's own look, not one this line was given before.
         foreach (string state in RowStates) row.Button.RemoveThemeStyleboxOverride(state);
@@ -332,6 +349,11 @@ sealed class RatesList
         {
             StyleBox resting = row.Button.GetThemeStylebox(lit ? "pressed" : "normal");
             foreach (string state in RowStates) row.Button.AddThemeStyleboxOverride(state, resting);
+        }
+        else if (lit)
+        {
+            StyleBox pressed = row.Button.GetThemeStylebox("pressed"), hover = row.Button.GetThemeStylebox("hover_pressed");
+            foreach (string state in RowStates) row.Button.AddThemeStyleboxOverride(state, state is "hover" or "hover_pressed" ? hover : pressed);
         }
         row.Button.MouseDefaultCursorShape = look.Clickable ? Control.CursorShape.PointingHand : Control.CursorShape.Arrow;
         row.Look = look;
@@ -452,6 +474,9 @@ sealed class RatesList
 
     /// <summary>Development: the name over a column, by its key.</summary>
     public Button? DevHeader(string key) => _headers.FirstOrDefault(h => h.GetMeta("column").AsString() == key);
+
+    /// <summary>Development: the keys of the columns, left to right.</summary>
+    public IEnumerable<string> DevColumns => _columns.Select(c => c.Key);
 
     public IReadOnlyList<Button> DevHeaders => _headers;
 

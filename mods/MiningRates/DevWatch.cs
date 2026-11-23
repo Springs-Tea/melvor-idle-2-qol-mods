@@ -22,17 +22,23 @@ namespace MiningRates;
 // mining when it starts, it says so in one line and ends.
 //   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod MiningRates -Request miningwatch.request -Produces miningwatch.done -Text 10 -Seconds 900 -Out <folder>
 // Every hit is one "Dev: hit" line: the rock, success and shatter as the hit says them, broken, early and shatter as the
-// action says them, the break bar before and after, the XP and the items it added. The events of one hit come in one
-// frame, and are told apart from the next hit by the frame. It ends when the minutes are up or after a minute without a
-// hit, with one summary line per question, each with a verdict in capitals, and the game's own tracker
+// action says them, the rock's break chance and minimum at that hit, the break bar before and after, the order of the
+// game's events, the XP and the items it added. The events of one hit come in one frame, and are told apart from the
+// next hit by the frame. It ends when the minutes are up or after a minute without a hit, with, for every rock hit, one
+// line per question, each with a verdict in capitals; NOT DECIDED below MostBreaks breaks. The question the window waits
+// on is how the game decides a break (RockRates.BreakRule): every reading's expected breaks over the hits seen, from each
+// hit's own bar, against the breaks seen, and the hits no reading allows. Then the game's own tracker
 // (MiningEntity.Tracker) over its periods beside ours. Its last line says it stopped listening and changed nothing.
-// Every listener runs inside a try, and all are taken off when it ends, on Stop and on another character
-// (DevUnwatchAll).
+// Every listener runs inside a try, and all are taken off when it ends, on Stop (with the done file, DevStopped) and on
+// another character (DevUnwatchAll).
 public partial class MiningRatesMod
 {
     const string WatchRequestFile = "miningwatch.request", WatchDoneFile = "miningwatch.done";
     // A minute without a hit ends the watch.
     const ulong WatchIdle = 60000;
+    // Fewer breaks than this decide nothing about the break: with 40 breaks the two closest readings (one hit a break
+    // apart) are about 3.7 standard errors apart at a 10% break chance (the code review of turn 1, worked out there).
+    const int MostBreaks = 30;
 
     // What one hit brought: every event of the game that came in the same frame.
     sealed class DevHit
@@ -44,13 +50,18 @@ public partial class MiningRatesMod
         public bool Success, HitShattered;
         public bool Mined, Broken, Early, MinedShattered;
         public double? Before;
+        // The rock's break chance and the bar's minimum as the game had them at the hit (a level up changes them).
+        public double Chance = double.NaN, Minimum = double.NaN;
         public readonly List<(string Rock, double Old, double New)> Progress = new();
         public double Xp;
         public int XpChanges;
         public readonly List<(Item Item, int Quantity)> Items = new();
+        // The game's events of this frame in the order they came: hit, bar, mined, xp, item.
+        public readonly List<string> Order = new();
 
         public bool IsHit => Hits > 0 || Mined;
-        public bool Breaks => Broken || Success;
+        // A break by the action's own word when the action said it, else by the hit's.
+        public bool Breaks => Mined ? Broken : Success;
         public bool Shattered => HitShattered || MinedShattered;
     }
 
@@ -61,6 +72,8 @@ public partial class MiningRatesMod
         public readonly List<Action> Off = new();
         public readonly List<DevHit> Hits = new();
         public readonly Dictionary<string, double> Bar = new();
+        // Every rock's numbers when the watch began, to see whether they changed while it ran.
+        public readonly Dictionary<string, string> Start = new();
         public DevHit? Open;
         public bool Failed;
     }
@@ -91,11 +104,24 @@ public partial class MiningRatesMod
         }
         var w = new DevHitWatch { Action = action, Since = Time.GetTicksMsec(), Length = (ulong)minutes * 60000 };
         w.LastHit = w.Since;
-        foreach (MiningRock rock in action.Rocks.Values) w.Bar[rock.Recipe.Id] = rock.Progress;
+        foreach (MiningRock rock in action.Rocks.Values)
+        {
+            w.Bar[rock.Recipe.Id] = rock.Progress;
+            w.Start[rock.Recipe.Id] = DevRockStats(rock);
+        }
         _devHits = w;
         DevWatchListen(w);
-        DevLog($"watch | listening; the rock mined {action.CurrentRock.Recipe.Id}, its break bar at {R(action.CurrentRock.Progress)}");
+        DevLog($"watch | listening; the rock mined {action.CurrentRock.Recipe.Id}, its break bar at {R(action.CurrentRock.Progress)}; its numbers {w.Start[action.CurrentRock.Recipe.Id]}");
         DevTracker("at the start", null);
+    }
+
+    // A rock's numbers as the game has them now, with every bonus of the character.
+    static string DevRockStats(MiningRock rock)
+    {
+        MiningActionStats s = rock.Stats;
+        return $"interval {R(s.Interval.Value)} ms, break chance {R(s.RockBreakChance.Value)}, minimum {R(s.MinimumProspecting.Value)}, " +
+            $"XP {R(s.Experience.XpToAdd.Value)}, ore x{s.ProductQuantity.Value}, doubling {R(s.DoublingChance?.Total.Value ?? 0)}, " +
+            $"more ore {R(s.AdditionalProductQuantityChance?.Total.Value ?? 0)}, shatter {R(s.ShatterChance?.Total.Value ?? 0)}";
     }
 
     // The game's events, each listener inside a try: one that fails says so once and the watch ends on the next tick.
@@ -116,18 +142,23 @@ public partial class MiningRatesMod
         foreach (MiningRock rock in action.Rocks.Values)
         {
             string id = rock.Recipe.Id;
+            MiningRock watched = rock;
             EventHandler<RockHitEventArgs> hit = (_, e) => Safe(() =>
             {
                 DevHit h = DevHitNow(w, id);
                 h.Hits++;
                 h.Success |= e.Success;
                 h.HitShattered |= e.WasShattered;
+                h.Chance = watched.Stats.RockBreakChance.Value;
+                h.Minimum = watched.Stats.MinimumProspecting.Value;
+                h.Order.Add("hit");
             });
             EventHandler<ValueChangedEventArgs<double>> bar = (_, e) => Safe(() =>
             {
                 DevHit h = DevHitNow(w, id);
                 h.Before ??= e.OldValue;
                 h.Progress.Add((id, e.OldValue, e.NewValue));
+                h.Order.Add("bar");
                 w.Bar[id] = e.NewValue;
             });
             rock.Hit += hit;
@@ -145,16 +176,21 @@ public partial class MiningRatesMod
             h.Broken |= e.WasBroken;
             h.Early |= e.WasEarly;
             h.MinedShattered |= e.WasShattered;
+            h.Order.Add("mined");
         });
         EventHandler<ValueChangedEventArgs<double>> xp = (_, e) => Safe(() =>
         {
             DevHit h = DevHitNow(w, null);
             h.Xp += e.NewValue - e.OldValue;
             h.XpChanges++;
+            h.Order.Add("xp");
         });
         EventHandler<ItemAddedEventArgs> item = (_, e) => Safe(() =>
         {
-            if (e.Item != null) DevHitNow(w, null).Items.Add((e.Item, e.Quantity));
+            if (e.Item == null) return;
+            DevHit h = DevHitNow(w, null);
+            h.Items.Add((e.Item, e.Quantity));
+            h.Order.Add("item");
         });
         action.RockMined += mined;
         experience.XpChanged += xp;
@@ -195,8 +231,9 @@ public partial class MiningRatesMod
         }
         DevLog($"{(h.IsHit ? "hit" : "other")} | {h.Rock} | hit events {h.Hits}: success {h.Success}, shattered {h.HitShattered} | the action: " +
             (h.Mined ? $"broken {h.Broken}, early {h.Early}, shattered {h.MinedShattered}" : "no event") +
+            $" | break chance {R(h.Chance)}, minimum {R(h.Minimum)}" +
             $" | the break bar {(h.Before is { } b ? R(b) : "?")} -> [{string.Join(", ", h.Progress.Select(p => $"{R(p.Old)}->{R(p.New)}{(p.Rock == h.Rock ? "" : " of " + p.Rock)}"))}]" +
-            $" | XP +{R(h.Xp)} in {h.XpChanges} changes | items [{string.Join(", ", h.Items.Select(i => $"{i.Item.Id} x{i.Quantity}"))}]" +
+            $" | events [{string.Join(" ", h.Order)}] | XP +{R(h.Xp)} in {h.XpChanges} changes | items [{string.Join(", ", h.Items.Select(i => $"{i.Item.Id} x{i.Quantity}"))}]" +
             (h.Hits > 1 ? $"  {h.Hits} HITS IN ONE FRAME" : ""));
     }
 
@@ -223,8 +260,8 @@ public partial class MiningRatesMod
         w.Off.Clear();
     }
 
-    // The summary: one line per question, each with its verdict, then the tracker, then the last line. Without a summary
-    // when another character was opened: the rocks of the one watched are gone.
+    // The summary: for every rock hit, one line per question with its verdict; then the tracker, then the last line.
+    // Without a summary when another character was opened or the mod stopped: the rocks of the one watched may be gone.
     void DevWatchEnd(string why, bool summarise = true)
     {
         if (_devHits is not { } w) return;
@@ -237,11 +274,17 @@ public partial class MiningRatesMod
         {
             DevLog($"watch | ended after {seconds:0} s: {why}; {w.Hits.Count} hits seen at [{string.Join(", ", w.Hits.GroupBy(h => h.Rock).Select(g => $"{g.Key} {g.Count()}"))}]");
             if (!summarise) verdicts.Add("NO SUMMARY");
-            else if (w.Hits.GroupBy(h => h.Rock).OrderByDescending(g => g.Count()).FirstOrDefault() is { } most &&
-                _mining!.Action.Rocks.Values.FirstOrDefault(r => r.Recipe.Id == most.Key) is { } rock)
-                verdicts = DevWatchSummary(most.ToList(), RockRates.Read(rock, _mining, Shown), seconds);
-            else verdicts.Add("NO HIT SEEN");
-            if (summarise) DevTracker($"at the end, after {seconds:0} s", w.Hits);
+            else
+            {
+                foreach (var group in w.Hits.GroupBy(h => h.Rock).OrderByDescending(g => g.Count()))
+                {
+                    if (_mining!.Action.Rocks.Values.FirstOrDefault(r => r.Recipe.Id == group.Key) is not { } rock) continue;
+                    var said = DevWatchSummary(group.ToList(), RockRates.Read(rock, _mining, Shown), w.Start.GetValueOrDefault(group.Key, "not read"), seconds);
+                    verdicts.Add($"{rock.Recipe.LocalId}: {string.Join(", ", said)}");
+                }
+                if (verdicts.Count == 0) verdicts.Add("NO HIT SEEN");
+                DevTracker($"at the end, after {seconds:0} s", w.Hits);
+            }
         }
         catch (Exception e) { DevLog("watch | the summary failed: " + e.Message); verdicts.Add("THE SUMMARY FAILED"); }
         const string last = "stopped listening to the game's events; nothing was changed";
@@ -249,42 +292,143 @@ public partial class MiningRatesMod
         File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), $"{why}; {w.Hits.Count} hits in {seconds:0} s; {string.Join("; ", verdicts)}; {last}");
     }
 
-    List<string> DevWatchSummary(List<DevHit> hits, RockRates ours, double seconds)
+    // The breaks a reading of the break bar expects over these hits, each hit at the chance the reading gives it, against
+    // the breaks seen: how many standard errors apart (z), and how many hits the reading does not allow at all (a break at
+    // a chance of 0, or no break at a chance of 1).
+    static (double Expected, double Z, int Impossible) DevFit(IReadOnlyList<DevHit> hits, Func<DevHit, double> chance)
+    {
+        double expected = 0, variance = 0;
+        int seen = 0, impossible = 0;
+        foreach (DevHit h in hits)
+        {
+            double p = Math.Clamp(chance(h), 0, 1);
+            expected += p;
+            variance += p * (1 - p);
+            if (h.Breaks) seen++;
+            if ((h.Breaks && p <= 0) || (!h.Breaks && p >= 1)) impossible++;
+        }
+        double z = variance > 0 ? (seen - expected) / Math.Sqrt(variance) : Math.Abs(seen - expected) < 1e-9 ? 0 : double.PositiveInfinity;
+        return (expected, z, impossible);
+    }
+
+    // The chance a reading gives a hit, from the bar before it and the rock's break chance at it (both fractions).
+    static double DevReadingChance(BreakRule rule, DevHit h)
+    {
+        double chance = Math.Clamp(double.IsFinite(h.Chance) ? h.Chance : 0, 0, 1), bar = h.Before ?? 0;
+        return rule switch
+        {
+            BreakRule.BarBeforeHit => bar,
+            BreakRule.BarAfterRaise => bar + chance,
+            _ => chance,
+        };
+    }
+
+    static string DevReadingWords(BreakRule rule) => rule switch
+    {
+        BreakRule.BarBeforeHit => "THE BAR BEFORE THE HIT",
+        BreakRule.BarAfterRaise => "THE BAR AFTER THE RAISE",
+        _ => "THE SAME CHANCE ON EVERY HIT",
+    };
+
+    List<string> DevWatchSummary(List<DevHit> hits, RockRates ours, string start, double seconds)
     {
         var verdicts = new List<string>();
+        string rock = ours.Rock.Recipe.Id;
         void Say(string question, string verdict, string words)
         {
             verdicts.Add(verdict);
-            DevLog($"watch | {question} | {verdict}: {words}");
+            DevLog($"watch | {rock} | {question} | {verdict}: {words}");
         }
         int n = hits.Count;
         var breaks = hits.Where(h => h.Breaks).ToList();
         var whole = hits.Where(h => !h.Breaks).ToList();
-        string rock = ours.Rock.Recipe.Id;
+        bool enough = breaks.Count >= MostBreaks;
+        string fewer = enough ? "" : $" (fewer than {MostBreaks} breaks decide nothing)";
 
-        // How many hits a break takes.
-        Say("hits a break takes", breaks.Count >= 3 ? "MEASURED" : "NOT DECIDED",
-            $"{n} hits on {rock}, {breaks.Count} breaks ({breaks.Count(h => h.Broken)} by the action's word, {breaks.Count(h => h.Success)} by the hit's), " +
-            $"{breaks.Count(h => h.Early)} of them early; {(breaks.Count > 0 ? R((double)n / breaks.Count) : "-")} hits a break measured; ours " +
-            $"{(ours.HitsPerBreak is { } mine ? R(mine) : "- (the game does not show it)")}; the game's break chance {R(ours.BreakChance)}, minimum {R(ours.MinimumProspecting)}");
+        // The rock's numbers at the start and at the end: a level up while it ran changes them.
+        string end = DevRockStats(ours.Rock);
+        DevLog($"watch | {rock} | the rock's numbers | at the start {start}; at the end {end}" + (start == end ? "" : "  CHANGED WHILE IT RAN"));
 
-        // How the break bar moves on a hit that does not break the rock.
-        var steps = whole.Select(h => h.Progress.Where(p => p.Rock == rock).Sum(p => p.New - p.Old)).ToList();
-        string stepWords = string.Join(", ", steps.GroupBy(s => Math.Round(s, 4)).OrderBy(g => g.Key).Select(g => $"{R(g.Key)} x{g.Count()}"));
-        Say("the break bar on a hit that does not break", steps.Count == 0 ? "NOT DECIDED"
-                : steps.All(s => Math.Abs(s - ours.BreakChance) < 1e-3) ? "IT GROWS BY THE BREAK CHANCE" : "IT GROWS BY ANOTHER AMOUNT",
-            $"{steps.Count} such hits, steps [{stepWords}]; the break chance {R(ours.BreakChance)}");
+        // What the hit's Success says, against the action's own word of a break.
+        DevLog($"watch | {rock} | the hit's Success against the action's WasBroken | both {hits.Count(h => h.Success && h.Broken)}, " +
+            $"Success only {hits.Count(h => h.Success && h.Mined && !h.Broken)}, WasBroken only {hits.Count(h => !h.Success && h.Broken)}, " +
+            $"neither {hits.Count(h => h.Mined && !h.Success && !h.Broken)}, no action event {hits.Count(h => !h.Mined)}");
 
-        // Where the bar starts again after a break.
-        var after = breaks.Select(h => h.Progress.Where(p => p.Rock == rock).Select(p => (double?)p.New).LastOrDefault()).OfType<double>().ToList();
-        Say("the break bar after a break", after.Count == 0 ? "NOT DECIDED"
-                : after.All(a => Math.Abs(a - ours.MinimumProspecting) < 1e-3) ? "IT STARTS AGAIN AT THE MINIMUM" : "IT STARTS AGAIN AT ANOTHER VALUE",
-            $"after {after.Count} breaks [{string.Join(", ", after.GroupBy(a => Math.Round(a, 4)).Select(g => $"{R(g.Key)} x{g.Count()}"))}]; the minimum {R(ours.MinimumProspecting)}");
+        // How many hits a break takes: from one break to the next, so that the hits before the first break seen (a bar
+        // that was already part filled) do not count.
+        var cycles = new List<int>();
+        int last = -1;
+        for (int i = 0; i < n; i++)
+        {
+            if (!hits[i].Breaks) continue;
+            if (last >= 0) cycles.Add(i - last);
+            last = i;
+        }
+        double mean = cycles.Count > 0 ? cycles.Average() : double.NaN;
+        double se = cycles.Count > 1 ? Math.Sqrt(cycles.Sum(c => (c - mean) * (c - mean)) / (cycles.Count - 1) / cycles.Count) : double.NaN;
+        Say("hits a break takes", enough ? "MEASURED" : "NOT DECIDED",
+            $"{n} hits, {breaks.Count} breaks, {breaks.Count(h => h.Early)} of them early; {cycles.Count} from one break to the next: {R(mean)} hits on average " +
+            $"(standard error {R(se)}); by the readings from the game's numbers at the end [{DevReadings(ours)}]; " +
+            $"the window's {(ours.HitsPerBreak is { } mine ? R(mine) : "- (no rule settled)")}{fewer}");
+
+        // Which reading of the bar the breaks follow: every hit at the chance the reading gives it.
+        var known = hits.Where(h => h.Before != null && double.IsFinite(h.Chance)).ToList();
+        var fits = new List<BreakRule>();
+        var words = new List<string>();
+        foreach (BreakRule rule in Enum.GetValues<BreakRule>())
+        {
+            var (expected, z, impossible) = DevFit(known, h => DevReadingChance(rule, h));
+            bool fit = Math.Abs(z) <= 2 && impossible == 0;
+            if (fit) fits.Add(rule);
+            words.Add($"{rule}: {R(Math.Round(expected, 2))} expected, {R(Math.Round(z, 2))} standard errors off, {impossible} hits it does not allow{(fit ? ", fits" : "")}");
+        }
+        Say("the readings", !enough ? "NOT DECIDED" : fits.Count == 1 ? DevReadingWords(fits[0]) + " FITS" : fits.Count == 0 ? "NO READING FITS" : "MORE THAN ONE READING FITS",
+            $"over {known.Count} hits with a bar and a break chance read, {known.Count(h => h.Breaks)} breaks seen; {string.Join("; ", words)}; " +
+            $"breaks on a hit whose bar stood at 0: {known.Count(h => h.Breaks && h.Before <= 1e-9)}, hits on a full bar that did not break: " +
+            $"{known.Count(h => !h.Breaks && h.Before >= 1 - 1e-9)}{fewer}");
+
+        // How the break bar moves on a hit that does not break the rock, against the break chance at that hit.
+        var steps = whole.Select(h => (Step: h.Progress.Where(p => p.Rock == rock).Sum(p => p.New - p.Old), h.Chance)).ToList();
+        string stepWords = string.Join(", ", steps.GroupBy(s => Math.Round(s.Step, 4)).OrderBy(g => g.Key).Select(g => $"{R(g.Key)} x{g.Count()}"));
+        Say("the bar on a hit that does not break", steps.Count == 0 ? "NOT DECIDED"
+                : steps.All(s => Math.Abs(s.Step - s.Chance) < 1e-3) ? "IT GROWS BY THE BREAK CHANCE" : "IT GROWS BY ANOTHER AMOUNT",
+            $"{steps.Count} such hits, steps [{stepWords}]; the break chance [{string.Join(", ", steps.Select(s => R(s.Chance)).Distinct())}]");
+
+        // Where the bar stands after a break, against the minimum at that hit.
+        var after = breaks.Select(h => (Bar: h.Progress.Where(p => p.Rock == rock).Select(p => (double?)p.New).LastOrDefault(), h.Minimum))
+            .Where(a => a.Bar != null).ToList();
+        Say("the bar after a break", after.Count == 0 ? "NOT DECIDED"
+                : after.All(a => Math.Abs(a.Bar!.Value - a.Minimum) < 1e-3) ? "IT STARTS AGAIN AT THE MINIMUM" : "IT STARTS AGAIN AT ANOTHER VALUE",
+            $"after {after.Count} breaks [{string.Join(", ", after.GroupBy(a => Math.Round(a.Bar!.Value, 4)).Select(g => $"{R(g.Key)} x{g.Count()}"))}]; " +
+            $"the minimum [{string.Join(", ", after.Select(a => R(a.Minimum)).Distinct())}]");
+
+        // The bar's own events in the frame of a break: does it rise first and then go back, or only go back? A rise
+        // first means the hit raises the bar before the game rolls the break.
+        string Shape(DevHit h)
+        {
+            var moves = h.Progress.Where(p => p.Rock == rock).Select(p => p.New - p.Old).ToList();
+            return moves.Count == 0 ? "none" : moves.Count == 1 ? moves[0] < 0 ? "back only" : moves[0] > 0 ? "up only" : "unchanged"
+                : moves[0] > 0 && moves[^1] < 0 ? "up, then back" : string.Join(" then ", moves.Select(m => m < 0 ? "back" : m > 0 ? "up" : "unchanged"));
+        }
+        var shapes = breaks.GroupBy(Shape).OrderByDescending(g => g.Count()).ToList();
+        Say("the bar's events on a break", breaks.Count == 0 ? "NOT DECIDED" : shapes.Count > 1 ? "MIXED"
+                : shapes[0].Key == "up, then back" ? "IT RISES, THEN GOES BACK" : shapes[0].Key == "back only" ? "IT ONLY GOES BACK" : "ANOTHER WAY",
+            $"[{string.Join(", ", shapes.Select(g => $"{g.Key} x{g.Count()}"))}]; the game's events of a break in their order " +
+            $"[{string.Join(", ", breaks.GroupBy(h => string.Join(" ", h.Order)).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} x{g.Count()}"))}]");
+
+        // Early breaks against the bar before the hit.
+        static string Range(IEnumerable<DevHit> some)
+        {
+            var bars = some.Where(h => h.Before != null).Select(h => h.Before!.Value).ToList();
+            return bars.Count == 0 ? "-" : $"{R(bars.Min())} to {R(bars.Max())}";
+        }
+        DevLog($"watch | {rock} | early breaks | {breaks.Count(h => h.Early)} early, the bar before them {Range(breaks.Where(h => h.Early))}; " +
+            $"{breaks.Count(h => !h.Early)} not early, the bar before them {Range(breaks.Where(h => !h.Early))}");
 
         // Which share of the hits broke the rock, by where the bar stood before the hit.
         var shares = hits.Where(h => h.Before != null).GroupBy(h => Math.Min(3, (int)Math.Floor(h.Before!.Value * 4)))
             .OrderBy(g => g.Key).Select(g => $"bar {g.Key * 25}-{g.Key * 25 + 25}%: {g.Count(h => h.Breaks)} of {g.Count()} broke");
-        DevLog($"watch | breaks by the bar before the hit | {string.Join("; ", shares)}; full bars before a hit: {hits.Count(h => h.Before >= 1 - 1e-9)}");
+        DevLog($"watch | {rock} | breaks by the bar before the hit | {string.Join("; ", shares)}; full bars before a hit: {hits.Count(h => h.Before >= 1 - 1e-9)}");
 
         // XP on every hit, or on a break.
         var plain = hits.Where(h => !h.Shattered).ToList();
@@ -295,18 +439,21 @@ public partial class MiningRatesMod
             $"XP on {xpOnWhole} of {whole.Count} hits that did not break and on {xpOnBreak} of {breaks.Count} that broke; {R(xpEach)} a hit without shatter, " +
             $"ours {R(ours.XpEach)} a hit: {(Math.Abs(xpEach - ours.XpEach) < 0.01 ? "the same" : "DIFFER")}; measured {R(hits.Sum(h => h.Xp) / Math.Max(1, seconds) * 3600)} an hour, ours {R(ours.XpPerHour)}");
 
-        // The ore: on a break only, or on every hit; and how many a break brings.
+        // The ore: on a break only, or on every hit; and what a plain break brings against the rock's quantity.
         if (ours.Ore is { } ore)
         {
             int OreOf(DevHit h) => h.Items.Where(i => ReferenceEquals(i.Item, ore)).Sum(i => i.Quantity);
             int oreOnWhole = whole.Count(h => OreOf(h) > 0), oreOnBreak = breaks.Count(h => OreOf(h) > 0);
             var plainBreaks = breaks.Where(h => !h.Shattered).ToList();
             double perBreak = plainBreaks.Count > 0 ? plainBreaks.Average(h => (double)OreOf(h)) : double.NaN;
+            double more = ours.Rock.Stats.AdditionalProductQuantityChance?.Total.Value ?? 0;
             Say("the ore", whole.Count >= 3 && oreOnWhole == 0 && oreOnBreak > 0 ? "ORE ON A BREAK ONLY"
                     : whole.Count >= 3 && oreOnWhole >= 0.9 * whole.Count ? "ORE ON EVERY HIT" : "NOT DECIDED",
-                $"{ore.Id} on {oreOnWhole} of {whole.Count} hits that did not break and on {oreOnBreak} of {breaks.Count} that broke; {R(perBreak)} a break without shatter " +
-                $"[{string.Join(", ", plainBreaks.GroupBy(OreOf).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}], ours {R(ours.OrePerBreak)} " +
-                $"({ours.OreQuantity} doubled on {R(ours.Doubling)}); measured {R(hits.Sum(OreOf) / Math.Max(1, seconds) * 3600)} an hour, ours {(ours.OrePerHour is { } o ? R(o) : "-")}");
+                $"{ore.Id} on {oreOnWhole} of {whole.Count} hits that did not break and on {oreOnBreak} of {breaks.Count} that broke; " +
+                $"a plain break (no shatter) brought [{string.Join(", ", plainBreaks.GroupBy(OreOf).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}], " +
+                $"{R(perBreak)} on average, against the rock's quantity {ours.OreQuantity}: {plainBreaks.Count(h => OreOf(h) > ours.OreQuantity)} brought more " +
+                $"(the doubling chance {R(ours.Doubling)}, the more-ore chance {R(more)}), {plainBreaks.Count(h => OreOf(h) < ours.OreQuantity)} less; " +
+                $"ours {R(ours.OrePerBreak)} a break; measured {R(hits.Sum(OreOf) / Math.Max(1, seconds) * 3600)} an hour, ours {(ours.OrePerHour is { } o ? R(o) : "-")}");
         }
 
         // Every other item, a hit at a time, against ours.
@@ -314,18 +461,19 @@ public partial class MiningRatesMod
         {
             int total = group.Sum(x => x.Quantity), onBreaks = group.Where(x => x.Hit.Breaks).Sum(x => x.Quantity);
             RockRates.Drop? counted = ours.PerHit.FirstOrDefault(d => ReferenceEquals(d.Item, group.Key));
-            DevLog($"watch | item {group.Key.Id} | {total} in {n} hits ({R((double)total / n)} a hit), {onBreaks} of them on a break; ours " +
+            DevLog($"watch | {rock} | item {group.Key.Id} | {total} in {n} hits ({R((double)total / n)} a hit), {onBreaks} of them on a break; ours " +
                 (counted != null ? $"{R(counted.Chance * counted.Each)} a hit" : ours.NotCountedItems.Any(s => ReferenceEquals(s.Item, group.Key)) ? "not counted (its hit or break not known)" : "NONE: NOT IN OUR LIST"));
         }
         foreach (RockRates.Drop drop in ours.PerHit.Where(d => !hits.Any(h => h.Items.Any(i => ReferenceEquals(i.Item, d.Item)))))
-            DevLog($"watch | item {drop.Item.Id} | none in {n} hits; ours {R(drop.Chance * drop.Each)} a hit");
+            DevLog($"watch | {rock} | item {drop.Item.Id} | none in {n} hits; ours {R(drop.Chance * drop.Each)} a hit");
 
-        // Shatter: what a shattered hit brought.
+        // Shatter: what a shattered hit brought, against the game's own multipliers.
         var shattered = hits.Where(h => h.Shattered).ToList();
         Say("shatter", shattered.Count == 0 ? "NO SHATTER SEEN" : shattered.All(h => h.Breaks) ? "SHATTER SEEN ON A BREAK" : "SHATTER SEEN ON A HIT THAT DID NOT BREAK",
             shattered.Count == 0 ? $"the shatter chance {R(ours.Rock.Stats.ShatterChance?.Total.Value ?? 0)}"
                 : $"{shattered.Count} shattered: [{string.Join("; ", shattered.Select(h => $"XP +{R(h.Xp)}, items {string.Join(" ", h.Items.Select(i => $"{i.Item.Id} x{i.Quantity}"))}"))}]; " +
-                  $"the game's multipliers: ore x{MiningActionComponent.ShatterProductMultiplier}, XP x{R(MiningActionComponent.ShatterExperienceMultiplier)}");
+                  $"the game's multipliers: ore x{MiningActionComponent.ShatterProductMultiplier}, XP x{R(MiningActionComponent.ShatterExperienceMultiplier)}; " +
+                  $"ours a hit {R(ours.XpEach)} XP, a break {ours.OreQuantity} ore");
         return verdicts;
     }
 
