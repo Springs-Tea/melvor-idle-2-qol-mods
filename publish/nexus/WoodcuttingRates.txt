@@ -14,41 +14,40 @@ PICTURES
 none yet
 
 SUMMARY (the short line under the name, at most 350 characters)
-Which tree gives the most XP? On the Woodcutting page, a round button opens a window with one line per tree: Woodcutting XP per hour, the best in gold, sortable, and in each line's tooltip the time of a hit, the tree's hit points and every item a hit or a cut can bring with its chance. A click shows the tree on the page.
+Which tree gives the most XP? On the Woodcutting page, a round button opens a window with one line per tree: Woodcutting XP per hour, the best in gold, sortable, and in each line's tooltip the time of a hit, the tree's hit points and every item a hit or a cut can bring with its chance. A click shows the tree's card on the page.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Woodcutting Rates[/b][/size]
-Every tree has its own time per hit, its own hit points, its own XP and its own logs, and some give other items on the side. To compare them you would open the trees one by one and work out the hour in your head. This window puts them side by side, with what an hour at each tree gives your character.
+Every tree has its own time per hit, its own hit points, its own XP and its own logs, and some give other items on the side. A tree takes several hits to cut, so the time a card shows is not the time of a log. To compare the trees you would open them one by one and work out the hour in your head. This window puts them side by side, with what an hour at each tree gives your character.
 
 [size=4][b]Where it is[/b][/size]
 On the Woodcutting page, a round button with the Woodcutting icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Woodcutting.
 
 [size=4][b]What the window shows[/b][/size]
-One line per tree the Woodcutting page shows you, starting with the tree's picture and its category, and per hour:
+One line per tree the Woodcutting page shows you, starting with the tree's picture and its category, and:
 [list]
-[*][b]Time[/b]: how long one log takes, every hit of a cut counted in.
-[*][b]Logs[/b]: logs per hour.
-[*][b]XP[/b]: Woodcutting XP.
-[*][b]Gold[/b]: what the logs and items of an hour sell for.
+[*][b]Time[/b]: how long one log takes.
+[*][b]Logs[/b]: the tree's logs per hour.
+[*][b]XP[/b]: Woodcutting XP per hour.
+[*][b]Gold[/b]: what the logs and the other items of an hour sell for.
 [/list]
-Time, Logs and Gold show - for now: a tree takes several hits to cut, and the game gives no number for the damage of a hit, so the window does not count the hits a cut takes, and does not guess them.
-The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best trees on top. The tree being cut has a lit outline. A tree you cannot cut yet is greyed, with the level it needs.
-Click a line to show that tree on the Woodcutting page: the page shows the tree's category if its card is hidden, and scrolls until the card is in sight. Nothing is started or stopped, and the window stays open.
+Time, Logs and Gold show -: the window does not know how much a hit takes from a tree, or what its logs come with, so it does not count the hits a cut takes, and does not guess them. A note under the list says so.
+The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best trees on top. The tree you are cutting has a lit outline. A tree you cannot cut yet is greyed, with the level it needs. A tree you hid on the Woodcutting page is listed only while the page lists hidden trees too.
+Click a line to see that tree on the Woodcutting page: the page's category filter goes to the tree's category when it is on another one, and its list of trees scrolls until the tree's whole card is in sight beside the window. When the page has no room for that, the line's tooltip says so: drag the window aside. Nothing is started or stopped, and the window stays open.
 
 [size=4][b]In the tooltip of a line[/b][/size]
 The hour at that tree as far as it is counted: the time of a hit, the XP per hour and per hit, the tree's hit points and your chances of double damage, a weak spot and an instant cut, the logs, every item a hit or a cut can bring with its chance, and the overgrowth on the tree now.
 
 [size=4][b]What is counted[/b][/size]
-The numbers start from the game's own values for each tree, the ones its tree cards show, so whatever changes those changes the window too. Every hit gives the tree's XP, a hit being what the game counts as one Woodcutting action, and chances count as their long-run average. The hits a cut takes, and with them the logs of an hour and the gold, are not counted.
+The numbers start from the game's own values for each tree, so whatever changes those changes the window too. A hit takes the tree's time of a hit, and chances count as their long-run average. These are the window's reading: every hit gives the tree's XP, from the game's words for the XP tag, "The Skill XP gained per action."; the doubling chance doubles the items, from its words, "Your chance to double the output"; the overgrowth on a tree now is in its numbers. How much a hit takes from a tree, and what the logs come with, are not counted.
 
 [size=4][b]Good to know[/b][/size]
 [list]
 [*]It is an estimate, not a promise: chances average out over many hits.
 [*]Woodcutting has no mastery XP in this game, so there is no column for it.
 [*]The overgrowth on a tree now is in its numbers; what a cut may put on later is not counted.
-[*]A tree you hid on the Woodcutting page is listed only while the page's "Show hidden" is ticked.
-[*]The window starts nothing. A click on a line only changes which category the Woodcutting page shows and scrolls its list of trees; woodcutting, the trees you hid and "Show hidden" are left as they are.
+[*]The window starts nothing. A click on a line only changes the page's category filter and where its list of trees is scrolled; woodcutting, the trees you hid and whether the page lists them are left as they are.
 [*]A tree the game has no picture for yet shows none, rather than the game's grey stand-in.
 [*]Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
 [/list]

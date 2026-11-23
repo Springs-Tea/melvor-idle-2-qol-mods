@@ -18,6 +18,7 @@ using GamesByMalcs.Melvor2.Localization;
 using GamesByMalcs.Melvor2.Modifiers;
 using GamesByMalcs.Melvor2.StatDisplays;
 using GamesByMalcs.Melvor2.Stats.Nodes;
+using GamesByMalcs.Melvor2.Tooltips;
 using GamesByMalcs.Melvor2.Utils;
 using Godot;
 using MelvorModLoader;
@@ -28,96 +29,175 @@ namespace WoodcuttingRates;
 // Development: a file "woodcutting.request" in the mod's folder runs the light check below with nobody at the keyboard,
 // one step about every half second, and writes "woodcutting.done" when it ends: "ok" or "failed at <step>: <why>", and
 // in both cases what was put back. Every step logs what it read as one-line "Dev: ..." entries in MelvorModLoader.log.
-// Made in the shape of Fishing Rates' request (mods/FishingRates/Dev.cs); the pictures are taken as Thieving Overview's
-// warning tag is (mods/ThievingOverview/Dev.cs): two drawn frames after what they show was shown, and proved from their
-// pixels. No simulation; about a minute when nobody moves the mouse.
-//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod WoodcuttingRates -Request woodcutting.request -Produces woodcutting.done ...
+// It is short (about a minute and a half when nobody moves the mouse): no simulation, a few pictures. A second request,
+// "woodcuttingwatch.request", only listens while the character cuts a tree (DevWatch.cs); one waits for the other.
+//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod WoodcuttingRates -Request woodcutting.request -Produces woodcutting.done -Out <folder>
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
-// everything back (-Text 'fail=click').
-// It only looks, points and clicks the mod's own controls: nothing is cut, no tree is selected, hidden or changed,
-// nothing is started or stopped, and the page's "Show hidden" is never touched. The one thing of the game's it changes,
-// the page's category filter and the scroll of its list of trees (a click on a line, step 7, and the page's own
-// category button it is compared with), it puts back, each only while it is still as the request left it. A click is
-// made in two steps, as Fishing Rates' request makes them (DevPress): the pointer is put on the control, and a later step
-// presses only when the game says the pointer is on that control. Nothing is pointed at or pressed while somebody is at
-// the mouse: a step waits until the real pointer has been still for 5 s, and after 90 s the request ends, which puts
-// everything back. The pictures go into the mod's folder (shot-woodcutting-*.png, crop-woodcutting-*.png).
+// everything back (-Text 'fail=click'). Built on Mining Rates' request (mods/MiningRates/Dev.cs), after its five turns
+// and three code reviews, for the Woodcutting page.
+// It only looks, points and clicks the mod's own controls and, in step 8, the Woodcutting page's own category buttons: no
+// tree is selected, cut, hidden or shown, nothing is started or stopped, and the page's box for hidden trees
+// (ShowHiddenTrees) is only read, before and after every press of a game button (SHOW HIDDEN CHANGED if it moved). In step
+// 4 the pointer only rests on a card's parts, for the game's own tooltips. The page's category filter and the scroll of
+// its list of trees change only in step 8, and are put back through the page's own buttons, never through the member
+// behind them: first by the button's signal, as a click on a line presses it, and when that did not set the filter, by
+// the pointer on that same button, as a player would; NOT AS IT WAS only after both. The page's "All" button is found by
+// the game's own word for it (WoodcuttingCategoryFilterView.s_all), never guessed, and when it is not found the request
+// does not leave the filter on a category in the first place. What is put back is the page as it was just before the
+// request's own first change to it, so a filter the player chose after the request began stays his. A click is made in
+// two steps (DevPress): the pointer is put on the control, and a later step presses only when the game says the pointer
+// is on that control; a control of the game under the mod's own window is pointed at beside it, or not at all (said at
+// once). Nothing is pointed at or pressed while somebody is at the mouse: a step waits until the real pointer has been
+// still for 5 s, and after 90 s the request ends, which puts everything back. A picture of something just shown is taken
+// two drawn frames later, and its pixels prove what it shows (DevChanged). The pictures go into the mod's folder
+// (shot-woodcutting-*.png, crop-woodcutting-*.png).
 //  1. Remembers the page on the screen, whether the window was open and folded, the round button, settings.json as it
-//     is on disk, the page's category filter, the scroll of its list of trees, its "Show hidden", and what woodcutting
-//     is doing (started, the tree being cut).
-//  2. Opens the Woodcutting page the way the sidebar does if another page is open, and reads back that it is shown;
-//     stops with one line when it cannot (then open it by hand and send the request again).
-//  3. "Dev: strip": every round button in the strip. Closes the window if it was open, pictures the screen without it
-//     (for the pixel proofs), presses the round button, opens the window up with its own button if it opened folded;
-//     the round button must be lit (crop-woodcutting-strip.png).
-//  4. "Dev: row": every line's numbers as the game gives them (raw) and as counted, as drawn (with colours), and its
-//     tooltip. "Dev: game": for every card on the page, the game's own labels (time of a hit, hit points, XP and its
-//     tooltip, the items of its two lists and which list the logs are on, its stats rows) beside ours, DIFFER on a
-//     difference. "Dev: words": the page's own words for the rules the hour rests on. "Dev: effects": every overgrowth
-//     effect on a tree, its stacks, its bonuses, and whether the tree's stat values hold it. "Dev: hidden": every tree not
-//     listed, and why. "Dev: category": the page's category buttons against the window's CategoryOpen. "Dev: page order".
-//     "Dev: lit". "Dev: cut" over every label of the window. crop-woodcutting-window.png and, when the list scrolls,
-//     crop-woodcutting-window-end.png.
-//  5. Rests the pointer on a line: "Dev: tooltip" and shot-woodcutting-tooltip.png. A tooltip that does not come up in
-//     20 s is one line, and the request goes on.
-//  6. Clicks the name "XP" over the list: "Dev: order" and crop-woodcutting-sorted.png.
-//  7. "Dev: click": clicks one line, a tree whose card is under another category if there is one, else one whose card
-//     is out of sight. Reads back the page's category filter, whether the card is in sight now, the lit line, the window,
-//     the game's events and what woodcutting is doing before and after; CUTTING STARTED, CUTTING STOPPED, THE TREE CUT
-//     CHANGED, NOT SHOWN and THE WINDOW CLOSED mark what must not happen. shot-woodcutting-clicked.png. Then puts the
-//     filter and scroll back as they were before the click, presses the page's own category button for the same
-//     category, and compares (DIFFER); then puts the filter and scroll back, each only if still as the request left it.
-//  8. "Dev: size": the window at its smallest and at its largest size (crop-woodcutting-smallest.png,
-//     crop-woodcutting-largest.png), LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both.
-//  9. Closes the window with its X: shot-woodcutting-closed.png.
-// 10. Puts back settings.json byte for byte from the copy taken in step 1, the window open or closed and folded as it
-//     was, the page (only when the request opened Woodcutting and it is still on the screen), and the pointer where the
-//     real one is; stops listening.
-// 11. Reads all of it back from the screen, the game and the disk, and says in the last line what was put back, with
-//     NOT AS IT WAS for anything that is not.
-// A step that fails jumps to 10: a failed request puts everything back too.
+//     is on disk, the page's category filter (the member and the page's buttons and cards as drawn), the scroll of its
+//     list of trees, the box for hidden trees, and what woodcutting is doing (IsStarted, CuttingTree).
+//  2. Opens the Woodcutting page the way the sidebar does, if another page is open, and reads back that it is shown;
+//     stops with one line when it cannot be opened that way (then open it by hand and send the request again).
+//  3. "Dev: strip": every round button in the strip. Closes the window if it was open.
+//  4. "Dev: card stats": on a card wholly in sight (never the tree being cut while woodcutting runs: its hit points move
+//     with every hit), rests the pointer on each part of the card the game shows a tooltip for, as a player reads them:
+//     its list of bonuses (the stats icon: double damage, weak spot, instant cut, doubling, ... as the game fills them in
+//     for that tree), its hit points, and its XP tag, each on the control the game's tooltip shows for (Tooltip.Targets,
+//     Labelling), until the game shows it filled, and logs it word for word, with every number in it named against the
+//     tree's numbers and the game's two numbers of a weak spot. shot-woodcutting-stats-tooltip.png, proved over the
+//     tooltip's words where they are drawn. A tooltip that is not shown in 20 s is one line, and the request goes on.
+//     These are the words the rules of the hour (TreeRates.LogsRule, HitsRule) are to be settled by.
+//  5. A picture of the screen without the window, for the proofs; presses the round button, and opens the window up
+//     with its own button if it opened folded; the round button must be lit.
+//  6. "Dev: row": every line's numbers as the game gives them (raw) and as counted, the hits a cut takes by each reading
+//     of the rule (TreeRates.ExpectedHits), as drawn (with colours), and its tooltip. "Dev: game": for every card on the
+//     page, the game's own labels (interval, hit points, XP and its tooltip, the items and XP of its two lists with the
+//     words over each and the tree's stats each is bound to, its picture, its overgrowth, its list of bonuses where it is
+//     filled) beside ours, DIFFER on a difference, the page's own order of cards against ours, and the big panel's.
+//     "Dev: words": the page's own words for the rules the hour rests on (the constants read by reflection, the member
+//     named when one is not there), and the filter's words and buttons. "Dev: effects": every overgrowth effect on a tree,
+//     and whether the tree's stats hold it. "Dev: hidden": every tree not listed, and why. "Dev: lit". "Dev: tips": the
+//     longest line of every tip against Fishing Rates' longest. "Dev: cut" over every label of the picture.
+//     crop-woodcutting-window.png and, when the list scrolls, crop-woodcutting-window-end.png. "Dev: room": the
+//     window's place as drawn, the page's list, and every line's card against them (Native.Place): in sight clear of the
+//     window, a scroll that shows it clear, or no room beside the window; MISMATCH when the line is clickable otherwise
+//     than that says, NOT SAID when a line without room does not say so in its tooltip.
+//  7. Rests the pointer on a line, one whose card has no room beside the window when there is one (its tooltip says
+//     so), then on the name of the column with the longest tip: shot-woodcutting-tooltip.png,
+//     shot-woodcutting-header-tooltip.png and "Dev: tooltip". A tooltip that does not come up in 20 s is one line, and the
+//     request goes on. Then clicks "XP": "Dev: order" and crop-woodcutting-sorted.png.
+//  8. "Dev: click": on a page whose filter is on all categories, first presses the page's own button of one category
+//     with the pointer, as a player would, so that a card can be under another category (only when the page's "All"
+//     button is found, to put it back). Then clicks a line, first one whose card the page shows and a scroll brings
+//     clear of the mod's window, else one whose card is under another category, and reads back the page's category
+//     filter, how the card stands against the window (the card, its list and the window as drawn), the lit line, the
+//     window and what woodcutting is doing (shot-woodcutting-clicked.png, the card proved over its part beside the
+//     window). CUTTING STARTED, CUTTING STOPPED, THE TREE CUT CHANGED, NOT SHOWN (the card is not clear of the window,
+//     and the filter did not change or the line's tooltip does not say there is no room), THE WINDOW CLOSED and SHOW
+//     HIDDEN CHANGED mark what must not happen; NOT CLEAR OF THE WINDOW is a card of another category the page has no
+//     room for beside the window, which the line's tooltip then says. Puts the filter back (by hand if its signal did
+//     not), and the scroll two drawn frames later, presses the page's own category button for the same category with
+//     the pointer as a player would, and compares (DIFFER); then puts the filter and the scroll back again, each only if
+//     it is still as the request left it. Until each of these presses is made, the page as it is then is what it puts
+//     back; a press whose page the player changed while it waited for his hand, after a press of the request's, is not
+//     made (NOT MADE), so what he chose stays.
+//  9. "Dev: size": the window at its smallest and at its largest size (crop-woodcutting-smallest.png,
+//     crop-woodcutting-largest.png), LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both. Closes
+//     the window with its X: shot-woodcutting-closed.png.
+// 10. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
+//     closed and folded as it was, the page's category filter (by hand if its signal did not) and its scroll two drawn
+//     frames later, each only if it is still as the request left it (otherwise the player changed it, and it is left as
+//     he did); reads the Woodcutting page's filter and scroll back while it is still on the screen; then the page that
+//     was on the screen, only if the request opened Woodcutting itself, and the pointer where the real one is.
+// 11. Reads the rest back from the screen, the game and the disk, what woodcutting is doing too, and says in its last line
+//     what was put back, with NOT AS IT WAS for anything that is not, and for any put-back on the way that was not, and
+//     NOT READ BACK for what could not be read (the done line then ends NOT ALL AS IT WAS, NOT ALL READ BACK).
+// A step that fails jumps to 10: a failed request puts everything back too. If the mod stops while a request runs, the
+// done file says so, and settings.json is written back from the copy (DevStopped).
 public partial class WoodcuttingRatesMod
 {
     const string RequestFile = "woodcutting.request", DoneFile = "woodcutting.done";
-    // Fishing Rates' (CombatGoals/DevWindowShots.cs): how long the real pointer must be still before a step points or
-    // presses, and how long a step waits for that before the request ends.
+    // CombatGoals/DevWindowShots.cs, Fishing Rates and Mining Rates: how long the real pointer must be still before a step
+    // points or presses, and how long a step waits for that before the request ends.
     const ulong StillFor = 5000, GiveUpAfter = 90000, StepTime = 6000, PointerStepTime = GiveUpAfter + 10000;
+    // How long the pointer rests on one part of a card for the game's tooltip before that tooltip is given up.
+    const ulong TipWait = 20000;
+
+    // Fishing Rates' longest tip of a column's name, line by line, and the longest line of its tooltips, in characters
+    // (its Gold tip and its bait line, counted): Godot's tooltip does not wrap, so a longer line is a wider tooltip.
+    const int FishingTipMost = 82, FishingTooltipMost = 94;
 
     readonly List<(string Name, Func<bool> Run, ulong Timeout)> _devSteps = new();
     int _devAt, _devPutBackAt;
     ulong _devStarted;
+    long _devFrameMark;
     string? _devFailure, _devFailOnPurpose, _devPutBackWords;
-    bool _devPutBackOk, _devOpenedPage;
-    DevBefore? _devBefore;
-    DevPageEvents? _devEvents;
-    // The screen without the window, and the picture before the one being taken: what the pixel proofs compare with.
-    DevPicture? _devBase, _devLast;
-    // The frame something was last shown in; a picture of it waits until two more have been drawn.
-    long _devShownAt;
-    // The page's category filter and the scroll of its list as the request left them, to put back only what is still so.
-    (bool Set, WoodcuttingRecipeCategory? Category, int Scroll) _devLeft;
-
-    // What the request found, to be put back as it was (the page, the window, settings.json), or only read back (what
-    // woodcutting is doing and the page's "Show hidden", which the request never changes).
-    sealed record DevBefore(GamePage? Page, bool Wanted, bool Shown, bool? Folded, bool? Lit, string? Settings,
-        bool ShowHidden, bool Cutting, WoodcuttingTree? Tree);
+    bool _devPutBackOk, _devPutBackRead, _devOpenedPage;
+    // Put-backs on the way whose line says NOT AS IT WAS or SHOW HIDDEN CHANGED, and presses not made: the done line
+    // carries them, not only the log (Mining Rates' code review of turn 3, fault 7).
+    readonly List<string> _devOnTheWay = new();
+    // The screen without the window, before it was opened: what the pictures of the window are proved against.
+    Image? _devWithout;
+    // settings.json as the request found it on disk (null: not there), for DevStopped too.
+    string? _devSettingsCopy;
+    bool _devSettingsRead;
+    // What the request itself left on the page last, so that a put-back changes only that (null: nothing yet); and the
+    // scroll to put back two drawn frames after the filter (DevFilterBack, DevScrollBack).
+    (WoodcuttingRecipeCategory? Filter, int? Scroll)? _devLeft;
+    int? _devScrollBack;
+    // The Woodcutting page just before the request's own press that changed its filter or scroll, while nothing of the
+    // request's was left on it: what every put-back goes back to (null: the request has changed neither). The page at
+    // the start of the request may differ, if the player changed it in the first steps: that change is his, and stays.
+    // _devOriginWait is the page as it is on every tick until such a press is made (Mining Rates' code review of turn 3,
+    // fault 6).
+    DevPageWas? _devOrigin, _devOriginWait;
+    // A put-back whose signal press did not set the filter: the same button, to be pressed with the pointer as a player
+    // would, before the filter is said NOT AS IT WAS (Mining Rates' code review of turn 2, fault 1).
+    (Button Button, WoodcuttingRecipeCategory? Filter)? _devHandBack;
+    // A press that can change the page's filter or scroll was made, and what it left is not read yet: a request that ends
+    // before it is takes what the page shows then as what the request left (the put-back).
+    bool _devInFlight;
+    // The page's box for hidden trees just before the last press of a game button (DevHiddenMoved).
+    bool _devHiddenBefore;
 
     void DevReset()
     {
         // Another character while a request runs: its listening is let go, and the request says it stopped.
         if (_devSteps.Count > 0)
         {
-            DevUnlisten();
+            DevUnwatchAll();
             DevEnd("stopped: another character was opened, nothing more was put back");
         }
-        if (_devHits != null) DevWatchEnd("stopped: another character was opened", summary: false);
+        if (_devHits != null) DevWatchEnd("stopped: another character was opened", summarise: false);
         _devSteps.Clear();
         _devAt = 0;
+    }
+
+    // The mod stops (Stop) while a request runs: the done file says so, so that the check does not wait its whole time
+    // for it, and settings.json is written back from the copy. Nothing else is touched: the game's parts may be gone.
+    void DevStopped()
+    {
+        DevUnwatchAll();
+        if (_devHits != null) DevWatchEnd("stopped: the mod stopped", summarise: false);
+        if (_devSteps.Count == 0) return;
+        string settings = "settings.json not read";
+        if (_devSettingsRead)
+        {
+            try
+            {
+                if (_devSettingsCopy == null) File.Delete(SettingsFile);
+                else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
+                settings = "settings.json put back byte for byte";
+            }
+            catch (Exception e) { settings = "settings.json NOT AS IT WAS: " + e.Message; }
+        }
+        string step = _devAt < _devSteps.Count ? _devSteps[_devAt].Name : "the end";
+        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; the window, the page's filter and scroll and the page were not put back  NOT ALL AS IT WAS");
     }
 
     void DevRequest()
     {
         if (GameAccess.IsComputingOffline || _stopped) return;
+        // The silent watch runs on its own; a light check waits for it to end, and the other way round.
+        if (_devHits != null) { DevWatchTick(); return; }
         DevWatchHand();
         string step = "";
         try
@@ -125,7 +205,7 @@ public partial class WoodcuttingRatesMod
             if (_devSteps.Count == 0)
             {
                 string path = Path.Combine(_ctx.Directory, RequestFile);
-                if (!File.Exists(path)) return;
+                if (!File.Exists(path)) { DevWatchRequest(); return; }
                 string asked = File.ReadAllText(path);
                 File.Delete(path);
                 DevPlan(asked);
@@ -152,10 +232,13 @@ public partial class WoodcuttingRatesMod
                 _devAt = _devPutBackAt;
                 _devStarted = Time.GetTicksMsec();
                 _devHandSinceStep = false;
+                _devFrameMark = 0;
+                _devAim = null;
+                _devMisses = 0;
+                DevPointerBack();
                 return;
             }
-            _devEvents?.Dispose();
-            _devEvents = null;
+            DevUnwatchAll();
             DevEnd(_devPutBackAt == 0 ? $"failed before it began: {e.Message}"
                 : $"{_devFailure ?? "ok until the put-back"}; the put-back FAILED at {step}: {e.Message}");
         }
@@ -167,8 +250,10 @@ public partial class WoodcuttingRatesMod
         _devStarted = Time.GetTicksMsec();
         _devHandSinceStep = false;
         _devAim = null;
+        _devMisses = 0;
+        _devFrameMark = 0;
         if (_devAt < _devSteps.Count) return;
-        DevEnd($"{_devFailure ?? "ok"}; put back: {_devPutBackWords}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}");
+        DevEnd($"{_devFailure ?? "ok"}; put back: {_devPutBackWords}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
     }
 
     void DevEnd(string result)
@@ -176,78 +261,117 @@ public partial class WoodcuttingRatesMod
         DevLog("Woodcutting Rates check " + result);
         _devSteps.Clear();
         _devAt = 0;
-        _devBefore = null;
-        _devBase?.Dispose();
-        _devLast?.Dispose();
-        _devBase = _devLast = null;
+        _devWithout?.Dispose();
+        _devWithout = null;
+        _devSettingsRead = false;
+        _devSettingsCopy = null;
         File.WriteAllText(Path.Combine(_ctx.Directory, DoneFile), result);
     }
 
-    // The mod stopped while a request ran: settings.json is put back at least, and the request says what was not.
-    void DevAbandon()
+    // Two frames drawn since the step began to wait: the picture is the frame the game drew last, so a picture in the
+    // same tick as a change never holds it (Thieving Overview's Risky tag, lesson 43).
+    bool DevFramesDrawn()
     {
-        DevUnlisten();
-        if (_devHits != null) DevWatchEnd("stopped: the mod stopped (see its 'Stopped' line)");
-        if (_devSteps.Count == 0) return;
-        string settings = "settings.json left as it was";
-        if (_devBefore is { } before)
-        {
-            if (before.Settings == null) { if (File.Exists(SettingsFile)) File.Delete(SettingsFile); }
-            else ModFiles.WriteWhole(SettingsFile, before.Settings);
-            settings = "settings.json put back";
-        }
-        DevEnd($"stopped: the mod stopped (see its 'Stopped' line); {settings}; the window, the page's category and its scroll NOT put back");
-    }
-
-    // Every listener of the requests taken off the game's events: on the put-back, and when the mod stops or another
-    // character is opened (Detach).
-    void DevUnlisten()
-    {
-        _devEvents?.Dispose();
-        _devEvents = null;
-        DevWatchUnlisten();
+        long now = (long)Engine.GetFramesDrawn();
+        if (_devFrameMark == 0) { _devFrameMark = now; return false; }
+        return now >= _devFrameMark + 2;
     }
 
     string DevState() =>
         $"page shown={PageShown}, button shown={_opener?.IsVisibleInTree()}, lit={_opener?.ButtonPressed}, window open={IsOpen}, " +
-        $"folded={_window?.Minimised}, sort={_settings.Sort} {(_settings.Descending ? "descending" : "ascending")}, {DevCutting()}";
+        $"folded={_window?.Minimised}, sort={_settings.Sort} {(_settings.Descending ? "descending" : "ascending")}";
 
-    // One entry, one line: the check keeps only the log's lines that carry the mod's name, so words of the game
-    // with line breaks in them (its tooltips) are joined with " / ".
+    // One entry, one line: the check keeps only the log's lines that carry the mod's name, so words of the game with
+    // line breaks in them (its tooltips) are joined with " / ".
     void DevLog(string text) => _ctx.Log("Dev: " + One(text));
 
     static string One(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", " / ");
+
+    static string DevJoin(params string[] parts) => string.Join(", ", parts.Where(p => p.Length > 0));
+
+    // What the request found, to be put back as it was. Look: the page's filter as the page draws it (DevFilterLook).
+    sealed record DevBefore(GamePage? Page, bool Wanted, bool Shown, bool? Folded, bool? Lit, string? Settings,
+        WoodcuttingRecipeCategory? Filter, int? Scroll, string? Look);
+
+    // The Woodcutting page's filter, scroll and filter as drawn at one moment (_devOrigin).
+    sealed record DevPageWas(WoodcuttingRecipeCategory? Filter, int? Scroll, string? Look);
+
+    DevPageWas DevPageNow() => new(_woodcutting!.Action.SelectedCategory, DevScrollNow(), DevFilterLook());
+
+    // A press the request makes on the Woodcutting page (a category button, a line), on every tick until it is made.
+    // While nothing of the request's is left on the page, the page as it is on that tick is taken as what the put-backs go
+    // back to, so a filter or scroll the player chose while the press waited for his hand stays his (Mining Rates' code
+    // review of turn 3, fault 6). While something of the request's is left on it (_devLeft) and the player changed the
+    // page since, the press is not made: null, with one line, and the done line says so. True once it was made.
+    bool? DevPagePress(Func<bool> press, DevBefore before, string what)
+    {
+        var action = _woodcutting!.Action;
+        if (_devLeft is { } left)
+        {
+            int? scroll = DevScrollNow();
+            if (!ReferenceEquals(action.SelectedCategory, left.Filter) || scroll != left.Scroll)
+            {
+                string words = $"{what} NOT MADE: the page's filter {action.SelectedCategory?.Id ?? "all"}, scrolled to {scroll?.ToString() ?? "-"}, is not what " +
+                    $"the request left (the filter {left.Filter?.Id ?? "all"}, scrolled to {left.Scroll?.ToString() ?? "-"}): the player changed it while the press " +
+                    "waited for the mouse, and it stays as he left it";
+                DevLog("click | " + words);
+                _devOnTheWay.Add(words);
+                return null;
+            }
+        }
+        else _devOriginWait = DevPageNow();
+        if (!press()) return false;
+        if (_devLeft == null)
+        {
+            DevPageWas was = _devOrigin ?? new DevPageWas(before.Filter, before.Scroll, before.Look);
+            _devOrigin = _devOriginWait ?? DevPageNow();
+            if (!ReferenceEquals(_devOrigin.Filter, was.Filter) || _devOrigin.Scroll != was.Scroll || _devOrigin.Look != was.Look)
+                DevLog($"click | the page just before {what}: the filter {_devOrigin.Filter?.Id ?? "all"}, drawn {_devOrigin.Look ?? "-"}, " +
+                    $"scrolled to {_devOrigin.Scroll?.ToString() ?? "-"}; not as the request found it (the filter {was.Filter?.Id ?? "all"}, drawn {was.Look ?? "-"}, " +
+                    $"scrolled to {was.Scroll?.ToString() ?? "-"}): the player changed it meanwhile, and that is what is put back");
+        }
+        _devInFlight = true;
+        return true;
+    }
 
     void DevPlan(string asked)
     {
         _devSteps.Clear();
         _devAt = _devPutBackAt = 0;
         _devFailure = _devFailOnPurpose = _devPutBackWords = null;
-        _devPutBackOk = _devOpenedPage = false;
+        _devPutBackOk = _devPutBackRead = _devOpenedPage = false;
         _devGuardSince = _devTipSince = 0;
+        _devFrameMark = 0;
         _devAim = null;
-        _devLeft = default;
-        _devBase?.Dispose();
-        _devLast?.Dispose();
-        _devBase = _devLast = null;
+        _devMisses = 0;
+        _devLeft = null;
+        _devScrollBack = null;
+        _devOrigin = _devOriginWait = null;
+        _devOnTheWay.Clear();
+        _devHandBack = null;
+        _devInFlight = false;
+        _devWithout?.Dispose();
+        _devWithout = null;
         _devStarted = Time.GetTicksMsec();
         GameView view = GameAccess.FindGameView() ?? throw new InvalidOperationException("No character is open.");
         var action = _woodcutting!.Action;
-        var before = _devBefore = new DevBefore(DevNative.CurrentPage(view)?.Item1, _wanted, _window is { IsAlive: true, Visible: true },
+        // settings.json as it is on disk, the copy everything of the window is put back from (lesson 50).
+        _devSettingsCopy = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
+        _devSettingsRead = true;
+        var before = new DevBefore(DevNative.CurrentPage(view)?.Item1, _wanted, _window is { IsAlive: true, Visible: true },
             _window is { IsAlive: true } ? _window.Minimised : null, GodotObject.IsInstanceValid(_opener) ? _opener!.ButtonPressed : null,
-            File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null, action.ShowHiddenTrees, action.IsStarted, action.CuttingTree);
+            _devSettingsCopy, action.SelectedCategory, DevScrollNow(), DevFilterLook());
         string cuttingAtStart = DevCutting();
+        bool hiddenAtStart = action.ShowHiddenTrees;
+        void Add(string name, Func<bool> run, ulong timeout = StepTime) => _devSteps.Add((name, run, timeout));
         DevLog($"before: page {before.Page?.Id ?? "none"}, window {(before.Wanted ? "open" : "closed")}{(before.Shown ? " and on the screen" : "")}" +
             $"{(before.Folded == true ? ", folded" : "")}, round button {(before.Lit is { } lit ? lit ? "lit" : "unlit" : "not made yet")}, settings.json " +
             (before.Settings == null ? "not there" : $"{before.Settings.Length} characters: {before.Settings}") +
-            $" | the page's category filter {action.SelectedCategory?.Id ?? "none"}, its list scrolled to {DevScrollNow()?.ToString() ?? "unknown (the page is not built yet)"}, " +
-            $"Show hidden {action.ShowHiddenTrees} | {cuttingAtStart} | the real pointer at {DisplayServer.MouseGetPosition()}");
+            $" | {cuttingAtStart}; the page's category filter {before.Filter?.Id ?? "all"}, drawn {before.Look ?? "not read yet"}, " +
+            $"the list of trees scrolled to {before.Scroll?.ToString() ?? "not found"}, the box for hidden trees {(hiddenAtStart ? "ticked" : "not ticked")} " +
+            $"({action.HiddenTreeCount} trees hidden by the player) | the real pointer at {DisplayServer.MouseGetPosition()}");
 
-        Button? target = null;
-        string orderBefore = "";
-        void Add(string name, Func<bool> run, ulong timeout = StepTime) => _devSteps.Add((name, run, timeout));
-
-        Add("open the page", () =>
+        Add("open the Woodcutting page", () =>
         {
             if (PageShown) return true;
             if (_devOpenedPage) return false;   // read back on the next ticks: the page is found once a second
@@ -263,18 +387,47 @@ public partial class WoodcuttingRatesMod
         Add("the round button", () =>
         {
             if (!PageShown || _opener?.IsVisibleInTree() != true) return false;
-            DevLog($"page | the page is {DevNative.CurrentPage(view)?.Item1?.Id ?? "none"}, the Woodcutting page is shown: {PageShown}, " +
-                $"{(_devOpenedPage ? "opened by the request through the sidebar" : "it was open already")}");
+            // The list of trees and the filter of a page the request had to open are read now that they are there.
+            if (before.Scroll == null) before = before with { Scroll = DevScrollNow() };
+            if (before.Look == null) before = before with { Look = DevFilterLook() };
+            DevLog($"page | the page is {DevNative.CurrentPage(view)?.Item1?.Id ?? "none"}, the Woodcutting page is shown: {PageShown}; its list of trees scrolled to " +
+                $"{before.Scroll?.ToString() ?? "not found"}; its filter drawn {before.Look ?? "NOT FOUND"}");
             DevStrip();
             if (IsOpen) Close();
-            DevShown();
             return true;
         });
+        // The game's own words on a card's parts, filled in by the game, before the window is open over the page.
+        List<DevAim>? aims = null;
+        int aimAt = 0;
+        Add("the card's stats", () =>
+        {
+            if (aims == null)
+            {
+                if (!DevFramesDrawn()) return false;
+                WoodcuttingTreeSelectView? card = DevStatsCard(out string why);
+                if (card == null) { DevLog($"card stats | no card can be pointed at ({why}): the card's tooltips are not read from the page this time"); return true; }
+                aims = DevAims(card);
+                aimAt = 0;
+                _devTipSince = 0;
+                _devFrameMark = 0;
+            }
+            while (aimAt < aims.Count)
+            {
+                if (!DevAimStep(aims[aimAt])) return false;
+                aims[aimAt].Before?.Dispose();
+                aims[aimAt].Before = null;
+                aimAt++;
+                _devTipSince = 0;
+                _devFrameMark = 0;
+            }
+            DevPointerBack();
+            return true;
+        }, GiveUpAfter + 3 * TipWait + 10000);
         Add("the screen without the window", () =>
         {
-            if (!DevDrawnTwice) return false;
-            _devBase = DevPicture.OfScreen(_ctx.Tree);
-            DevLog($"base | the screen without the window, {_devBase.Width}x{_devBase.Height}, for the pixel proofs of the pictures after it");
+            if (!DevFramesDrawn()) return false;
+            _devWithout = _ctx.Tree.Root.GetTexture().GetImage();
+            DevLog("the screen without the window is kept, to prove the pictures of the window against it");
             return true;
         });
         Add("press the round button", () => DevPress(_opener!, "the round button"), PointerStepTime);
@@ -284,260 +437,414 @@ public partial class WoodcuttingRatesMod
         {
             if (!IsOpen || _window!.Minimised || _fitPending) return false;
             if (_opener?.ButtonPressed != true) throw new InvalidOperationException("The round button is not lit while the window is open.");
-            DevShown();
             return true;
         });
         Add("numbers", () =>
         {
-            if (!DevDrawnTwice) return false;
             int rows = DevRows("open");
-            if (rows == 0) throw new InvalidOperationException("The window lists no tree in sight.");
+            if (rows == 0) throw new InvalidOperationException("The window lists no tree.");
             DevLog($"note | under the list: '{_list!.DevNote}'");
             DevGame();
             DevWords();
             DevEffects();
             DevHidden();
-            DevCategories();
-            DevPageOrder();
             DevLit();
+            DevTips("open");
             DevSize("open");
-            DevCuts("open");
+            DevRoom("open");
+            return true;
+        });
+        Add("picture of the window", () =>
+        {
+            if (!DevFramesDrawn()) return false;
+            DevCut("open");
             Shot("window", crop: true);
             ShotStrip();
             // The rest of the list, for the picture of its end.
-            var scroll = _list.DevScroll;
-            if (scroll.GetVScrollBar().MaxValue > scroll.GetVScrollBar().Page)
-            {
-                scroll.ScrollVertical = (int)scroll.GetVScrollBar().MaxValue;
-                DevShown();
-            }
+            var bar = _list!.DevScroll.GetVScrollBar();
+            if (bar.MaxValue > bar.Page) _list.DevScroll.ScrollVertical = (int)bar.MaxValue;
+            else DevLog($"the list does not scroll ({_list.DevLines().Count()} lines): no picture of its end");
             return true;
         });
         Add("the end of the list", () =>
         {
             var scroll = _list!.DevScroll;
-            if (scroll.GetVScrollBar().MaxValue <= scroll.GetVScrollBar().Page) { DevLog("the list does not scroll: every line is in crop-woodcutting-window.png"); return true; }
-            if (scroll.ScrollVertical == 0 || !DevDrawnTwice) return false;
+            var bar = scroll.GetVScrollBar();
+            if (bar.MaxValue <= bar.Page) return true;
+            if (scroll.ScrollVertical == 0 || !DevFramesDrawn()) return false;
             DevLog($"in sight at the end of the list: {DevInSight()}");
+            DevCut("the end of the list");
             Shot("window-end", crop: true);
             scroll.ScrollVertical = 0;
             return true;
         });
+        Button? target = null, header = null;
+        Image? beforeTip = null, beforeHeader = null;
         Add("point at a line", () =>
         {
             if (_list!.DevScroll.ScrollVertical != 0) return false;
             var lines = _list.DevLines().ToList();
-            target = (lines.FirstOrDefault(l => !l.Tree.Locked).Button ?? lines.FirstOrDefault().Button)
+            // A line whose card has no room beside the window first, so that the picture shows what its tooltip says then.
+            target = (lines.FirstOrDefault(l => !l.Tree.Locked && l.Tree.Sight is CardSight.UnderWindow or CardSight.NoRoom).Button ??
+                lines.FirstOrDefault(l => !l.Tree.Locked).Button ?? lines.FirstOrDefault().Button)
                 ?? throw new InvalidOperationException("No line to point at.");
+            TreeRates pointed = lines.First(l => l.Button == target).Tree;
+            DevLog($"tooltip | the line pointed at: {pointed.Tree.Recipe.Id}, {DevCardSight(Native.Card(_page!, pointed.Tree), false)}");
             _list.DevScroll.EnsureControlVisible(target);
             _devTipSince = 0;
-            DevShown();
             return true;
         });
-        bool tipBase = false;
-        Add("tooltip", () =>
+        Add("the screen before the tooltip", () =>
         {
-            if (!DevDrawnTwice) return false;
-            // The picture before the pointer rests on the line, what the tooltip's picture is compared with.
-            if (!tipBase)
-            {
-                _devLast?.Dispose();
-                _devLast = DevPicture.OfScreen(_ctx.Tree);
-                tipBase = true;
-            }
-            return DevTooltip(target!);
-        }, PointerStepTime);
+            if (!DevFramesDrawn()) return false;
+            beforeTip = _ctx.Tree.Root.GetTexture().GetImage();
+            return true;
+        });
+        Add("tooltip", () => DevTooltip(target!, beforeTip, "tooltip"), PointerStepTime);
+        // The name over a column whose tip is the longest: its tooltip is the widest of the names'.
+        Add("point at a column's name", () =>
+        {
+            header = _list!.DevHeaders.OrderByDescending(h => h.TooltipText.Split('\n').Max(l => l.Length)).First();
+            DevLog($"tooltip | the name with the longest tip: '{header.Text}'");
+            _devTipSince = 0;
+            return true;
+        });
+        Add("the screen before the name's tooltip", () =>
+        {
+            if (!DevFramesDrawn()) return false;
+            beforeHeader = _ctx.Tree.Root.GetTexture().GetImage();
+            return true;
+        });
+        Add("the name's tooltip", () => DevTooltip(header!, beforeHeader, "header-tooltip"), PointerStepTime);
+
+        // Each click is waited for as a change of the sort, whatever the sort was before it.
         (string Key, bool Descending) sortWas = default;
+        string firstBefore = "";
         Add("click XP", () =>
         {
-            if (orderBefore.Length == 0)
+            if (firstBefore.Length == 0)
             {
-                orderBefore = DevOrder("before, " + _settings.Sort + (_settings.Descending ? " descending" : " ascending"));
+                firstBefore = DevOrder("before, " + _settings.Sort + (_settings.Descending ? " descending" : " ascending"));
                 sortWas = (_settings.Sort, _settings.Descending);
             }
             return DevPress(_list!.DevHeader("xp") ?? throw new InvalidOperationException("There is no XP column."), "the name XP");
         }, PointerStepTime);
-        bool sortSeen = false;
         Add("sorted by XP", () =>
         {
-            if (!sortSeen)
-            {
-                if (_settings.Sort != "xp" || (_settings.Sort, _settings.Descending) == sortWas) return false;
-                Refresh();
-                DevShown();
-                sortSeen = true;
-                return false;
-            }
-            if (!DevDrawnTwice) return false;
+            if (_settings.Sort != "xp" || (_settings.Sort, _settings.Descending) == sortWas) return false;
+            Refresh();
             DevOrder("XP, " + (_settings.Descending ? "most first" : "least first"));
-            Shot("sorted", crop: true, sortedBy: "xp");
+            return true;
+        });
+        Add("picture sorted", () =>
+        {
+            if (!DevFramesDrawn()) return false;
+            Shot("sorted", crop: true);
             return true;
         });
 
-        // A click on a line: the page's category filter on the tree's category, or its list scrolled to the tree's card.
+        // A click on a line whose tree's card is out of sight clear of the window, or under another category, then the
+        // page's own category button for the same category, to compare. The page's filter is put back after each, and its
+        // scroll two drawn frames later.
         TreeRates? clicked = null;
-        string cuttingBefore = "", ours = "";
-        WoodcuttingRecipeCategory? categoryBefore = null, categoryOurs = null;
-        int scrollBefore = 0;
-        bool clickPressed = false, beforeClick = false;
+        DevClickEvents? events = null;
+        Image? beforeClick = null;
+        string cuttingBefore = "", ours = "", ourEvents = "", pageBack = "", handWords = "";
+        bool filterChanged = false, compareSkipped = false;
+        WoodcuttingRecipeCategory? startFrom = null, filterBeforeClick = null;
+        Button? startButton = null;
+
+        // After a put-back of the page's filter by its button's signal (DevFilterBack): when the signal did not set the
+        // filter, the same button pressed with the pointer as a player would, and read back (Mining Rates' code review
+        // of turn 2, fault 1); then the scroll, two drawn frames after the filter, and one line that says all of it.
+        void AddPageBack(string name, Func<bool> skip, string head)
+        {
+            Add($"{name}: the button by hand", () =>
+            {
+                if (skip() || _devHandBack is not { } hand) return true;
+                try
+                {
+                    if (!GodotObject.IsInstanceValid(hand.Button) || !hand.Button.IsVisibleInTree())
+                        throw new InvalidOperationException("the button is no longer on the screen");
+                    return DevGamePress(hand.Button, $"the page's own '{hand.Button.Text}' button, to put the filter back by hand");
+                }
+                catch (InvalidOperationException e)
+                {
+                    // The filter stays as the request left it, and _devLeft with it: the final put-back tries again.
+                    _devHandBack = null;
+                    handWords = $"the filter NOT AS IT WAS: the pointer could not press the page's own button either ({e.Message})";
+                    return true;
+                }
+            }, PointerStepTime);
+            Add($"{name}: read back by hand", () =>
+            {
+                if (skip() || _devHandBack is not { } hand) return true;
+                var action = _woodcutting!.Action;
+                if (!ReferenceEquals(action.SelectedCategory, hand.Filter) && Time.GetTicksMsec() - _devStarted < 3000) return false;
+                _devHandBack = null;
+                bool back = ReferenceEquals(action.SelectedCategory, hand.Filter);
+                // Back: nothing of the request's is left on the filter. Not back: the final put-back tries again.
+                if (back) _devLeft = null;
+                handWords = (back ? $"the filter put back with the pointer on the page's own '{hand.Button.Text}' button"
+                    : $"the filter NOT AS IT WAS after the signal and the pointer on the page's own '{hand.Button.Text}' button ({action.SelectedCategory?.Id ?? "all"})")
+                    + DevHiddenMoved("the put-back's press of the page's own button");
+                return true;
+            });
+            Add($"{name}: the scroll", () =>
+            {
+                if (skip()) return true;
+                if (_devScrollBack != null && !DevFramesDrawn()) return false;
+                string said = DevJoin(pageBack, handWords, DevScrollBack());
+                DevLog($"{head} {said}; drawn {DevFilterLook() ?? "NOT FOUND"}");
+                // Into the done line too, even when a later put-back mends it (Mining Rates' code review of turn 3, fault 7).
+                if (said.Contains("NOT AS IT WAS") || said.Contains("SHOW HIDDEN CHANGED")) _devOnTheWay.Add($"{head} {said}");
+                handWords = "";
+                return true;
+            });
+        }
+        // The press of the page's own button of a category, on every tick until it is made (DevPagePress).
+        bool StartPress(Button button, WoodcuttingRecipeCategory category) =>
+            DevPagePress(() => DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}'), to start the click from it"),
+                before, $"the press of the page's own category button of {category.Id}") != false;
+        Add("a category to start from", () =>
+        {
+            var action = _woodcutting!.Action;
+            if (startButton != null)
+            {
+                // The filter went to a category while the press waited for the mouse: the player's, and the click starts
+                // from it (Mining Rates' code review of turn 3, fault 6).
+                if (action.SelectedCategory != null)
+                {
+                    DevLog($"click | the page's filter went to {action.SelectedCategory.Id} while its own button of {startFrom!.Id} waited for the mouse: " +
+                        "the player's, so that button is not pressed, and the click starts from his filter");
+                    startButton = null;
+                    startFrom = null;
+                    return true;
+                }
+                return StartPress(startButton, startFrom!);
+            }
+            if (action.SelectedCategory != null) { DevLog($"click | the page's filter is on {action.SelectedCategory.Id}: the click starts from it"); return true; }
+            // On all categories no card is under another category: the page's own button of a category is pressed first,
+            // as a player would, so that the click on a line of another category has a filter to change. Only when the
+            // page's "All" button is found by the game's word: it is what puts the filter back at the end.
+            if (DevAllButton(out string why) == null)
+            {
+                DevLog($"click | the page's filter is on all categories, and {why}: no category is pressed, so that the request never has to guess " +
+                    "the button that puts the filter back; the click only scrolls");
+                return true;
+            }
+            var trees = _list!.DevLines().Select(l => l.Tree).Where(t => t.Tree.Category != null).ToList();
+            int under = 0;
+            foreach (var (category, button) in Native.CategoryButtons(DevNative.Filter(_page!)) ?? new Dictionary<WoodcuttingRecipeCategory, Button>())
+            {
+                if (!GodotObject.IsInstanceValid(button) || button.Disabled || !button.IsVisibleInTree()) continue;
+                if (!trees.Any(t => !ReferenceEquals(t.Tree.Category, category))) continue;
+                // A button under the mod's own window is never pressed (the pointer would land on the window).
+                if (!DevSight(button).HasArea()) { under++; continue; }
+                startFrom = category;
+                startButton = button;
+                return StartPress(button, category);
+            }
+            DevLog(under > 0
+                ? $"click | the page's filter is on all categories, and the {under} category buttons that could start the click lie under the mod's own window: none is pressed, the click only scrolls"
+                : "click | the page's filter is on all categories and no category button can be pressed: the click only scrolls");
+            return true;
+        }, PointerStepTime);
+        Add("the category to start from", () =>
+        {
+            if (startFrom == null) return true;
+            var action = _woodcutting!.Action;
+            if (!ReferenceEquals(action.SelectedCategory, startFrom) && Time.GetTicksMsec() - _devStarted < 3000) return false;
+            // What it left is read once the page has laid its cards out for the filter, which can move its scroll: the
+            // click then tells the player's own change from it (DevPagePress).
+            if (!DevFramesDrawn()) return false;
+            _devLeft = (action.SelectedCategory, DevScrollNow());
+            _devInFlight = false;
+            DevLog($"click | after the page's own button of {startFrom.Id}: the filter {action.SelectedCategory?.Id ?? "all"}, drawn {DevFilterLook() ?? "NOT FOUND"}" +
+                (ReferenceEquals(action.SelectedCategory, startFrom) ? "" : "  NOT SET BY ITS OWN BUTTON") + DevHiddenMoved("the page's own category button") +
+                "; put back at the end");
+            Refresh();
+            return true;
+        });
         Add("a line to click", () =>
         {
-            Refresh();
-            var lines = _list!.DevLines().Select(l => l.Tree).ToList();
-            clicked = lines.FirstOrDefault(t => t.Clickable && t.Click == TreeRates.Opens.Category)
-                ?? lines.FirstOrDefault(t => t.Clickable && t.Click == TreeRates.Opens.Scroll);
-            if (clicked == null)
-            {
-                DevLog("click | no line's click changes the Woodcutting page (every card is shown and in sight, or the page shows every category): none is clicked. " +
-                    "To check a click, choose one category on the page by hand and send the request again.");
-                return true;
-            }
+            var lines = _list!.DevLines().Select(l => l.Tree).Where(t => t.Clickable).ToList();
+            // First a line whose card the page shows and a scroll brings clear of the window, what this click must do
+            // (Mining Rates' review 4); then one under another category.
+            clicked = lines.FirstOrDefault(t => t.Sight == CardSight.Scroll) ?? lines.FirstOrDefault(t => Native.Card(_page!, t.Tree) is { Visible: false }) ??
+                lines.FirstOrDefault();
+            if (clicked == null) { DevLog("click | no line shows something a click would change: none is clicked."); return true; }
             _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             cuttingBefore = DevCutting();
-            categoryBefore = _woodcutting!.Action.SelectedCategory;
-            scrollBefore = DevScrollNow() ?? 0;
-            DevLog($"click | the line of {clicked.Tree.Recipe.Id} in {clicked.Tree.Category?.Id ?? "no category"}: a click {clicked.Click} " +
-                $"(its card {DevCardState(clicked.Tree)}); before: {DevPageNow()}; {cuttingBefore}");
-            DevShown();
+            filterBeforeClick = _woodcutting!.Action.SelectedCategory;
+            DevLog($"click | the line of {clicked.Tree.Recipe.Id} ({clicked.Tree.Category?.Id ?? "no category"}{(clicked.OnPage ? ", the tree the page shows" : "")}); " +
+                $"before: {DevPageState(clicked.Tree)}; {cuttingBefore}");
             return true;
         });
-        Add("click", () =>
+        Add("the screen before the click", () =>
         {
             if (clicked == null) return true;
-            if (!DevDrawnTwice) return false;
-            // The picture before the click, what the picture after it is compared with.
-            if (!beforeClick)
-            {
-                _devLast?.Dispose();
-                _devLast = DevPicture.OfScreen(_ctx.Tree);
-                beforeClick = true;
-            }
-            _devEvents ??= new DevPageEvents(_woodcutting!.Action, DevLog);
-            clickPressed = DevClickLine(clicked);
-            return clickPressed;
+            if (!DevFramesDrawn()) return false;
+            beforeClick = _ctx.Tree.Root.GetTexture().GetImage();
+            return true;
+        });
+        Add("click the line", () =>
+        {
+            if (clicked == null) return true;
+            events ??= new DevClickEvents(_woodcutting!.Action, DevLog);
+            _devHiddenBefore = _woodcutting!.Action.ShowHiddenTrees;
+            TreeRates line = clicked;
+            bool? pressed = DevPagePress(() => DevClickLine(line), before, $"the click on the line of {line.Tree.Recipe.Id}");
+            if (pressed != null) return pressed.Value;
+            // Not made: the steps of the click and its comparison let it be.
+            events.Dispose();
+            events = null;
+            clicked = null;
+            return true;
         }, PointerStepTime);
-        Add("clicked", () =>
+        Add("the tree shown", () =>
         {
             if (clicked == null) return true;
+            // The list of trees scrolls two drawn frames after the click (ScrollToCard); the picture two frames later.
+            if (_scrollTo != null || !DevFramesDrawn()) return false;
             var action = _woodcutting!.Action;
             WoodcuttingTree tree = clicked.Tree;
-            TreeRates.Card? card = CardOf(tree, Cards());
-            bool shown = card is { Shown: true, InSight: true };
-            // The card is scrolled into sight two drawn frames after the click; the picture two more after that.
-            if ((!shown || _scrollTo != null) && Time.GetTicksMsec() - _devStarted < 3000) return false;
-            if (_devShownAt == 0 || _scrollTo != null) { DevShown(); return false; }
-            if (!DevDrawnTwice) return false;
+            _devLeft = (action.SelectedCategory, DevScrollNow());
+            _devInFlight = false;
             Refresh();
+            WoodcuttingTreeSelectView? card = Native.Card(_page!, tree);
+            CardSight? sight = card != null && card.IsVisibleInTree() ? Native.Place(card, Cover(), out _) : null;
+            // A card the page has no room for beside the window can only come after a click that changed the filter;
+            // then the line's tooltip must say so (ScrollToCard).
+            string tip = DevLineOf(clicked).TooltipText;
+            string shown = sight switch
+            {
+                CardSight.Clear => "",
+                CardSight.UnderWindow or CardSight.NoRoom when !ReferenceEquals(filterBeforeClick, action.SelectedCategory) && tip.Contains("has no room") =>
+                    "  NOT CLEAR OF THE WINDOW: the page has no room for it there, as the line's tooltip now says",
+                CardSight.UnderWindow or CardSight.NoRoom => "  NOT SHOWN: no room for it clear of the window" + (tip.Contains("has no room") ? "" : ", AND THE LINE'S TOOLTIP DOES NOT SAY SO"),
+                CardSight.Scroll => "  NOT SHOWN: a scroll would still show it clear of the window",
+                _ => "  NOT SHOWN",
+            };
             var lit = _list!.DevLines().Where(l => l.Tree.OnPage).Select(l => l.Tree.Tree.Recipe.Id).ToList();
             string cutting = DevCutting();
-            categoryOurs = action.SelectedCategory;
-            ours = DevPageNow();
-            DevLog($"click | after the click on the line of {tree.Recipe.Id}: {ours}; its card {DevCardState(tree)}; the game's events [{string.Join(", ", _devEvents?.Seen ?? [])}]; {cutting}" +
-                (shown ? "" : "  NOT SHOWN") + DevCuttingMarks(cuttingBefore, cutting) +
-                $"; the lit line{(lit.Count == 1 ? " is" : "s are")} [{string.Join(", ", lit)}], the tree being cut {action.CuttingTree?.Recipe.Id ?? "none"}" +
-                (lit.SequenceEqual(action.CuttingTree == null ? [] : [action.CuttingTree.Recipe.Id]) ? "" : "  THE LIT LINE IS NOT THE TREE BEING CUT") +
-                (IsOpen ? "" : "  THE WINDOW CLOSED"));
-            Shot("clicked", listOf: tree);
-            _devEvents?.Dispose();
-            _devEvents = null;
-            DevSetLeft();
-            // The page as it was before the click, for the page's own button to start from the same place.
-            DevLog("click | the page's filter and scroll put back for the page's own button: " + DevPutPageBack(categoryBefore, scrollBefore, "the page's own button"));
-            DevShown();
+            ours = DevFilterState(tree);
+            ourEvents = string.Join(", ", events!.Seen);
+            filterChanged = !ReferenceEquals(action.SelectedCategory, filterBeforeClick);
+            var litMeant = new List<string>();
+            if (action.CuttingTree is { } cut && _list.DevLines().Any(l => ReferenceEquals(l.Tree.Tree, cut))) litMeant.Add(cut.Recipe.Id);
+            DevLog($"click | after the click on the line of {tree.Recipe.Id}: {DevPageState(tree)}; the game's events [{ourEvents}]; {cutting}" +
+                shown + DevCuttingMarks(cuttingBefore, cutting) +
+                (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
+                (IsOpen ? "" : "  THE WINDOW CLOSED") + DevHiddenMoved("the click on the line"));
+            Shot("clicked");
+            if (card != null && beforeClick != null) DevLog("click | the card in shot-woodcutting-clicked.png: " + DevProofBeside(beforeClick, card, "the card"));
+            events.Dispose();
+            events = null;
+            pageBack = DevFilterBack();
             return true;
         });
-        Add("the page's own button", () =>
+        AddPageBack("the page back after the click", () => clicked == null, "click | the page's filter and scroll put back for the page's own button:");
+        Add("the page's category button", () =>
         {
             if (clicked == null) return true;
-            if (ReferenceEquals(categoryOurs, categoryBefore))
+            if (!filterChanged) { DevLog("click | the click left the category filter as it was: no category button to compare it with."); return true; }
+            WoodcuttingRecipeCategory category = clicked.Tree.Category!;
+            Button button = (Native.CategoryButtons(DevNative.Filter(_page!)) is { } buttons && buttons.TryGetValue(category, out Button? b) ? b : null)
+                ?? throw new InvalidOperationException($"the page has no category button for {category.Id}");
+            if (_devAim != button && !DevSight(button).HasArea())
             {
-                DevLog("click | the click changed no category (it scrolled the page's list only): the page's own category button is not pressed.");
+                compareSkipped = true;
+                DevLog($"click | the page's own category button of {category.Id} lies under the mod's own window: it is not pressed, and the click is not compared with it");
                 return true;
             }
-            if (!DevDrawnTwice) return false;
-            _devEvents = new DevPageEvents(_woodcutting!.Action, DevLog);
-            Button button = DevCategoryButton(clicked.Tree.Category) ?? throw new InvalidOperationException($"the page has no category button for {clicked.Tree.Category?.Id}");
-            string how = DevPressGameButton(button);
-            // What the put-back may change back, should a step after this one fail.
-            DevSetLeft();
-            DevLog($"click | the page's own category button '{button.Text}' of {clicked.Tree.Category?.Id} (shown={button.IsVisibleInTree()}, disabled={button.Disabled}) is pressed {how}");
-            DevShown();
+            events ??= new DevClickEvents(_woodcutting!.Action, DevLog);
+            bool? pressed = DevPagePress(() => DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}')"),
+                before, $"the press of the page's own category button of {category.Id}, to compare");
+            if (pressed != null) return pressed.Value;
+            compareSkipped = true;
+            events.Dispose();
+            events = null;
             return true;
-        });
-        Add("the page's own button compared", () =>
+        }, PointerStepTime);
+        Add("the page's button compared", () =>
         {
-            if (clicked == null || ReferenceEquals(categoryOurs, categoryBefore)) return true;
-            if (!DevDrawnTwice) return false;
+            if (clicked == null || !filterChanged || compareSkipped) return true;
+            if (!DevFramesDrawn()) return false;
             var action = _woodcutting!.Action;
-            string cutting = DevCutting();
-            DevLog($"click | after the page's own button: {DevPageNow()}; the game's events [{string.Join(", ", _devEvents?.Seen ?? [])}]; {cutting}" +
-                DevCuttingMarks(cuttingBefore, cutting) + " | " +
-                (ReferenceEquals(action.SelectedCategory, categoryOurs) ? "the page's category as after the click on the line"
-                    : $"DIFFER from the click on the line: the page's button left {action.SelectedCategory?.Id ?? "none"}, the click {categoryOurs?.Id ?? "none"}"));
-            _devEvents?.Dispose();
-            _devEvents = null;
-            DevSetLeft();
-            DevLog("click | the page's filter and scroll put back: " + DevPutPageBack(categoryBefore, scrollBefore, "the click"));
+            _devLeft = (action.SelectedCategory, DevScrollNow());
+            _devInFlight = false;
+            string game = DevFilterState(clicked.Tree), gameEvents = string.Join(", ", events!.Seen), cutting = DevCutting();
+            DevLog($"click | after the page's own category button: {game}; the game's events [{gameEvents}]; {cutting}" +
+                DevCuttingMarks(cuttingBefore, cutting) + DevHiddenMoved("the page's own category button") + " | " +
+                (game == ours ? "the filter as after the click on the line" : $"DIFFER from the click on the line ({ours})") + "; " +
+                (DevSameEvents(gameEvents, ourEvents) ? "the same events" : $"EVENTS DIFFER from the click on the line ([{ourEvents}])"));
+            events.Dispose();
+            events = null;
+            pageBack = DevFilterBack();
             return true;
         });
+        AddPageBack("the page back after its own button", () => clicked == null || !filterChanged || compareSkipped, "click | the page's filter and scroll put back:");
         Add("smallest", () =>
         {
-            if (!IsOpen) return false;
             Resize(GameWindow.MinScale);
-            DevShown();
             return true;
         });
-        Add("smallest picture", () =>
+        Add("picture smallest", () =>
         {
-            if (!IsOpen || _fitPending || !DevDrawnTwice) return false;
+            if (!IsOpen || _fitPending || !DevFramesDrawn()) return false;
             DevSize("smallest");
-            DevCuts("smallest");
+            DevCut("smallest");
             Shot("smallest", crop: true);
             Resize(GameWindow.MaxScale);
-            DevShown();
+            _devFrameMark = 0;
             return true;
         });
-        Add("largest picture", () =>
+        Add("picture largest", () =>
         {
-            if (!IsOpen || _fitPending || !DevDrawnTwice) return false;
+            if (!IsOpen || _fitPending || !DevFramesDrawn()) return false;
             DevSize("largest that fits");
-            DevCuts("largest that fits");
+            DevCut("largest that fits");
             Shot("largest", crop: true);
             return true;
         });
-        Rect2? lastFrame = null;
+        Rect2 openAt = default;
+        Image? open = null;
         Add("close with the X", () =>
         {
-            lastFrame = _window!.Root.GetGlobalRect();
-            bool pressed = DevPress(_window.Root.FindChildren("*", "Button", true, false).OfType<Button>().First(b => b.Text == "X"), "the window's X");
-            if (pressed) _devShownAt = 0;
-            return pressed;
+            if (open == null)
+            {
+                openAt = _window!.Root.GetGlobalRect();
+                open = _ctx.Tree.Root.GetTexture().GetImage();
+            }
+            return DevPress(_window!.Root.FindChildren("*", "Button", true, false).OfType<Button>().First(b => b.Text == "X"), "the window's X");
         }, PointerStepTime);
         Add("closed with the X", () =>
         {
             if (IsOpen || _window is { IsAlive: true, Visible: true }) return false;
             if (_opener?.ButtonPressed != false) throw new InvalidOperationException("The round button is still lit after the X.");
-            if (_devShownAt == 0) { DevShown(); return false; }
-            if (!DevDrawnTwice) return false;
-            Shot("closed", closedAt: lastFrame);
+            if (!DevFramesDrawn()) return false;
+            Shot("closed");
+            using var now = _ctx.Tree.Root.GetTexture().GetImage();
+            if (open != null) DevLog("shot-woodcutting-closed.png | where the window was: " + DevChanged(open, now, openAt, "the window's place", "gone from the picture", "STILL IN THE PICTURE"));
             return true;
         });
 
         _devPutBackAt = _devSteps.Count;
+        // What the read-backs say, in order: the Woodcutting page's filter and scroll are read before the page that was on
+        // the screen comes back (Mining Rates' code review of turn 2, fault 2), the rest at the end.
+        var said = new List<string>();
+        bool readOk = true, readAll = true;
+        void Say(bool same, string what, string now)
+        {
+            readOk &= same;
+            said.Add(same ? $"{what} as it was" : $"{what} NOT AS IT WAS (now {now})");
+        }
         Add("put back", () =>
         {
-            // The light check's own listeners only: a watch that runs beside it keeps its own.
-            _devEvents?.Dispose();
-            _devEvents = null;
-            // A click was made but a step failed before it was read back: what the page shows now is taken as the click's.
-            if (clickPressed && !_devLeft.Set)
-            {
-                DevSetLeft();
-                DevLog("put back | the click on a line was made, and not read back: the page's filter and scroll as they are now are taken as the click's");
-            }
-            string page = _devLeft.Set ? DevPutPageBack(categoryBefore, scrollBefore, "the request") : "the page's category and scroll were not changed by the request";
-            DevLog("put back | the page's filter and scroll: " + page);
-            if (before.Settings == null) { if (File.Exists(SettingsFile)) File.Delete(SettingsFile); }
+            events?.Dispose();
+            events = null;
+            if (before.Settings == null) File.Delete(SettingsFile);
             else ModFiles.WriteWhole(SettingsFile, before.Settings);
             _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
             _settings.Sort ??= RatesList.NameKey;
@@ -546,11 +853,52 @@ public partial class WoodcuttingRatesMod
             _list = null;
             _fitPending = false;
             _wanted = before.Wanted;
-            // The page only when the request opened Woodcutting and it is still the page on the screen: a page the player
-            // opened meanwhile is his.
-            GamePage? now = DevNative.CurrentPage(view)?.Item1;
-            if (_devOpenedPage && before.Page != null && PageShown && !ReferenceEquals(now, before.Page)) view.SetCurrentPage(before.Page);
-            else if (_devOpenedPage && !PageShown) DevLog($"put back | the page is {now?.Id ?? "none"} now, not Woodcutting: the player opened it meanwhile, so it is left");
+            if (_devInFlight)
+            {
+                // The request ended between a press and its read-back: what the page shows now is what it left.
+                _devLeft = (_woodcutting!.Action.SelectedCategory, DevScrollNow());
+                _devInFlight = false;
+                DevLog("put back | the request ended before it read back its last press: the page's filter and scroll as they are now are taken as what it left");
+            }
+            // The filter now, through the page's own buttons (by hand in the next steps if their signal did not set it);
+            // its scroll two drawn frames later. The page that was on the screen comes back only after both are read.
+            pageBack = DevFilterBack();
+            Sync();
+            SyncStripButton();
+            return true;
+        });
+        AddPageBack("put back the page's filter", () => false, "put back | the page's filter and scroll:");
+        Add("read back the Woodcutting page", () =>
+        {
+            var action = _woodcutting!.Action;
+            // What the put-backs went back to: the page just before the request's first change, else as it was at the start.
+            DevPageWas want = _devOrigin ?? new DevPageWas(before.Filter, before.Scroll, before.Look);
+            string? look = DevFilterLook();
+            int? scroll = DevScrollNow();
+            if (!PageShown)
+            {
+                // The player left the Woodcutting page while the request ran (the request opens no other page before this
+                // step): nothing could be checked, which the done line says (Mining Rates' code review of turn 3, fault 7).
+                said.Add($"the Woodcutting page's filter and scroll NOT READ BACK: the page on the screen is {DevNative.CurrentPage(view)?.Item1?.Id ?? "none"}, the player's");
+                readAll = false;
+                return true;
+            }
+            string when = _devOrigin != null && (!ReferenceEquals(_devOrigin.Filter, before.Filter) || _devOrigin.Scroll != before.Scroll || _devOrigin.Look != before.Look)
+                ? " (as the player left it before the request's first change)" : "";
+            Say(ReferenceEquals(action.SelectedCategory, want.Filter), $"the page's category filter {want.Filter?.Id ?? "all"}{when}", action.SelectedCategory?.Id ?? "all");
+            // The filter as the page draws it too, not only the member (Mining Rates' code review of turn 1, fault 2).
+            Say(look != null && look == want.Look, $"the page's filter drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
+            Say(scroll == want.Scroll, $"the page's list of trees scrolled to {want.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
+            return true;
+        });
+        Add("put back the page", () =>
+        {
+            if (before.Page != null && _devOpenedPage && !ReferenceEquals(DevNative.CurrentPage(view)?.Item1, before.Page))
+            {
+                // Only the page the request opened itself: a page the player went to meanwhile is his.
+                if (PageShown) view.SetCurrentPage(before.Page);
+                else DevLog($"put back | the page is no longer Woodcutting, which the request opened: the player went to {DevNative.CurrentPage(view)?.Item1?.Id ?? "none"}, and it is left there");
+            }
             Sync();
             SyncStripButton();
             DevPointerBack();
@@ -560,14 +908,7 @@ public partial class WoodcuttingRatesMod
         {
             // The page changes on the game's own time: read back once it has, or after a few seconds anyway.
             GamePage? page = DevNative.CurrentPage(view)?.Item1;
-            if (_devOpenedPage && before.Page != null && !ReferenceEquals(page, before.Page) && Time.GetTicksMsec() - _devStarted < 4000) return false;
-            var said = new List<string>();
-            bool ok = true;
-            void Say(bool same, string what, string now)
-            {
-                ok &= same;
-                said.Add(same ? $"{what} as it was" : $"{what} NOT AS IT WAS (now {now})");
-            }
+            if (before.Page != null && !ReferenceEquals(page, before.Page) && Time.GetTicksMsec() - _devStarted < 4000) return false;
             Say(before.Page == null || ReferenceEquals(page, before.Page), $"the page {before.Page?.Id ?? "none"}", page?.Id ?? "none");
             bool shown = _window is { IsAlive: true, Visible: true };
             Say(_wanted == before.Wanted && shown == before.Shown,
@@ -579,20 +920,18 @@ public partial class WoodcuttingRatesMod
             Say(settings == before.Settings, before.Settings == null ? "settings.json not there" : "settings.json byte for byte",
                 settings == null ? "not there" : $"{settings.Length} characters");
             var action = _woodcutting!.Action;
-            if (_devLeft.Set)
-            {
-                Say(ReferenceEquals(action.SelectedCategory, categoryBefore), $"the page's category filter {categoryBefore?.Id ?? "none"}", action.SelectedCategory?.Id ?? "none");
-                int? scroll = DevScrollNow();
-                Say(scroll == null || scroll == scrollBefore, $"the scroll of the page's list {scrollBefore}", scroll?.ToString() ?? "unknown");
-            }
-            else said.Add("the page's category filter and scroll not changed by the request");
-            Say(action.ShowHiddenTrees == before.ShowHidden, $"the page's Show hidden {before.ShowHidden}", action.ShowHiddenTrees.ToString());
+            Say(action.ShowHiddenTrees == hiddenAtStart, $"the box for hidden trees {(hiddenAtStart ? "ticked" : "not ticked")}", action.ShowHiddenTrees ? "ticked" : "not ticked");
             string cuttingNow = DevCutting();
-            Say(cuttingNow == cuttingAtStart, $"woodcutting: {cuttingAtStart}", cuttingNow);
-            Say(_devEvents == null, "the game's events no longer listened to by the light check", "still listened to");
+            Say(cuttingNow == cuttingAtStart, cuttingAtStart, cuttingNow);
             said.Add("the pointer back where the real one is");
-            _devPutBackWords = string.Join("; ", said) + $"; the order before the sort was {(orderBefore.Length > 0 ? orderBefore : "not read")}";
-            _devPutBackOk = ok;
+            // A put-back on the way that was not as it was counts, even when the last one mended it; a press not made
+            // is said, and is no fault.
+            var notOk = _devOnTheWay.Where(w => !w.Contains(" NOT MADE: ")).ToList();
+            if (notOk.Count > 0) said.Add($"on the way NOT AS IT WAS: {string.Join(" | ", notOk)}");
+            if (_devOnTheWay.Count > notOk.Count) said.Add($"not made: {string.Join(" | ", _devOnTheWay.Where(w => w.Contains(" NOT MADE: ")))}");
+            _devPutBackWords = string.Join("; ", said) + $"; the order before the click on XP was {(firstBefore.Length > 0 ? firstBefore : "not read")}";
+            _devPutBackOk = readOk && notOk.Count == 0;
+            _devPutBackRead = readAll;
             DevLog("put back: " + _devPutBackWords);
             return true;
         });
@@ -601,6 +940,8 @@ public partial class WoodcuttingRatesMod
         {
             if (!line.StartsWith("fail=")) { DevLog($"the request's line '{line}' is not understood and left out."); continue; }
             string name = line["fail=".Length..].Trim();
+            // "fail=click" names the click on a line.
+            if (name == "click") name = "click the line";
             if (_devSteps.Take(_devPutBackAt).Any(s => s.Name == name))
             {
                 _devFailOnPurpose = name;
@@ -608,30 +949,22 @@ public partial class WoodcuttingRatesMod
             }
             else DevLog($"no step is called '{name}', so none fails on purpose. The steps: {string.Join(", ", _devSteps.Take(_devPutBackAt).Select(s => s.Name))}.");
         }
-        _devShownAt = 0;
     }
-
-    // ---- the frames drawn since something was shown (lesson 43) -----------------------------------------------------------
-
-    // A picture is the frame the game drew last: one of something just shown waits until two frames were drawn since.
-    void DevShown() => _devShownAt = Engine.GetFramesDrawn();
-
-    bool DevDrawnTwice => _devShownAt > 0 && Engine.GetFramesDrawn() >= _devShownAt + 2;
 
     Button DevFoldButton() => _window!.Root.FindChildren("*", "Button", true, false).OfType<Button>()
         .FirstOrDefault(b => b.TooltipText is "Fold down to the title" or "Open the window again")
         ?? throw new InvalidOperationException("The window has no fold button.");
 
-    // ---- the Woodcutting page: what woodcutting is doing, its filter and scroll ------------------------------------------
+    bool DevCuttingNow() => _game!.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, _woodcutting));
 
-    // What woodcutting is doing: no step of the request may change it.
+    // What woodcutting is doing: no click of the request may change it.
     string DevCutting()
     {
         var action = _woodcutting!.Action;
-        bool active = _game!.ActionManager.ActiveActions.Any(a => ReferenceEquals(a, action));
-        return $"woodcutting: started {action.IsStarted}, active {active}, the tree being cut {action.CuttingTree?.Recipe.Id ?? "none"}";
+        return $"woodcutting: started {action.IsStarted}, active {DevCuttingNow()}, the tree cut {action.CuttingTree?.Recipe.Id ?? "none"}";
     }
 
+    // What changed in what woodcutting is doing, in the words that mark what must not happen.
     static string DevCuttingMarks(string before, string after)
     {
         if (before == after) return "";
@@ -639,127 +972,202 @@ public partial class WoodcuttingRatesMod
         string marks = "";
         if (Part(before, "started") == "False" && Part(after, "started") == "True") marks += "  CUTTING STARTED";
         if (Part(before, "started") == "True" && Part(after, "started") == "False") marks += "  CUTTING STOPPED";
-        if (Part(before, "being cut") != Part(after, "being cut")) marks += "  THE TREE CUT CHANGED";
+        if (Part(before, "tree cut") != Part(after, "tree cut")) marks += "  THE TREE CUT CHANGED";
         return marks.Length > 0 ? marks : "  WOODCUTTING CHANGED";
     }
 
-    // The scroll of the page's list of trees, or null when the page has none yet.
+    // ---- a click on a line: the Woodcutting page's filter and scroll ------------------------------------------------
+
+    // Where the page's list of trees is scrolled to, or null when the list is not found.
     int? DevScrollNow()
     {
-        if (_page == null || !GodotObject.IsInstanceValid(_page)) return null;
-        try { return DevNative.CardScroll(_page) is { } scroll && GodotObject.IsInstanceValid(scroll) ? scroll.ScrollVertical : null; }
-        catch (Exception e) { DevLog("page | the page's list could not be read: " + e.Message); return null; }
+        try { return _page != null && GodotObject.IsInstanceValid(_page) && DevNative.CardScroll(_page) is { } scroll ? scroll.ScrollVertical : null; }
+        catch (Exception) { return null; }
     }
 
-    string DevPageNow()
+    // The page's filter, its buttons as they are drawn, and the tree's card.
+    string DevFilterState(WoodcuttingTree tree)
     {
         var action = _woodcutting!.Action;
-        return $"the page's category filter {action.SelectedCategory?.Id ?? "none"}, its list scrolled to {DevScrollNow()?.ToString() ?? "unknown"}";
+        WoodcuttingCategoryFilterView filter = DevNative.Filter(_page!);
+        string buttons = string.Join(", ", DevNative.CategoryRow(filter).FindChildren("*", "Button", true, false).OfType<Button>()
+            .Select(b => $"'{b.Text}'{(b.ButtonPressed ? " pressed" : "")}{(b.IsVisibleInTree() ? "" : " (hidden)")}"));
+        WoodcuttingTreeSelectView? card = Native.Card(_page!, tree);
+        int cards = Native.TreeViews(_page!)?.Values.Count(c => GodotObject.IsInstanceValid(c) && c.Visible) ?? -1;
+        return $"the filter {action.SelectedCategory?.Id ?? "all"}, its buttons [{buttons}], {cards} cards shown, the card of {tree.Recipe.Id} " +
+            (card == null ? "NOT ON THE PAGE" : card.Visible ? "shown" : "hidden");
     }
 
-    string DevCardState(WoodcuttingTree tree) => CardOf(tree, Cards()) is { } c
-        ? $"{(c.Shown ? "shown" : "not shown")}{(c.Shown ? c.InSight ? ", in sight" : ", out of sight" : "")}"
-        : "not read";
+    string DevPageState(WoodcuttingTree tree) =>
+        DevFilterState(tree) + $", {DevCardSight(Native.Card(_page!, tree), true)}, the list scrolled to {DevScrollNow()?.ToString() ?? "-"}";
 
-    // The page's filter and scroll as the request leaves them now: what the put-back may change back.
-    void DevSetLeft() => _devLeft = (true, _woodcutting!.Action.SelectedCategory, DevScrollNow() ?? 0);
-
-    // The page's filter and its list's scroll back to these, each only while it is still as the request left it: one the
-    // player changed meanwhile is his, and left.
-    string DevPutPageBack(WoodcuttingRecipeCategory? category, int scroll, string after)
+    // How a card stands against the mod's window, as a click on its line reads it (Native.Place); with places: the
+    // card's, its list's and the window's, all as drawn (Native.Drawn), the window's read from its frame (Cover).
+    string DevCardSight(WoodcuttingTreeSelectView? card, bool places)
     {
+        if (card == null) return "no card";
+        if (!card.IsVisibleInTree()) return "its card not shown";
+        CardSight sight = Native.Place(card, Cover(), out int to);
+        string said = sight switch
+        {
+            CardSight.Clear => "its card in sight, clear of the window",
+            CardSight.Scroll => $"its card not in sight clear of the window, a scroll to {to} shows it",
+            CardSight.UnderWindow => "its card not in sight clear of the window, and no scroll shows it beside the window",
+            _ => "its card not in sight, and no scroll shows it whole",
+        };
+        if (!places) return said;
+        string list = Native.ScrollOf(card) is { } scroll
+            ? $"its list at {Native.Drawn(scroll)} scrolled to {scroll.ScrollVertical} of {scroll.GetVScrollBar().MinValue:0}..{Math.Max(0, scroll.GetVScrollBar().MaxValue - scroll.GetVScrollBar().Page):0}"
+            : "no list";
+        return $"{said} (the card at {Native.Drawn(card)}, {list}, the window at {Cover()?.ToString() ?? "none, not on the screen"})";
+    }
+
+    // Every line's card against the window, and what its line says of it: a line is clickable for a card the page shows
+    // only when a scroll shows it clear (MISMATCH otherwise), and the tooltip of a line whose card has no room says so
+    // (NOT SAID otherwise). The window's place and the page's list are said once.
+    void DevRoom(string when)
+    {
+        var said = new List<string>();
+        WoodcuttingTreeSelectView? any = null;
+        foreach (var (t, button, _, _) in _list!.DevLines())
+        {
+            WoodcuttingTreeSelectView? card = Native.Card(_page!, t.Tree);
+            string sight = card is { Visible: true } ? DevCardSight(card, false) : card == null ? "no card" : "its card under another category";
+            if (card is { Visible: true }) any ??= card;
+            bool room = t.Sight is CardSight.UnderWindow or CardSight.NoRoom, tells = button.TooltipText.Contains("has no room");
+            string marks = (card is { Visible: true } && card.IsVisibleInTree() && t.Clickable != (t.Sight == CardSight.Scroll) ? "  MISMATCH: its line clickable " + t.Clickable : "") +
+                (room && !tells ? "  NOT SAID in its tooltip" : "") + (!room && tells ? "  SAID in its tooltip WITH ROOM" : "");
+            said.Add($"{t.Tree.Recipe.LocalId}: {sight}, its line clickable {t.Clickable}{marks}");
+        }
+        string places = any != null ? DevCardSight(any, true) : "no card shown";
+        DevLog($"room | {when} | the window at {Cover()?.ToString() ?? "none, not on the screen"}, from its frame {(_window is { IsAlive: true } w ? w.Root.GetGlobalRect().ToString() : "-")} " +
+            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}; the first card shown: {places}");
+        DevLog($"room | {when} | {string.Join("; ", said)}");
+    }
+
+    // The page's filter as the page draws it: the buttons of its filter shown pressed (its box for hidden trees apart)
+    // and the number of cards it shows. Null when the page's parts are not there.
+    string? DevFilterLook()
+    {
+        try
+        {
+            if (_page == null || !GodotObject.IsInstanceValid(_page)) return null;
+            WoodcuttingCategoryFilterView filter = DevNative.Filter(_page);
+            CheckBox box = DevNative.ShowHidden(filter);
+            var pressed = filter.FindChildren("*", "Button", true, false).OfType<Button>()
+                .Where(b => b != box && b.ButtonPressed).Select(b => $"'{b.Text}'");
+            int cards = Native.TreeViews(_page)?.Values.Count(c => GodotObject.IsInstanceValid(c) && c.Visible) ?? -1;
+            return $"buttons pressed [{string.Join(", ", pressed)}], {cards} cards shown";
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException) { return null; }
+    }
+
+    // The page's "All" button, found by the game's own word for it (WoodcuttingCategoryFilterView.s_all): the one button
+    // of the page's filter whose words are that word, never its box for hidden trees (ShowHiddenCheckBox) nor any other
+    // check box. Null, and why, when there is not exactly one: the request then never guesses a button (Mining Rates'
+    // code review of turn 1, fault 1).
+    Button? DevAllButton(out string why)
+    {
+        why = "";
+        WoodcuttingCategoryFilterView filter = DevNative.Filter(_page!);
+        string word;
+        try { word = DevWordsOf(DevNative.AllWords(null).Text ?? ""); }
+        catch (MissingMemberException) { why = "the game's word for its All button (s_all) could not be read"; return null; }
+        if (word.Length == 0) { why = "the game's word for its All button (s_all) is empty"; return null; }
+        CheckBox box = DevNative.ShowHidden(filter);
+        var found = filter.FindChildren("*", "Button", true, false).OfType<Button>()
+            .Where(b => b is not CheckBox && b != box && string.Equals(DevWordsOf(b.Text), word, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (found.Count == 1) return found[0];
+        why = found.Count == 0 ? $"no button of the page's filter reads the game's word '{word}'" : $"{found.Count} buttons of the page's filter read the game's word '{word}'";
+        return null;
+    }
+
+    // A game button pressed the way a click on a line presses a category's (CategoryFilter): a toggle button first goes
+    // down, which lets the others of its group go, then its pressed signal.
+    static void DevSignalPress(Button button)
+    {
+        if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+    }
+
+    // A game button pressed with the pointer (DevPress), with the page's box for hidden trees read just before it: the
+    // step after reads it again (DevHiddenMoved).
+    bool DevGamePress(Control target, string what)
+    {
+        _devHiddenBefore = _woodcutting!.Action.ShowHiddenTrees;
+        return DevPress(target, what);
+    }
+
+    // The page's box for hidden trees is the player's: after a press of a game button, against just before it.
+    string DevHiddenMoved(string what) => _woodcutting!.Action.ShowHiddenTrees == _devHiddenBefore ? ""
+        : $"  SHOW HIDDEN CHANGED by {what} (it was {(_devHiddenBefore ? "ticked" : "not ticked")})";
+
+    // The page's filter as it was just before the request's first change (_devOrigin), only if it is still as the request
+    // left it (_devLeft): otherwise the player changed it meanwhile, and it is left as he did. Through the page's own
+    // buttons: the category's, or the "All" button found by the game's word (DevAllButton); never through the member
+    // behind them (turn 1 set WoodcuttingActionComponent.SelectedCategory here), and never a guessed button: when the
+    // button is not found the filter stays as the request left it, NOT AS IT WAS. First by the button's signal, as a click
+    // on a line presses a category's; when that does not set the filter, the same button is left for the pointer
+    // (_devHandBack, pressed by the steps after: AddPageBack). The scroll is decided now (still what the request left, or
+    // moved by the player) and put back two drawn frames later (DevScrollBack), once the page has laid its cards out for
+    // the filter: a ScrollContainer cuts a value to the range it has at that moment (turn 1 set it in the same tick).
+    string DevFilterBack()
+    {
+        _devScrollBack = null;
+        _devHandBack = null;
+        if (_devLeft is not { } was || _devOrigin is not { } origin) return "nothing to put back: the request changed neither";
+        _devLeft = null;
+        if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Woodcutting page is gone: its filter and scroll NOT AS IT WAS (not put back)";
         var action = _woodcutting!.Action;
         var said = new List<string>();
-        if (!ReferenceEquals(action.SelectedCategory, _devLeft.Category)) said.Add($"the category filter is {action.SelectedCategory?.Id ?? "none"}, not as {after} left it: changed meanwhile, LEFT");
-        else if (!ReferenceEquals(action.SelectedCategory, category))
+        int? scroll = DevScrollNow();
+        if (scroll != was.Scroll && scroll != origin.Scroll)
+            said.Add($"the scroll {scroll?.ToString() ?? "-"} is not what the request left ({was.Scroll?.ToString() ?? "-"}): the player moved it, and it is left");
+        else _devScrollBack = origin.Scroll;
+        if (ReferenceEquals(action.SelectedCategory, origin.Filter)) said.Add("the filter as it was");
+        else if (!ReferenceEquals(action.SelectedCategory, was.Filter))
+            said.Add($"the filter {action.SelectedCategory?.Id ?? "all"} is not what the request left ({was.Filter?.Id ?? "all"}): the player changed it, and it is left");
+        else
         {
-            action.SelectedCategory = category;
-            said.Add($"the category filter back to {category?.Id ?? "none"}");
+            string why = "";
+            Button? button = origin.Filter == null ? DevAllButton(out why)
+                : Native.CategoryButtons(DevNative.Filter(_page)) is { } buttons && buttons.TryGetValue(origin.Filter, out Button? b) && GodotObject.IsInstanceValid(b) ? b : null;
+            if (button == null)
+                said.Add($"the filter NOT AS IT WAS: it stays on {action.SelectedCategory?.Id ?? "all"}, as the request left it, since " +
+                    (origin.Filter == null ? why : $"the page has no button of {origin.Filter.Id}") + "; it is never set behind the page's buttons");
+            else
+            {
+                bool hidden = action.ShowHiddenTrees;
+                DevSignalPress(button);
+                string moved = action.ShowHiddenTrees == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press";
+                if (ReferenceEquals(action.SelectedCategory, origin.Filter))
+                    said.Add($"the filter put back with the page's own '{button.Text}' button{moved}");
+                else
+                {
+                    // Pressed with the pointer next, as a player would; the request still owns what it left until then.
+                    _devHandBack = (button, origin.Filter);
+                    _devLeft = was;
+                    said.Add($"the signal of the page's own '{button.Text}' button left the filter on {action.SelectedCategory?.Id ?? "all"}: " +
+                        $"the button is pressed with the pointer next{moved}");
+                }
+            }
         }
-        else said.Add($"the category filter {category?.Id ?? "none"} as it was");
-        int? now = DevScrollNow();
-        if (now == null) said.Add("the list's scroll unknown");
-        else if (now != _devLeft.Scroll) said.Add($"the list's scroll is {now}, not as {after} left it ({_devLeft.Scroll}): changed meanwhile, LEFT");
-        else if (now != scroll)
-        {
-            DevNative.CardScroll(_page!).ScrollVertical = scroll;
-            said.Add($"the list's scroll back to {scroll}");
-        }
-        else said.Add($"the list's scroll {scroll} as it was");
-        _devLeft = (true, action.SelectedCategory, DevScrollNow() ?? 0);
         return string.Join(", ", said);
     }
 
-    // The page's own button for a category (WoodcuttingCategoryFilterView's buttons), or null.
-    Button? DevCategoryButton(WoodcuttingRecipeCategory? category)
+    // Two drawn frames after DevFilterBack: the scroll put back, once the page has laid its cards out for the filter.
+    string DevScrollBack()
     {
-        if (category == null || _page == null) return null;
-        var buttons = DevNative.CategoryButtons(DevNative.Filter(_page));
-        return buttons != null && buttons.TryGetValue(category, out Button? button) && GodotObject.IsInstanceValid(button) ? button : null;
-    }
-
-    // A game button pressed through the signal its own handler listens to: "pressed" when something listens to it, else
-    // "toggled" (a button of a group). Says which.
-    static string DevPressGameButton(Button button)
-    {
-        int pressed = button.GetSignalConnectionList(BaseButton.SignalName.Pressed).Count, toggled = button.GetSignalConnectionList(BaseButton.SignalName.Toggled).Count;
-        if (pressed > 0 || toggled == 0)
-        {
-            button.EmitSignal(BaseButton.SignalName.Pressed);
-            return $"through its own 'pressed' signal ({pressed} listening; 'toggled' has {toggled})";
-        }
-        button.EmitSignal(BaseButton.SignalName.Toggled, true);
-        return $"through its own 'toggled' signal ({toggled} listening; 'pressed' has none)";
-    }
-
-    // The game's events about the page and about woodcutting, listened to while a click is made. Every handler is
-    // guarded, so a fault of the request never reaches the game's tick, and the listeners are taken off on Dispose,
-    // which the put-back, Stop and Detach all call (DevUnlisten).
-    sealed class DevPageEvents : IDisposable
-    {
-        public readonly List<string> Seen = new();
-        readonly List<Action> _off = new();
-        readonly Action<string> _log;
-        bool _failed;
-
-        public DevPageEvents(WoodcuttingActionComponent action, Action<string> log)
-        {
-            _log = log;
-            EventHandler<ValueChangedEventArgs<WoodcuttingRecipeCategory>> category = (_, e) => Guard(() => Seen.Add($"the page's category {e.NewValue?.Id ?? "none"}"));
-            EventHandler<ValueChangedEventArgs<WoodcuttingTree>> tree = (_, e) => Guard(() => Seen.Add($"THE TREE CUT CHANGED to {e.NewValue?.Recipe.Id ?? "none"}"));
-            EventHandler<ValueChangedEventArgs<bool>> hidden = (_, e) => Guard(() => Seen.Add($"SHOW HIDDEN CHANGED to {e.NewValue}"));
-            EventHandler<ActionEventArgs> started = (_, _) => Guard(() => Seen.Add("CUTTING STARTED")), stopped = (_, _) => Guard(() => Seen.Add("CUTTING STOPPED"));
-            action.SelectedCategoryChanged += category;
-            action.CuttingTreeChanged += tree;
-            action.ShowHiddenTreesChanged += hidden;
-            action.Started += started;
-            action.Stopped += stopped;
-            _off.Add(() =>
-            {
-                action.SelectedCategoryChanged -= category;
-                action.CuttingTreeChanged -= tree;
-                action.ShowHiddenTreesChanged -= hidden;
-                action.Started -= started;
-                action.Stopped -= stopped;
-            });
-        }
-
-        void Guard(Action read)
-        {
-            if (_failed) return;
-            try { read(); }
-            catch (Exception e)
-            {
-                _failed = true;
-                _log($"event | reading the game's event failed, the rest are not read: {e.GetType().Name}: {e.Message}");
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (Action off in _off) off();
-            _off.Clear();
-        }
+        if (_devScrollBack is not { } back) return "";
+        _devScrollBack = null;
+        if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Woodcutting page is gone: its scroll NOT AS IT WAS (not put back)";
+        bool already = DevScrollNow() == back;
+        if (!already) DevNative.CardScroll(_page).ScrollVertical = back;
+        int? now = DevScrollNow();
+        // A filter the request still owns (its put-back by hand failed) keeps the scroll the page has now, not the one
+        // the request left before this put-back (Mining Rates' code review of turn 3, fault 7).
+        if (_devLeft is { } left) _devLeft = (left.Filter, now);
+        return already ? "the scroll as it was" : now == back ? $"the scroll put back to {back}" : $"the scroll NOT AS IT WAS (put back to {back}, it reads {now?.ToString() ?? "-"})";
     }
 
     Button DevLineOf(TreeRates tree) => _list!.DevLines().First(l => ReferenceEquals(l.Tree.Tree, tree.Tree)).Button;
@@ -769,9 +1177,72 @@ public partial class WoodcuttingRatesMod
     {
         Button line = DevLineOf(tree);
         if (!DevSight(line).HasArea()) return false;
-        bool pressed = DevPress(line, $"the line of {tree.Name}");
-        if (pressed) _devShownAt = 0;
-        return pressed;
+        return DevPress(line, $"the line of {tree.Name}");
+    }
+
+    // The same events in another order are the same.
+    static bool DevSameEvents(string a, string b) =>
+        a.Split(", ", StringSplitOptions.RemoveEmptyEntries).Order().SequenceEqual(b.Split(", ", StringSplitOptions.RemoveEmptyEntries).Order());
+
+    // The game's events about the page's filter and about woodcutting, listened to while one click is made. Each listener
+    // runs inside a try; they are taken off by Dispose, which Stop and Detach reach through DevUnwatchAll.
+    sealed class DevClickEvents : IDisposable
+    {
+        public readonly List<string> Seen = new();
+        readonly List<Action> _off = new();
+        static DevClickEvents? s_current;
+
+        public DevClickEvents(WoodcuttingActionComponent action, Action<string> log)
+        {
+            s_current?.Dispose();
+            s_current = this;
+            void Safe(Action add)
+            {
+                try { add(); }
+                catch (Exception e) { log("click events | a listener failed: " + e.Message); }
+            }
+            EventHandler<ValueChangedEventArgs<WoodcuttingRecipeCategory>> filter = (_, e) => Safe(() => Seen.Add($"the filter {e.NewValue?.Id ?? "all"}"));
+            EventHandler<ValueChangedEventArgs<WoodcuttingTree>> cut = (_, e) => Safe(() => Seen.Add($"THE TREE CUT CHANGED to {e.NewValue?.Recipe.Id ?? "none"}"));
+            EventHandler<ValueChangedEventArgs<bool>> hidden = (_, e) => Safe(() => Seen.Add($"SHOW HIDDEN CHANGED to {e.NewValue}"));
+            EventHandler<ActionEventArgs> started = (_, _) => Safe(() => Seen.Add("CUTTING STARTED")),
+                stopped = (_, _) => Safe(() => Seen.Add("CUTTING STOPPED"));
+            action.SelectedCategoryChanged += filter;
+            action.CuttingTreeChanged += cut;
+            action.ShowHiddenTreesChanged += hidden;
+            action.Started += started;
+            action.Stopped += stopped;
+            _off.Add(() =>
+            {
+                action.SelectedCategoryChanged -= filter;
+                action.CuttingTreeChanged -= cut;
+                action.ShowHiddenTreesChanged -= hidden;
+                action.Started -= started;
+                action.Stopped -= stopped;
+            });
+            foreach (WoodcuttingTree tree in action.Trees.Values)
+            {
+                EventHandler<ValueChangedEventArgs<bool>> hid = (_, e) => Safe(() => Seen.Add($"A TREE WAS {(e.NewValue ? "HIDDEN" : "SHOWN")}: {tree.Recipe.Id}"));
+                tree.IsHiddenChanged += hid;
+                _off.Add(() => tree.IsHiddenChanged -= hid);
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (Action off in _off) off();
+            _off.Clear();
+            if (s_current == this) s_current = null;
+        }
+
+        /// <summary>Takes off the listeners of a click that is still being listened to.</summary>
+        public static void DisposeCurrent() => s_current?.Dispose();
+    }
+
+    // Every listener a request hangs on the game: on Stop, on another character and at the put-back.
+    void DevUnwatchAll()
+    {
+        DevClickEvents.DisposeCurrent();
+        DevUnwatchHits();
     }
 
     // ---- what is logged ------------------------------------------------------------------------------------------
@@ -783,7 +1254,9 @@ public partial class WoodcuttingRatesMod
 
     static string DevName(Control? control) => control == null ? "nothing" : $"{control.GetType().Name} '{control.Name}'";
 
-    static string DevWords(string text) => StringUtils.StripBBCode(text).Trim();
+    static string DevWordsOf(string text) => StringUtils.StripBBCode(text).Trim();
+
+    static string DevTooltipText(TextTooltip? tooltip) => tooltip == null ? "none" : DevWordsOf(string.Join(" / ", DevNative.Content(tooltip) ?? []));
 
     void DevStrip()
     {
@@ -803,30 +1276,30 @@ public partial class WoodcuttingRatesMod
             WoodcuttingActionStats s = t.Tree.Stats;
             string rawHit = string.Join(", ", (s.OnHitItemChances?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} {R(n?.Value?.Chance ?? double.NaN)} x{n?.Value?.Quantity}"));
             string rawCut = string.Join(", ", (s.OnCutItemChances?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} {R(n?.Value?.Chance ?? double.NaN)} x{n?.Value?.Quantity}"));
-            string baseHit = string.Join(", ", t.Tree.Recipe.RandomProductsPerHit?.Select(p => $"{p.Item?.Id} {R(p.Chance)} x{p.Quantity}") ?? []);
-            string baseCut = string.Join(", ", t.Tree.Recipe.RandomProductsPerCut?.Select(p => $"{p.Item?.Id} {R(p.Chance)} x{p.Quantity}") ?? []);
-            DevLog($"row | {when} | {t.Tree.Recipe.Id} in {t.Tree.Category?.Id ?? "no category"} | locked={t.Locked}, level={t.Level}, needs '{t.Needs}', hidden by the player={t.HiddenByPlayer}, " +
-                $"being cut={t.OnPage}, a click {t.Click} (clickable {t.Clickable}) | raw: interval {R(s.Interval.Value)} ms (the recipe's {t.Tree.Recipe.BaseInterval}), " +
-                $"max health {s.MaxHealth.Value} (the recipe's {t.Tree.Recipe.BaseMaxHealth}; now {t.Tree.Health?.Current}), XP to add {R(s.Experience.XpToAdd.Value)} " +
-                $"(the recipe's {t.Tree.Recipe.BaseExperience}), product {t.Tree.Recipe.Product?.Item?.Id} x{t.Tree.Recipe.Product?.Quantity} -> quantity {s.ProductQuantity.Value}, " +
+            DevLog($"row | {when} | {t.Tree.Recipe.Id} ({t.Tree.Category?.Id}) | locked={t.Locked}, level={t.Level}, needs '{t.Needs}', on the page={t.OnPage}, " +
+                $"hidden by the player={t.Hidden}, a click shows it={t.Clickable} | raw: interval {R(s.Interval.Value)} ms (the recipe's {t.Tree.Recipe.BaseInterval}), " +
+                $"max health {s.MaxHealth.Value} (the recipe's {t.Tree.Recipe.BaseMaxHealth}; now {t.Tree.Health?.Current}), XP {R(s.Experience.XpToAdd.Value)} " +
+                $"(the recipe's {t.Tree.Recipe.BaseExperience}), product {t.Tree.Recipe.Product?.Item?.Id} x{s.ProductQuantity.Value} (base {t.Tree.Recipe.Product?.Quantity}), " +
                 $"doubling {R(s.DoublingChance?.Total.Value ?? double.NaN)}, double damage {R(s.DoubleDamageChance?.Total.Value ?? double.NaN)}, " +
                 $"weak spot {R(s.WeakSpotChance?.Total.Value ?? double.NaN)}, instant cut {R(s.InstantCutChance?.Total.Value ?? double.NaN)}, " +
-                $"on hit [{rawHit}] (the recipe's [{baseHit}]), on cut [{rawCut}] (the recipe's [{baseCut}]), " +
+                $"on hit [{rawHit}], on cut [{rawCut}], " +
                 $"overgrowth [{string.Join(", ", s.OvergrowthStats?.List?.Select(o => $"{o.Effect?.Value?.Id} chance {R(o.ApplicationChance?.Total.Value ?? double.NaN)}") ?? [])}] | " +
                 $"counted: {R(t.HitSeconds)} s a hit, {R(t.HitsPerHour)} hits/h, XP {R(t.XpEach)} a hit = {R(t.XpPerHour)}/h, hit points {t.HitPoints}, " +
                 $"chances double {R(t.DoubleDamageChance)} weak {R(t.WeakSpotChance)} instant {R(t.InstantCutChance)} doubling {R(t.Doubling)}, " +
-                $"logs {t.Log?.Id} x{t.LogQuantity} per hour {(t.LogsPerHour is { } l ? R(l) : "-")}, hits per cut {(t.HitsPerCut is { } h ? R(h) : "-")}, " +
-                $"per hit [{string.Join(", ", t.PerHit.Select(DevDrop))}], per cut [{string.Join(", ", t.PerCut.Select(DevDrop))}], gold {(t.GoldPerHour is { } g ? R(g) : "-")}/h " +
-                $"({R(t.PerHitGoldPerHour)} of it would come from the items of hits) | effects [{string.Join(", ", t.Effects.Select(e => $"{e.Name} {e.StacksLeft} left"))}] | " +
-                $"picture {DevTexture(picture)} (the recipe's media {DevTexture(t.Tree.Recipe.Media)}, icon {DevTexture(t.Tree.Recipe.Icon)})" +
-                (picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : ""));
+                $"hits a cut {(t.HitsPerCut is { } h ? R(h) : "-")} (the rule {(TreeRates.HitsRule is { } hr ? $"{hr.Reading}, {hr.Source}" : "not settled")}; by each reading [{DevReadings(t)}]), " +
+                $"logs {t.Log?.Id} x{t.LogQuantity} (what they come with {(TreeRates.LogsRule is { } lr ? $"{lr.Reading}, {lr.Source}" : "not settled")}; with every hit it would be " +
+                $"{R(t.HitsPerHour * t.LogQuantity * (1 + t.Doubling))}/h), logs/h {(t.LogsPerHour is { } l ? R(l) : "-")}, time per log {(t.SecondsPerLog is { } sl ? R(sl) : "-")}, " +
+                $"log price {(t.LogPrice is { } p ? R(p) : "-")}, gold/h {(t.GoldPerHour is { } g ? R(g) : "-")} | per hit [{string.Join(", ", t.PerHit.Select(DevDrop))}] | " +
+                $"per cut [{string.Join(", ", t.PerCut.Select(DevDrop))}] | effects [{string.Join(", ", t.Effects.Select(e => $"{e.Name} {e.StacksLeft} left"))}] | " +
+                $"picture {DevTexture(picture)}{(picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : "")}");
             DevLog($"row | {when} | drawn {drawn}");
             DevLog($"row | {when} | tooltip '{button.TooltipText}'");
         }
         var trees = ReadTrees();
         DevLog($"rows | {when} | {count} lines, {DevRowsInSight()} in sight; the game has {_woodcutting!.Action.Trees.Count} trees, {trees.Count} listed, " +
-            $"{trees.Count(t => t.Locked)} locked, {trees.Count(t => t.HiddenByPlayer)} hidden by the player (Show hidden {_woodcutting.Action.ShowHiddenTrees})" +
-            (count != trees.Count ? "  MISMATCH" : ""));
+            $"{trees.Count(t => t.Locked)} locked, {trees.Count(t => t.Hidden)} hidden by the player (the box for hidden trees {(_woodcutting.Action.ShowHiddenTrees ? "ticked" : "not ticked")}); " +
+            $"columns [{string.Join(", ", _list!.DevColumns)}]; the logs by {(TreeRates.LogsRule is { } logs ? $"{logs.Reading}, {logs.Source}" : "NO RULE")}, " +
+            $"the hits a cut takes by {(TreeRates.HitsRule is { } hits ? $"{hits.Reading}, {hits.Source}" : "NO RULE")}" + (count != trees.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
     }
 
@@ -834,170 +1307,188 @@ public partial class WoodcuttingRatesMod
         $"{d.Item.Id} chance {R(d.Chance)} x{d.Quantity} each {R(d.Each)} = {(d.PerHour is { } p ? R(p) : "-")}/h, sells {d.Item.SellsFor?.Quantity} {d.Item.SellsFor?.Currency?.Id}, " +
         $"gold {(d.GoldPerHour is { } g ? R(g) : "-")}/h";
 
-    string DevOrder(string when)
+    // The readings of how much a hit takes from a tree that the brief leaves open, with an ordinary hit of 1: a weak spot
+    // instead of the hit's damage or on top of it, its share of the hit points rounded down, to the nearest or up.
+    internal static readonly HitRule[] DevHitReadings = new[] { false, true }
+        .SelectMany(added => Enum.GetValues<Rounding>().Select(rounding => new HitRule(1, rounding, added))).ToArray();
+
+    static string DevReadingName(HitRule rule) => $"{(rule.WeakSpotAdded ? "added" : "instead")} {rule.WeakSpotRounding.ToString().ToLowerInvariant()}";
+
+    // The hits a cut takes by each reading, from the tree's own hit points and chances, and the damage of a weak spot by it.
+    static string DevReadings(TreeRates t) => string.Join(", ", DevHitReadings.Select(rule =>
+        $"{DevReadingName(rule)} {(TreeRates.ExpectedHits(rule, t) is { } hits ? R(Math.Round(hits, 4)) : "never")} (a weak spot {TreeRates.Outcomes(rule, t.HitPoints, 0, 1)[2].Damage})"));
+
+    // The longest line of every tip of the window in characters, against Fishing Rates' longest: Godot's tooltip does
+    // not wrap, so a longer line makes a wider tooltip than Fishing Rates' (Mining Rates' code review of turn 1, fault 3).
+    void DevTips(string when)
     {
-        string order = string.Join(", ", _list!.DevLines().Select(l => l.Tree.Tree.Recipe.LocalId));
-        DevLog($"order | {when} | {order}");
-        return order;
+        static string Longest(string text) => text.Split('\n').OrderByDescending(l => l.Length).First();
+        static string Over(string line, int most) => line.Length > most ? $"  LONGER THAN FISHING RATES' {most}" : "";
+        var heads = _list!.DevHeaders.Select(h => (h.Text, Line: Longest(h.TooltipText))).ToList();
+        var lines = _list.DevLines().Select(l => (l.Tree.Tree.Recipe.LocalId, Line: Longest(l.Button.TooltipText))).ToList();
+        string longest = heads.Select(h => h.Line).Concat(lines.Select(l => l.Line)).OrderByDescending(l => l.Length).First();
+        DevLog($"tips | {when} | the names' tips, the longest line of each: {string.Join(", ", heads.Select(h => $"{h.Text} {h.Line.Length}{Over(h.Line, FishingTipMost)}"))}" +
+            $" | the lines' tooltips: {string.Join(", ", lines.Select(l => $"{l.LocalId} {l.Line.Length}{Over(l.Line, FishingTooltipMost)}"))}" +
+            $" | the longest of all, {longest.Length}: '{longest}'");
     }
 
-    string DevInSight()
-    {
-        Rect2 sight = _list!.DevScroll.GetGlobalRect();
-        return string.Join(", ", _list.DevLines().Where(l => l.Button.IsVisibleInTree() && l.Button.GetGlobalRect().Intersects(sight)).Select(l => l.Tree.Tree.Recipe.LocalId));
-    }
-
-    int DevRowsInSight()
-    {
-        Rect2 sight = _list!.DevScroll.GetGlobalRect();
-        return _list.DevLines().Count(l => l.Button.IsVisibleInTree() && l.Button.GetGlobalRect().Intersects(sight));
-    }
-
-    // Pictures and words drawn inside a part of the game's screen, in order: items by their id, XP icons, labels.
-    static string DevDrawn(Node? box)
-    {
-        if (box == null || !GodotObject.IsInstanceValid(box)) return "none";
-        var found = new List<string>();
-        void Walk(Node node)
-        {
-            foreach (Node child in node.GetChildren())
-            {
-                if (child is ItemInfoIcon item) found.Add($"[item {item.Item?.Id}{(item.IsVisibleInTree() ? "" : " (hidden)")}: {DevLabels(item)}]");
-                else if (child is SkillExperienceIcon xp) found.Add($"[XP{(xp.IsVisibleInTree() ? "" : " (hidden)")}: {DevLabels(xp)}]");
-                else if (child is TextureRect picture) found.Add($"{DevTexture(picture.Texture)}{(picture.IsVisibleInTree() ? "" : " (hidden)")}");
-                else if (child is Label label) found.Add($"'{label.Text}'{(label.IsVisibleInTree() ? "" : " (hidden)")}");
-                else if (child is RichTextLabel rich) found.Add($"'{DevWords(rich.Text)}'{(rich.IsVisibleInTree() ? "" : " (hidden)")}");
-                if (child is not (ItemInfoIcon or SkillExperienceIcon)) Walk(child);
-            }
-        }
-        Walk(box);
-        return string.Join(", ", found);
-    }
-
-    static string DevLabels(Node node) => string.Join(" ", node.FindChildren("*", "Label", true, false).OfType<Label>().Where(l => l.IsVisibleInTree() && l.Text != "").Select(l => $"'{l.Text}'"));
-
-    // The game's own labels for every tree card on the page, and for its big panel, next to ours.
+    // The game's own labels for every card of the page and for its big panel, next to ours; and the page's order.
     void DevGame()
     {
-        var cards = Cards();
-        if (cards == null) { DevLog("game | the page's cards could not be read"); return; }
-        var ours = new Dictionary<WoodcuttingTree, TreeRates>(ReferenceEqualityComparer.Instance);
-        foreach (TreeRates t in ReadTrees()) ours[t.Tree] = t;
-        var types = _page!.FindChildren("*", "", true, false);
-        DevLog($"game | the page shows {types.OfType<WoodcuttingTreeSelectView>().Count()} WoodcuttingTreeSelectView cards " +
-            $"({types.OfType<WoodcuttingTreeSelectView>().Count(c => c.IsVisibleInTree())} on show) and {types.OfType<WoodcuttingTreeView>().Count()} WoodcuttingTreeView cards; " +
-            $"its own dictionary has {cards.Count} cards");
+        var action = _woodcutting!.Action;
+        var trees = new Dictionary<WoodcuttingTree, TreeRates>(ReadTrees().Select(t => KeyValuePair.Create(t.Tree, t)), ReferenceEqualityComparer.Instance);
+        var cards = Native.TreeViews(_page!) ?? throw new InvalidOperationException("The Woodcutting page has no cards.");
+        var all = _page!.FindChildren("*", "", true, false);
+        // Which of the game's two tree cards the page shows (the brief's question).
+        DevLog($"game | the page has {cards.Count} cards in its own dictionary; in its tree {all.OfType<WoodcuttingTreeSelectView>().Count()} WoodcuttingTreeSelectView " +
+            $"({all.OfType<WoodcuttingTreeSelectView>().Count(c => c.IsVisibleInTree())} shown) and {all.OfType<WoodcuttingTreeView>().Count()} WoodcuttingTreeView; " +
+            $"its category filter {action.SelectedCategory?.Id ?? "all"}");
         foreach (var (tree, card) in cards)
         {
-            try { DevCard(tree, card, ours.GetValueOrDefault(tree)); }
+            if (!GodotObject.IsInstanceValid(card)) continue;
+            try { DevCard(tree, card, trees.TryGetValue(tree, out TreeRates? listed) ? listed : TreeRates.Read(tree, _woodcutting, Shown)); }
             catch (Exception e) { DevLog($"game | card of {tree.Recipe.Id} could not be read: {e.GetType().Name}: {e.Message}"); }
         }
+        // The page's own order of cards, left to right and top to bottom, against the window's.
+        var order = DevNative.CardBox(_page!).GetChildren().OfType<WoodcuttingTreeSelectView>().Where(c => c.Visible).Select(c => DevNative.Tree(c)?.Recipe.Id ?? "?").ToList();
+        var oursOrder = ReadTrees().Where(t => Native.Card(_page!, t.Tree) is { Visible: true }).Select(t => t.Tree.Recipe.Id).ToList();
+        DevLog($"game | the page's order of the cards it shows [{string.Join(", ", order)}]; the window's order of the same [{string.Join(", ", oursOrder)}]" +
+            (order.SequenceEqual(oursOrder) ? "" : "  DIFFER"));
         try { DevBigPanel(); }
         catch (Exception e) { DevLog($"game | the big panel could not be read: {e.GetType().Name}: {e.Message}"); }
     }
 
-    void DevCard(WoodcuttingTree tree, WoodcuttingTreeSelectView card, TreeRates? ours)
+    void DevCard(WoodcuttingTree tree, WoodcuttingTreeSelectView card, TreeRates t)
     {
-        TreeRates t = ours ?? TreeRates.Read(tree, _woodcutting!, CardOf(tree, Cards()), Shown);
         IntervalDisplay interval = DevNative.Interval(card);
-        int hp = DevNative.HitPoints(card).Value;
+        Int32Label hp = DevNative.HitPoints(card);
         SkillXPPanel xp = DevNative.Xp(card);
         Int32FormattedLabel xpLabel = DevNative.XpLabel(xp);
-        int down = (int)Math.Floor(t.XpEach + 1e-9);
-        string xpSame = xpLabel.Value == down ? Math.Abs(t.XpEach - down) < 1e-9 ? "the same" : "the tag is ours rounded down" : "DIFFER";
         string xpWords = DevTooltipText(DevNative.XpTooltip(xp));
         var bound = DevNative.XpInterval(xp);
-        GrantsContainer perHit = DevNative.PerHit(card), perCut = DevNative.PerCut(card);
-        string logsOn = DevWhereIs(t.Log, perHit, perCut);
-        // The items of each list of the card, the logs left out, against ours.
-        string Items(GrantsContainer list, List<TreeRates.Drop> mine, string name)
-        {
-            var shown = (list.IconsContainer?.FindChildren("*", "", true, false).OfType<ItemInfoIcon>() ?? []).Where(i => i.Item != null && !ReferenceEquals(i.Item, t.Log))
-                .Select(i => i.Item!.Id).Distinct().Order().ToList();
-            var ours = mine.Select(d => d.Item.Id).Distinct().Order().ToList();
-            return shown.SequenceEqual(ours) ? $"the {name} items as ours" : $"the {name} items DIFFER: the card's [{string.Join(", ", shown)}], ours [{string.Join(", ", ours)}]";
-        }
-        string xpOn = DevXpIn(perHit) ? "the per-hit list" : DevXpIn(perCut) ? "the per-cut list" : "neither list";
-        DevLog($"game | card {tree.Recipe.Id} '{DevNative.Name(card).Text}' in '{DevNative.CategoryName(card).Text}' | shown={card.IsVisibleInTree()}, {DevCardState(tree)}, " +
-            $"unlocked part shown={DevNative.Unlocked(card).IsVisibleInTree()}, locked part shown={DevNative.LockedPart(card).IsVisibleInTree()} (ours locked={t.Locked}) | " +
-            $"its tree {(ReferenceEquals(DevNative.Tree(card), tree) ? "is the dictionary's" : "IS ANOTHER")} | " +
+        Texture2D? shown = DevNative.Picture(card).Texture;
+        DevLog($"game | card {tree.Recipe.Id} '{DevNative.Name(card).Text}' ('{DevNative.CategoryName(card).Text}')" +
+            $"{(ReferenceEquals(DevNative.Tree(card), tree) ? "" : "  BOUND TO ANOTHER TREE")} | shown={card.Visible}, {DevCardSight(card, false)}, " +
+            $"unlocked part shown={DevNative.Unlocked(card).IsVisibleInTree()}, locked part shown={DevNative.LockedPart(card).IsVisibleInTree()} (ours locked={t.Locked}), " +
+            $"hide button pressed={DevNative.HideButton(card).ButtonPressed} (ours hidden={t.Hidden}) | " +
             $"time: game {R(interval.Seconds)} s '{DevNative.IntervalLabel(interval).Text}', ours {R(t.HitSeconds)} s{(Math.Abs(interval.Seconds - t.HitSeconds) < 0.0005 ? "" : "  DIFFER")} | " +
-            $"hit points: game {hp} '{DevNative.HitPoints(card).Text}', ours {t.HitPoints}{(hp == t.HitPoints ? "" : "  DIFFER")} | " +
-            $"XP: game '{xpLabel.Text}' ({xpLabel.Value}), ours {R(t.XpEach)} a hit: {xpSame}; the XP tag is bound to " +
+            $"hit points: game {hp.Value} '{hp.Text}', ours {t.HitPoints}{(hp.Value == t.HitPoints ? "" : "  DIFFER")} | " +
+            $"XP: game '{xpLabel.Text}' ({xpLabel.Value}), ours {R(t.XpEach)} a hit: {DevXpSame(xpLabel.Value, t.XpEach)}; the XP tag is bound to " +
             $"{(bound == null ? "no time" : ReferenceEquals(bound, tree.Stats.Interval) ? "the tree's time of a hit (WoodcuttingActionStats.Interval)" : $"another time ({R(bound.Value)} ms)")}; " +
             $"its tooltip '{xpWords}' | {DevXpPerSecond(xpWords, t)} | " +
-            $"per hit: [{DevDrawn(perHit.IconsContainer)}] | per cut: [{DevDrawn(perCut.IconsContainer)}] | the logs ({t.Log?.Id}) are on {logsOn}, the XP on {xpOn}; " +
-            $"{Items(perHit, t.PerHit, "per-hit")}; {Items(perCut, t.PerCut, "per-cut")} | " +
-            $"its picture {DevTexture(DevNative.Picture(card).Texture)}, ours {DevTexture(t.Picture)}" +
-            (DevNative.Picture(card).Texture is { } shown && t.Picture is { } mine && !ReferenceEquals(shown, mine) && shown.ResourcePath != mine.ResourcePath ? "  MISMATCH" : "") +
+            $"per hit: {DevGrants(DevNative.PerHit(card), tree)} | per cut: {DevGrants(DevNative.PerCut(card), tree)} | " +
+            $"its picture {DevTexture(shown)}, ours {DevTexture(t.Picture)}" +
+            (t.Picture == null || ReferenceEquals(shown, t.Picture) || shown?.ResourcePath == t.Picture.ResourcePath ? "" : "  MISMATCH") +
             $" | its overgrowth [{DevEffectIcons(DevNative.Overgrowth(card))}]");
         DevStatRows($"card {tree.Recipe.Id}", DevNative.Stats(card), tree);
     }
 
-    // The big panel: the tree being cut, its time, health, XP and the two lists of what a hit and a cut bring.
+    // The big panel: the tree it shows, its time, health, XP and the two lists of what a hit and a cut bring.
     void DevBigPanel()
     {
         ActiveTreeView panel = DevNative.BigPanel(_page!);
         WoodcuttingTree? tree = DevNative.Tree(panel);
-        DevLog($"game | the big panel: no tree panel shown={DevNative.NoTree(panel).IsVisibleInTree()}, its tree {tree?.Recipe.Id ?? "none"} '{DevNative.Name(panel).Text}' " +
-            $"(the tree being cut {_woodcutting!.Action.CuttingTree?.Recipe.Id ?? "none"}) | time '{DevNative.IntervalLabel(DevNative.Interval(panel)).Text}' ({R(DevNative.Interval(panel).Seconds)} s) | " +
-            $"health '{DevNative.Health(panel).Text}' ({DevNative.Health(panel).Current} of {DevNative.Health(panel).Maximum}) | " +
-            $"XP '{DevNative.XpLabel(DevNative.Xp(panel)).Text}', its tooltip '{DevTooltipText(DevNative.XpTooltip(DevNative.Xp(panel)))}' | " +
-            $"per hit: [{DevDrawn(DevNative.PerHit(panel).IconsContainer)}], its 'nothing' label '{DevNative.PerHitNothing(panel).Text}' shown={DevNative.PerHitNothing(panel).IsVisibleInTree()} | " +
-            $"per cut: [{DevDrawn(DevNative.PerCut(panel).IconsContainer)}] | every word of the panel: {DevDrawn(panel)}");
-        if (tree != null) DevStatRows("the big panel", DevNative.Stats(panel), tree);
+        if (tree == null || !DevNative.TreeShown(panel).IsVisibleInTree())
+        {
+            DevLog($"game | the big panel shows no tree (its 'no tree' panel shown={DevNative.NoTree(panel).IsVisibleInTree()}); the tree cut {_woodcutting!.Action.CuttingTree?.Recipe.Id ?? "none"}");
+            return;
+        }
+        TreeRates big = TreeRates.Read(tree, _woodcutting!, Shown);
+        Int32OutOfLabel health = DevNative.Health(panel);
+        DevLog($"game | the big panel: {tree.Recipe.Id} '{DevNative.Name(panel).Text}' (the tree cut {_woodcutting!.Action.CuttingTree?.Recipe.Id ?? "none"}) | " +
+            $"time: game {R(DevNative.Interval(panel).Seconds)} s '{DevNative.IntervalLabel(DevNative.Interval(panel)).Text}', ours {R(big.HitSeconds)} s" +
+            $"{(Math.Abs(DevNative.Interval(panel).Seconds - big.HitSeconds) < 0.0005 ? "" : "  DIFFER")} | health '{health.Text}' ({health.Current} of {health.Maximum}, " +
+            $"the tree's {tree.Health?.Current} of {big.HitPoints}) | XP: game {DevNative.XpLabel(DevNative.Xp(panel)).Value}, ours {R(big.XpEach)}: " +
+            $"{DevXpSame(DevNative.XpLabel(DevNative.Xp(panel)).Value, big.XpEach)} | its XP tooltip '{DevTooltipText(DevNative.XpTooltip(DevNative.Xp(panel)))}' | " +
+            $"{DevXpPerSecond(DevTooltipText(DevNative.XpTooltip(DevNative.Xp(panel))), big)} | per hit: {DevGrants(DevNative.PerHit(panel), tree)}" +
+            $"{(DevNative.PerHitNothing(panel).IsVisibleInTree() ? $" '{DevNative.PerHitNothing(panel).Text}'" : "")} | per cut: {DevGrants(DevNative.PerCut(panel), tree)}");
+        DevStatRows("the big panel", DevNative.Stats(panel), tree);
     }
 
-    // Where the logs are on a card: on its per-hit list, its per-cut list, both or neither.
-    static string DevWhereIs(GamesByMalcs.Melvor2.Data.Items.Item? log, GrantsContainer perHit, GrantsContainer perCut)
+    // What a card's list shows, item by item, the words the page writes over it, and which of the tree's own stats it is
+    // bound to: the game's own word on what comes with a hit and what with a cut (Mining Rates' DevGrants). The logs are
+    // the tree's ProductQuantity.
+    static string DevGrants(GrantsContainer grants, WoodcuttingTree tree)
     {
-        if (log == null) return "no list (the tree has no product)";
-        bool In(GrantsContainer list) => list.IconsContainer?.FindChildren("*", "", true, false).OfType<ItemInfoIcon>().Any(i => ReferenceEquals(i.Item, log)) == true;
-        bool hit = In(perHit), cut = In(perCut);
-        return hit && cut ? "BOTH LISTS" : hit ? "the per-hit list (LOGS ON THE PER-HIT LIST)" : cut ? "the per-cut list (LOGS ON THE PER-CUT LIST)" : "NEITHER LIST";
+        WoodcuttingActionStats stats = tree.Stats;
+        var shown = new List<string>();
+        foreach (Node node in grants.FindChildren("*", "", true, false))
+        {
+            if (node is ItemInfoIcon icon)
+                shown.Add($"{icon.Item?.Id ?? "?"} x{R(DevNative.IconQuantity(icon))}{(DevNative.IconIsChance(icon) ? $" at {R(DevNative.IconChance(icon))}" : "")}{(icon.IsVisibleInTree() ? "" : " (hidden)")}");
+            else if (node is SkillExperienceIcon xp)
+                shown.Add($"XP '{DevWordsOf(string.Join(" ", xp.FindChildren("*", "Label", true, false).OfType<Label>().Select(l => l.Text)))}'{(xp.IsVisibleInTree() ? "" : " (hidden)")}");
+        }
+        var bound = new List<string>();
+        foreach (var key in DevNative.GrantQuantities(grants)?.Keys ?? Enumerable.Empty<ValueStatNode<int>>())
+            bound.Add(ReferenceEquals(key, stats.ProductQuantity) ? "the tree's ProductQuantity (THE LOGS)" : $"another quantity ({key.Value})");
+        foreach (var key in DevNative.GrantXp(grants)?.Keys ?? Enumerable.Empty<ExperienceStats>())
+            bound.Add(ReferenceEquals(key, stats.Experience) ? "the tree's Experience (THE XP)" : "another XP");
+        foreach (var key in DevNative.GrantChances(grants)?.Keys ?? Enumerable.Empty<ValuesStatNode<GamesByMalcs.Melvor2.Data.Items.ItemQuantityChance>>())
+            bound.Add(ReferenceEquals(key, stats.OnHitItemChances) ? $"the tree's OnHitItemChances ({key.Values.Count})"
+                : ReferenceEquals(key, stats.OnCutItemChances) ? $"the tree's OnCutItemChances ({key.Values.Count})"
+                : $"another list of chances [{string.Join(", ", key.Values.Select(v => $"{v.Value?.Item?.Id} {R(v.Value?.Chance ?? double.NaN)}"))}]");
+        // The words over the list: the labels beside it in its parent, not those of its own items.
+        var over = (grants.GetParent()?.FindChildren("*", "Label", true, false).OfType<Label>() ?? [])
+            .Where(l => !grants.IsAncestorOf(l) && l.Text.Length > 0).Select(l => $"'{l.Text}'{(l.IsVisibleInTree() ? "" : " (hidden)")}");
+        return $"[the words beside it {string.Join(" ", over)}; shows {string.Join(", ", shown)}; bound to {string.Join(", ", bound)}]";
     }
 
-    static bool DevXpIn(GrantsContainer list) => list.IconsContainer?.FindChildren("*", "", true, false).OfType<SkillExperienceIcon>().Any() == true;
+    // The game's tag is a whole number (Int32FormattedLabel), while its XP is not (ExperienceComponent.Xp is a Double).
+    static string DevXpSame(int game, double ours)
+    {
+        int down = (int)Math.Floor(ours + 1e-9);
+        return game == down ? Math.Abs(ours - down) < 1e-9 ? "the same" : "the tag is ours rounded down"
+            : game == (int)Math.Round(ours) ? "the tag is ours rounded" : "DIFFER";
+    }
 
-    static string DevTooltipText(GamesByMalcs.Melvor2.Tooltips.TextTooltip? tooltip) =>
-        tooltip == null ? "" : DevWords(string.Join(" / ", DevNative.Content(tooltip) ?? []));
-
-    // Which rule the game's own XP tooltip follows: every number in it against the XP per second over the time of a hit
-    // (ours: XP on every hit), as Fishing Rates' DevXpPerSecond reads its tag.
+    // Which rule the game's own XP tooltip follows: every number in it against the XP per second and per hour with the XP
+    // on every hit (ours). Mining Rates' check read its words: "... This equates to roughly {0:N0} XP/hr" where a time is
+    // bound to the tag.
     static string DevXpPerSecond(string tooltip, TreeRates ours)
     {
         var numbers = Regex.Matches(tooltip, @"\d[\d,]*(?:\.\d+)?").Select(m => double.Parse(m.Value.Replace(",", ""), CultureInfo.InvariantCulture)).ToList();
         if (!ours.HasTime) return $"numbers in it [{string.Join(", ", numbers.Select(R))}]";
-        double perHit = ours.XpEach / ours.HitSeconds;
-        bool Near(double value) => numbers.Any(n => Math.Abs(n - value) <= Math.Max(0.006, 0.002 * value));
-        return $"numbers in it [{string.Join(", ", numbers.Select(R))}]; XP per second with XP on every hit {R(perHit)}: " +
-            (Near(perHit) ? "IN IT, the game counts the XP on every hit" : "NOT IN IT") + $"; ours a hit {R(ours.XpEach)} is {(Near(ours.XpEach) ? "in it" : "not in it")}";
+        double perSecond = ours.XpEach / ours.HitSeconds;
+        bool Near(double value, double room) => numbers.Any(n => Math.Abs(n - value) <= room);
+        return $"numbers in it [{string.Join(", ", numbers.Select(R))}]; XP per second on every hit {R(perSecond)}: " +
+            (Near(perSecond, Math.Max(0.006, 0.002 * perSecond)) ? "IN IT" : "not in it") + $"; XP an hour on every hit {R(ours.XpPerHour)}: " +
+            (Near(ours.XpPerHour, Math.Max(1, 0.002 * ours.XpPerHour)) ? "IN IT, the game's XP of an hour is ours" : "not in it") +
+            $"; ours a hit {R(ours.XpEach)} is {(Near(ours.XpEach, 0.006) ? "in it" : "not in it")}";
     }
 
     // The rows of a list of a tree's bonuses: each stat's name and words as the page writes them, its value as written
-    // and as the game keeps it, against the tree's own stat.
+    // and as the game keeps it, against the tree's own stat; and the row's own tooltip. A card's list is filled when its
+    // tooltip is shown (step 4 shows one).
     void DevStatRows(string where, WoodcuttingActionStatsView? list, WoodcuttingTree tree)
     {
         if (list == null || !GodotObject.IsInstanceValid(list)) { DevLog($"stats | {where}: no list"); return; }
         var rows = list.FindChildren("*", "", true, false).OfType<ModifierStatLabel>().ToList();
-        if (rows.Count == 0) { DevLog($"stats | {where}: the list has no rows (it is filled when it is shown)"); return; }
+        if (rows.Count == 0) { DevLog($"stats | {where}: the list has no rows (a card's is filled when its tooltip is shown)"); return; }
+        DevLog($"stats | {where}: " + string.Join(" | ", rows.Select(r => DevRow(r, tree))));
+    }
+
+    static string DevRow(ModifierStatLabel r, WoodcuttingTree tree)
+    {
         WoodcuttingActionStats s = tree.Stats;
         var mine = new Dictionary<ModifierStatNodes, string>(ReferenceEqualityComparer.Instance);
         foreach (var (name, nodes) in new[] { ("double damage", s.DoubleDamageChance), ("weak spot", s.WeakSpotChance), ("instant cut", s.InstantCutChance), ("doubling", s.DoublingChance),
                      ("interval %", s.PercentInterval), ("interval flat", s.FlatInterval), ("max health %", s.PercentMaxHealth), ("max health flat", s.FlatMaxHealth),
                      ("product quantity", s.FlatProductQuantity), ("XP %", s.Experience.PercentXPGained), ("XP flat", s.Experience.FlatXPGained) })
             if (nodes != null) mine.TryAdd(nodes, name);
-        DevLog($"stats | {where}: " + string.Join(" | ", rows.Select(r =>
-        {
-            var nodes = DevNative.RowStat(r);
-            double shown = DevNative.RowValue(r).Value;
-            // The unit of a chance, as Fishing Rates' DevChanceSame tells it: the row's number against the game's stat.
-            string unit = nodes == null ? "" : Math.Abs(shown - nodes.Total.Value) < 1e-6 ? ", the row shows the stat as it is"
-                : Math.Abs(shown - nodes.Total.Value * 100) < 1e-4 ? ", the row shows the stat times 100 (percent)" : ", the row's number DIFFERS from the stat";
-            string of = nodes == null ? "no stat" : mine.TryGetValue(nodes, out string? n) ? $"the tree's {n} ({R(nodes.Total.Value)}){unit}" : "ANOTHER TREE'S OR NONE OF OURS";
-            return $"'{DevWords(r.StatName ?? "")}' value '{DevNative.RowValue(r).Text}' ({R(DevNative.RowValue(r).Value)}), format {r.ValueFormat}, shown={r.IsVisibleInTree()}, " +
-                $"{of}, its words '{DevWords(r.StatTooltipContent ?? "")}'";
-        })));
+        ModifierStatNodes? stat = null;
+        DoubleLabel? value = null;
+        string own = "";
+        try { stat = DevNative.RowStat(r); } catch (Exception) { }
+        try { value = DevNative.RowValue(r); } catch (Exception) { }
+        try { own = DevTooltipText(DevNative.RowTooltip(r)); } catch (Exception e) { own = $"not read ({e.GetType().Name})"; }
+        double shown = value?.Value ?? double.NaN;
+        // The unit of a chance, as Fishing Rates' DevChanceSame tells it: the row's number against the game's stat.
+        string unit = stat == null ? "" : Math.Abs(shown - stat.Total.Value) < 1e-6 ? ", the row shows the stat as it is"
+            : Math.Abs(shown - stat.Total.Value * 100) < 1e-4 ? ", the row shows the stat times 100 (percent)" : ", the row's number DIFFERS from the stat";
+        string of = stat == null ? "no stat" : mine.TryGetValue(stat, out string? n) ? $"the tree's {n} ({R(stat.Total.Value)}){unit}" : "ANOTHER TREE'S OR NONE OF OURS";
+        return $"'{DevWordsOf(r.StatName ?? "")}' value '{value?.Text}' ({R(shown)}), format {r.ValueFormat}, shown={r.IsVisibleInTree()}, {of}, " +
+            $"its words '{DevWordsOf(r.StatTooltipContent ?? "")}', its own tooltip '{own}'";
     }
 
     static string DevEffectIcons(Node? box)
@@ -1007,24 +1498,75 @@ public partial class WoodcuttingRatesMod
             $"'{DevNative.EffectName(i).Text}' stacks '{DevNative.EffectStacks(i).Text}' left '{DevNative.EffectStacksLeft(i).Text}' shown={i.IsVisibleInTree()}"));
     }
 
-    // The page's own words for the rules the hour rests on: the words it gives a tree's chances, its doubling and its XP
-    // tag, those of the game's other tree card's icons, and every list of a tree's bonuses on the page.
+    // The page's own words for the rules the hour rests on: the words it gives a tree's chances, its doubling, its
+    // interval and XP, the words of the game's other tree card's icons, the XP tag's and the item icon's chance title,
+    // and the filter's; a quote of a settled rule against them; and the filter's buttons.
     void DevWords()
     {
-        DevLog("words | the stats list's double damage " + DevNative.Said(() => DevNative.DoubleDamageTitle(null)) + ": " + DevNative.Said(() => DevNative.DoubleDamageTip(null)) +
-            " | weak spot " + DevNative.Said(() => DevNative.WeakSpotTitle(null)) + ": " + DevNative.Said(() => DevNative.WeakSpotTip(null)) +
-            " | instant cut " + DevNative.Said(() => DevNative.InstantCutTitle(null)) + ": " + DevNative.Said(() => DevNative.InstantCutTip(null)) +
-            " | doubling " + DevNative.Said(() => DevNative.DoublingTitle(null)) + ": " + DevNative.Said(() => DevNative.DoublingTip(null)));
-        DevLog("words | the XP tag " + DevNative.Said(() => DevNative.XpGained(null)) + ", " + DevNative.Said(() => DevNative.XpPerSecond(null)) +
-            " | the other tree card's doubling icon " + DevNative.Said(() => DevNative.IconName((DoublingIcon?)null)) + ": " + DevNative.Said(() => DevNative.IconWords((DoublingIcon?)null)) +
-            " | its double damage icon " + DevNative.Said(() => DevNative.IconName((TreeDoubleDamageIcon?)null)) + ": " + DevNative.Said(() => DevNative.IconWords((TreeDoubleDamageIcon?)null)) +
-            " | its fell chance icon " + DevNative.Said(() => DevNative.IconName((TreeFellChanceIcon?)null)) + ": " + DevNative.Said(() => DevNative.IconWords((TreeFellChanceIcon?)null)));
+        // A word that cannot be read says which member was tried, and the rest is read all the same.
+        string Read(string what, string members, Func<string> words)
+        {
+            try { return $"{what} '{DevWordsOf(words())}'"; }
+            catch (Exception e) { return $"{what} not read ({members}: {e.GetType().Name})"; }
+        }
+        static string Tr(string key) => key + (TranslationServer.Translate(key).ToString() is { } t && t != key ? $" = {t}" : "");
+        static string Constant(Type type, string member) => Tr(DevNative.Constant(type, member));
+        Type stats = typeof(WoodcuttingActionStatsView), modifiers = typeof(ModifierStatView);
+        var read = new[]
+        {
+            Read("double damage", "WoodcuttingActionStatsView.DoubleDamageChanceTitle and ...Tooltip",
+                () => Constant(stats, "DoubleDamageChanceTitle") + ": " + Constant(stats, "DoubleDamageChanceTooltip")),
+            Read("weak spot", "WoodcuttingActionStatsView.WeakSpotChanceTitle and ...Tooltip",
+                () => Constant(stats, "WeakSpotChanceTitle") + ": " + Constant(stats, "WeakSpotChanceTooltip")),
+            Read("instant cut", "WoodcuttingActionStatsView.InstantCutChanceTitle and ...Tooltip",
+                () => Constant(stats, "InstantCutChanceTitle") + ": " + Constant(stats, "InstantCutChanceTooltip")),
+            Read("doubling", "ModifierStatView.DoublingChanceTitle and ...Tooltip",
+                () => Constant(modifiers, "DoublingChanceTitle") + ": " + Constant(modifiers, "DoublingChanceTooltip")),
+            Read("the interval", "ModifierStatView.IntervalTooltip", () => Constant(modifiers, "IntervalTooltip")),
+            Read("skill XP", "ModifierStatView.SkillXpGainedTooltip", () => Constant(modifiers, "SkillXpGainedTooltip")),
+            Read("more logs", "ModifierStatView.FlatProductQuantityTitle and ...Tooltip",
+                () => Constant(modifiers, "FlatProductQuantityTitle") + ": " + Constant(modifiers, "FlatProductQuantityTooltip")),
+            Read("the other card's doubling icon", "DoublingIcon.s_statName and s_statDescription",
+                () => DevNative.IconName((DoublingIcon?)null).Text + ": " + DevNative.IconWords((DoublingIcon?)null).Text),
+            Read("its double damage icon", "TreeDoubleDamageIcon.s_statName and s_statDescription",
+                () => DevNative.IconName((TreeDoubleDamageIcon?)null).Text + ": " + DevNative.IconWords((TreeDoubleDamageIcon?)null).Text),
+            Read("its fell chance icon", "TreeFellChanceIcon.s_statName and s_statDescription",
+                () => DevNative.IconName((TreeFellChanceIcon?)null).Text + ": " + DevNative.IconWords((TreeFellChanceIcon?)null).Text),
+            Read("the XP tag", "SkillXPPanel.s_skillXpGained and s_xpPerSecond", () => DevNative.XpGained(null).Text + " / " + DevNative.XpPerSecond(null).Text),
+            Read("an XP icon", "SkillExperienceIcon.s_skillXP", () => DevNative.SkillXpIconWords(null).Text),
+            Read("an item's chance", "ItemInfoIcon.s_tooltipTitleChance and TooltipTitle",
+                () => DevNative.ItemChanceTitle(null).Text + " / " + Constant(typeof(ItemInfoIcon), "TooltipTitle")),
+            Read("the filter's All button", "WoodcuttingCategoryFilterView.s_all", () => DevNative.AllWords(null).Text),
+            Read("the filter's box for hidden trees", "WoodcuttingCategoryFilterView.s_showHidden", () => DevNative.ShowHiddenWords(null).Text),
+        };
+        DevLog("words | " + string.Join(" | ", read));
         DevLog($"words | the game's two numbers of a weak spot: BaseWeakSpotDamage {WoodcuttingActionComponent.BaseWeakSpotDamage}, " +
-            $"MaxHitpointsWeakSpotDamage {R(WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage)}; how they make a weak spot's damage, and an ordinary hit's damage, " +
-            "are not values: the watch (woodcuttingwatch.request) measures them");
-        var lists = _page!.FindChildren("*", "", true, false).OfType<WoodcuttingActionStatsView>().ToList();
-        DevLog($"words | {lists.Count} lists of a tree's bonuses on the page, {lists.Count(l => l.FindChildren("*", "", true, false).OfType<ModifierStatLabel>().Any())} of them filled; " +
-            $"the chances' names read for the tooltip: {string.Join(", ", new[] { TreeRates.DoubleDamage, TreeRates.WeakSpot, TreeRates.InstantCut }.Select(k => $"{k} {(_bonusNames.Of(k) is { } n ? $"'{n}'" : "NOT READ")}"))}");
+            $"MaxHitpointsWeakSpotDamage {R(WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage)}; an ordinary hit's damage is no member of the game's by ApiDump's names");
+        // The quote of a settled rule, still in the game's words, or not (after a game update).
+        static string Flat(string text) => Regex.Replace(text, @"\s+", " ").Trim();
+        string heard = Flat(string.Join(" ", read));
+        foreach (var (name, quote, source) in new (string, string?, RuleSource?)[] { ("logs", TreeRates.LogsRule?.Quote, TreeRates.LogsRule?.Source), ("hits", TreeRates.HitsRule?.Quote, TreeRates.HitsRule?.Source) })
+            DevLog($"words | the quote of the {name} rule: " + (source != RuleSource.GameWords || string.IsNullOrEmpty(quote) ? "none (the rule is not settled by the game's words)"
+                : heard.Contains(Flat(quote), StringComparison.Ordinal) ? $"'{quote}' is in the game's words read here" : $"'{quote}' NOT IN THE GAME'S WORDS read here (the card's are in 'card stats')"));
+        // Every button of the page's filter, and which is which: the All button the put-back would press is found by the
+        // game's word only (DevAllButton).
+        try
+        {
+            WoodcuttingCategoryFilterView filter = DevNative.Filter(_page!);
+            CheckBox box = DevNative.ShowHidden(filter);
+            var categories = Native.CategoryButtons(filter) ?? new Dictionary<WoodcuttingRecipeCategory, Button>();
+            Button? all = DevAllButton(out string why);
+            DevLog("words | the filter's buttons: " + string.Join(" | ", filter.FindChildren("*", "Button", true, false).OfType<Button>().Select(b =>
+                $"{b.GetType().Name} '{b.Text}'{(b.ToggleMode ? " toggle" : "")}{(b.ButtonPressed ? " pressed" : "")}{(b.IsVisibleInTree() ? "" : " (hidden)")}" +
+                (b == box ? ", the box for hidden trees" : "") + (b == all ? ", the All button by the game's word" : "") +
+                (categories.FirstOrDefault(c => c.Value == b).Key is { } c ? $", the button of {c.Id}" : ""))) +
+                (all == null ? $" | NO ALL BUTTON: {why}" : ""));
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException)
+        {
+            DevLog("words | the filter's buttons could not be read: " + e.Message);
+        }
+        DevLog($"bonus names | {string.Join(", ", new[] { TreeRates.DoubleDamage, TreeRates.WeakSpot, TreeRates.InstantCut }.Select(k => _bonusNames.Of(k) is { } name ? $"{k}: the game's '{name}'" : $"{k}: NOT READ, the tooltip says '{BonusNames.Kind(k)}'"))}");
     }
 
     // Every overgrowth effect on a tree now: its stacks, its bonuses in the game's words, and whether the tree's own
@@ -1048,75 +1590,68 @@ public partial class WoodcuttingRatesMod
                         if (ReferenceEquals(entry.Source, effect.Effect) || ReferenceEquals(entry.Source, effect) || entry.Source?.GetType().Name.Contains("Overgrowth") == true)
                             held.Add($"{name} {R(entry.Value)} from {entry.Source?.GetType().Name} '{entry.Source?.DisplayName?.Text}' (total {R(nodes!.Total.Value)})");
                 }
-                string bonuses = string.Join("; ", effect.Bonuses?.Component?.Select(v => DevWords(v.GetDescription(1))) ?? []);
+                string bonuses = string.Join("; ", effect.Bonuses?.Component?.Select(v => DevWordsOf(v.GetDescription(1))) ?? []);
                 DevLog($"effects | {tree.Recipe.Id}: {effect.Effect?.Id} '{effect.Effect?.DisplayName.Text}', {effect.StacksLeft} stacks left, for the category " +
                     $"{effect.Effect?.AppliesToCategory?.Id ?? "any"} | its bonuses '{bonuses}' | in the tree's stats: " +
                     (held.Count > 0 ? string.Join(", ", held) : "THE EFFECT IS IN NONE OF THE TREE'S STATS") +
                     $" | the tree now: interval {R(s.Interval.Value)} ms, max health {s.MaxHealth.Value}, XP {R(s.Experience.XpToAdd.Value)}, quantity {s.ProductQuantity.Value}");
             }
         }
-        DevLog($"effects | {found} overgrowth effects on the game's {action.Trees.Count} trees; the effects a cut may put on, per tree: " +
-            string.Join("; ", action.Trees.Values.Where(TreeRates.Revealed).Select(t => $"{t.Recipe.LocalId} [{string.Join(", ", t.Stats.OvergrowthStats?.List?.Select(o => $"{o.Effect?.Value?.LocalId} {R(o.ApplicationChance?.Total.Value ?? 0)}") ?? [])}]")));
+        DevLog($"effects | {found} overgrowth effects on the game's {action.Trees.Count} trees; the effects a cut may put on, per listed tree: " +
+            string.Join("; ", ReadTrees().Select(t => $"{t.Tree.Recipe.LocalId} [{string.Join(", ", t.Tree.Stats.OvergrowthStats?.List?.Select(o => $"{o.Effect?.Value?.LocalId} {R(o.ApplicationChance?.Total.Value ?? 0)}") ?? [])}]")));
     }
 
-    // Every tree of the game that is not listed, and why; and every listed one whose card the page's filter hides now.
+    // Every tree of the game that is not listed, and why; and every listed tree the page does not show under all.
     void DevHidden()
     {
         var action = _woodcutting!.Action;
         var listed = new HashSet<WoodcuttingTree>(ReadTrees().Select(t => t.Tree), ReferenceEqualityComparer.Instance);
-        var cards = Cards();
         int hidden = 0;
         foreach (var (recipe, tree) in action.Trees)
         {
-            if (listed.Contains(tree)) continue;
+            WoodcuttingTreeSelectView? card = Native.Card(_page!, tree);
+            if (listed.Contains(tree))
+            {
+                if (action.SelectedCategory == null && card is { Visible: false }) DevLog($"hidden | {recipe.Id} is listed, and its card is hidden under all categories  NOT ON THE PAGE");
+                continue;
+            }
             hidden++;
-            DevLog($"hidden | {recipe.Id} '{recipe.DisplayName.Text}' in {tree.Category?.Id} | shown by the game when: {DevConditions(recipe.DisplayRequirements)} | " +
-                $"hidden by the player {tree.IsHidden}, Show hidden {action.ShowHiddenTrees} | to cut it: {DevConditions(recipe.Requirements)} | " +
-                $"in the game's list {action.Config.Recipes.Contains(recipe)} | its card {(cards != null && cards.TryGetValue(tree, out var c) ? c.IsVisibleInTree() ? "SHOWN ON THE PAGE" : "not shown" : "none")}");
+            DevLog($"hidden | {recipe.Id} '{recipe.DisplayName.Text}' ({tree.Category?.Id}) | the tree is shown when: {DevConditions(recipe.DisplayRequirements)} | " +
+                $"its category is shown when: {DevConditions(tree.Category?.DisplayRequirements)} | to cut it: {DevConditions(recipe.Requirements)} | " +
+                $"hidden by the player {tree.IsHidden}, the box for hidden trees {(action.ShowHiddenTrees ? "ticked" : "not ticked")} | in the game's list " +
+                $"{action.Config.Recipes.Contains(recipe)} | its card " + (card == null ? "none" : card.Visible ? "SHOWN ON THE PAGE" : "hidden"));
         }
-        DevLog($"hidden | {hidden} of the game's {action.Trees.Count} trees are not listed; listed but not shown under the page's filter now: " +
-            string.Join(", ", listed.Where(t => cards != null && cards.TryGetValue(t, out var c) && !c.IsVisibleInTree()).Select(t => t.Recipe.LocalId)));
+        DevLog($"hidden | {hidden} of the game's {action.Trees.Count} trees are not listed; the page counts {action.HiddenTreeCount} hidden by the player");
     }
 
     static string DevConditions(ConditionGroup? group) => group == null || group.Conditions == null || group.Conditions.Count == 0 ? "always"
-        : $"{(group.AreMet ? "met" : "NOT MET")}: " + string.Join("; ", group.Conditions.Select(c => $"{(c.IsMet ? "met" : "not met")}{(c.IsOr ? " (or)" : "")} '{DevWords(c.GetDescription(false, false))}'"));
+        : $"{(group.AreMet ? "met" : "NOT MET")}: " + string.Join("; ", group.Conditions.Select(c => $"{(c.IsMet ? "met" : "not met")}{(c.IsOr ? " (or)" : "")} '{DevWordsOf(c.GetDescription(false, false))}'"));
 
-    // The page's category buttons: each one's words, whether it is shown, pressed or disabled, against CategoryOpen.
-    void DevCategories()
-    {
-        var action = _woodcutting!.Action;
-        var filter = DevNative.Filter(_page!);
-        var buttons = DevNative.CategoryButtons(filter) ?? new Dictionary<WoodcuttingRecipeCategory, Button>();
-        var known = new HashSet<Button>(buttons.Values);
-        var said = buttons.Select(b => $"{b.Key.Id} '{b.Value.Text}' shown={b.Value.IsVisibleInTree()} pressed={b.Value.ButtonPressed} disabled={b.Value.Disabled}, " +
-            $"ours {(TreeRates.CategoryOpen(b.Key, action) ? "open" : "closed")}{((TreeRates.CategoryOpen(b.Key, action) == (b.Value.IsVisibleInTree() && !b.Value.Disabled)) ? "" : "  DIFFER")}");
-        var others = DevNative.CategoryRow(filter).GetChildren().OfType<Button>().Where(b => !known.Contains(b))
-            .Select(b => $"'{b.Text}' shown={b.IsVisibleInTree()} pressed={b.ButtonPressed} (no category: the page's 'all'?)");
-        CheckBox hidden = DevNative.ShowHidden(filter);
-        DevLog($"category | the page's filter {action.SelectedCategory?.Id ?? "none"} | {string.Join(" | ", said.Concat(others))} | " +
-            $"Show hidden '{hidden.Text}' ticked={hidden.ButtonPressed} (the game's {action.ShowHiddenTrees}), {action.HiddenTreeCount} trees hidden by the player");
-    }
-
-    // The order of the cards on the page against the order of the lines in the page's order.
-    void DevPageOrder()
-    {
-        var box = DevNative.CardBox(_page!);
-        var page = box.GetChildren().OfType<WoodcuttingTreeSelectView>().Where(c => !c.IsQueuedForDeletion()).Select(c => DevNative.Tree(c)).OfType<WoodcuttingTree>()
-            .Where(t => TreeRates.Listed(t, _woodcutting!.Action)).Select(t => t.Recipe.LocalId).ToList();
-        var ours = ReadTrees().Select(t => t.Tree.Recipe.LocalId).ToList();
-        DevLog($"page order | the page's cards {string.Join(", ", page)} | the window's order {string.Join(", ", ours)}" + (page.SequenceEqual(ours) ? " | the same" : "  MISMATCH"));
-    }
-
+    // The tree the page's big panel shows against the lit line.
     void DevLit()
     {
         var action = _woodcutting!.Action;
-        var lit = _list!.DevLines().Where(l => l.Tree.OnPage).Select(l => l.Tree.Tree.Recipe.Id).ToList();
-        var drawn = _list.DevLines().Where(l => l.Drawn.EndsWith("lit=True")).Select(l => l.Tree.Tree.Recipe.Id).ToList();
         WoodcuttingTree? panel = null;
-        try { panel = DevNative.Tree(DevNative.BigPanel(_page!)); } catch { }
-        DevLog($"lit | the tree being cut {action.CuttingTree?.Recipe.Id ?? "none"}, started {action.IsStarted}; the big panel shows {panel?.Recipe.Id ?? "none"} | " +
-            $"the lit line{(lit.Count == 1 ? " is" : "s are")} {(lit.Count == 0 ? "none" : string.Join(", ", lit))} (drawn lit: {string.Join(", ", drawn)})" +
-            (lit.SequenceEqual(action.CuttingTree == null ? [] : [action.CuttingTree.Recipe.Id]) && drawn.SequenceEqual(lit) ? "" : "  MISMATCH"));
+        try { panel = DevNative.Tree(DevNative.BigPanel(_page!)); } catch (Exception) { }
+        var lit = _list!.DevLines().Where(l => l.Tree.OnPage).Select(l => l.Tree.Tree).ToList();
+        bool right = action.CuttingTree == null ? lit.Count == 0 : lit.Count == 1 && ReferenceEquals(lit[0], action.CuttingTree);
+        DevLog($"lit | the tree cut {action.CuttingTree?.Recipe.Id ?? "none"}, the big panel's {panel?.Recipe.Id ?? "none"}, woodcutting now: {DevCuttingNow()} | " +
+            $"the lit line{(lit.Count == 1 ? " is" : "s are")} {(lit.Count == 0 ? "none" : string.Join(", ", lit.Select(t => t.Recipe.Id)))}" +
+            $" (drawn lit: {string.Join(", ", _list.DevLines().Where(l => l.Drawn.EndsWith("lit=True")).Select(l => l.Tree.Tree.Recipe.LocalId))})" +
+            (right ? "" : "  MISMATCH"));
+    }
+
+    string DevOrder(string when)
+    {
+        string order = string.Join(", ", _list!.DevLines().Select(l => l.Tree.Tree.Recipe.LocalId));
+        DevLog($"order | {when} | {order}");
+        return order;
+    }
+
+    string DevInSight()
+    {
+        Rect2 sight = _list!.DevScroll.GetGlobalRect();
+        return string.Join(", ", _list.DevLines().Where(l => l.Button.IsVisibleInTree() && l.Button.GetGlobalRect().Intersects(sight)).Select(l => l.Tree.Tree.Recipe.LocalId));
     }
 
     void DevSize(string when)
@@ -1131,86 +1666,400 @@ public partial class WoodcuttingRatesMod
             (bottom > screen.Y - bar + 0.5f ? "  OVER THE BOTTOM BAR" : ""));
     }
 
-    // Every label and every button with words in the window, the lines out of sight too, against the room it has, the
-    // Combat Simulator's way (mods/CombatSim/CutProbe.cs, DevWords; SimViewStance.cs, DevFit): whole; CUT (a line wider
-    // than its room, a name ClipText cuts, a column's name its trim shortens, a line its label's height does not show);
-    // PAST THE EDGE (a number wider than its column, or anything ending past its line or the window).
-    void DevCuts(string when)
+    // Every label and button with words in the part of the window a picture shows, measured the Combat Simulator's way
+    // (mods/CombatSim/CutProbe.cs, DevWords): whole, CUT (a name cut by its label's ClipText is CUT too, a wrapped note
+    // with more lines than it shows), SHORTENED WITH ... where the game trims it with its tooltip holding it, and PAST THE
+    // EDGE where it ends past the edge of its line or of the window (Mining Rates' DevCut).
+    void DevCut(string when)
     {
         var root = _window!.Root;
+        Rect2 sight = _list!.DevScroll.GetGlobalRect();
+        float edge = root.GetGlobalRect().End.X;
+        int measured = 0, cut = 0, past = 0, shortened = 0;
         var notWhole = new List<string>();
-        var lineButtons = _list!.DevLines().Select(l => l.Button).ToHashSet();
-        int measured = 0, cut = 0, past = 0;
-        foreach (Control c in DevWordsUnder(root))
+        foreach (Control c in root.FindChildren("*", "", true, false).OfType<Control>().Prepend(root))
         {
-            measured++;
-            string words;
-            bool whole;
+            if (c.IsQueuedForDeletion() || !c.IsVisibleInTree()) continue;
+            string text = c is Label l ? l.Text : c is Button b ? b.Text : "";
+            if (text.Length == 0) continue;
+            // Lines of the list out of sight are not in the picture.
+            if (_list.DevScroll.IsAncestorOf(c) && !c.GetGlobalRect().Intersects(sight)) continue;
+            Font font = c.GetThemeFont("font");
+            int size = c.GetThemeFontSize("font_size");
+            float wide = text.Split('\n').Select(line => font.GetStringSize(line, HorizontalAlignment.Left, -1, size).X).DefaultIfEmpty(0).Max();
+            string verdict;
+            float room;
             if (c is Label label)
             {
-                Font font = label.GetThemeFont("font");
-                int size = label.GetThemeFontSize("font_size");
-                float Wide(string s) => font.GetStringSize(s, HorizontalAlignment.Left, -1, size).X;
-                float room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
+                room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
                 bool wraps = label.AutowrapMode != TextServer.AutowrapMode.Off;
-                float widest = label.Text.Split('\n').Select(Wide).DefaultIfEmpty(0).Max();
-                float word = label.Text.Split(new[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(Wide).DefaultIfEmpty(0).Max();
-                int lines = label.GetLineCount(), shown = label.GetVisibleLineCount();
-                whole = shown >= lines && (wraps ? word : widest) <= room + 0.5f;
-                words = $"'{One(label.Text)}' {(wraps ? word : widest):0.#} wide in {room:0.#}, {lines} line(s), {shown} shown{(label.ClipText ? ", clipped" : "")}";
+                verdict = wraps ? label.GetVisibleLineCount() >= label.GetLineCount() ? "whole" : "CUT"
+                    : wide <= room + 0.5f ? (label.ClipText && wide > label.Size.X ? "CUT" : "whole")
+                    : label.TextOverrunBehavior != TextServer.OverrunBehavior.NoTrimming ? "SHORTENED WITH ..." : "CUT";
             }
             else
             {
                 var button = (Button)c;
                 StyleBox look = button.GetThemeStylebox("normal");
-                float room = button.Size.X - look.GetMargin(Side.Left) - look.GetMargin(Side.Right) - (button.Icon != null ? button.GetThemeConstant("h_separation") + button.Icon.GetWidth() : 0);
-                float wide = button.GetThemeFont("font").GetStringSize(button.Text, HorizontalAlignment.Left, -1, button.GetThemeFontSize("font_size")).X;
-                whole = wide <= room + 0.5f;
-                words = $"the button '{button.Text}' {wide:0.#} wide in {room:0.#}";
+                float box = button.HasMeta("column") && button.GetMeta("column").AsString() != RatesList.NameKey ? button.CustomMinimumSize.X : button.Size.X;
+                room = box - look.GetMargin(Side.Left) - look.GetMargin(Side.Right) - (button.Icon != null ? button.Icon.GetWidth() : 0);
+                verdict = wide <= room + 0.5f ? "whole" : button.TextOverrunBehavior != TextServer.OverrunBehavior.NoTrimming ? "SHORTENED WITH ..." : "CUT";
             }
-            // A number of a line is laid out in its column's width; anything else ends inside its line or the window.
-            bool cell = c is Label { CustomMinimumSize.X: > 0 } && c.GetParent() is HBoxContainer;
-            Control edgeOf = DevLineAround(c, lineButtons) ?? root;
-            float end = c.GetGlobalRect().End.X, edge = edgeOf.GetGlobalRect().End.X;
-            bool beyond = cell ? c.Size.X > c.CustomMinimumSize.X + 0.5f : end > edge + 0.5f;
-            if (whole && !beyond) continue;
-            if (!whole) cut++;
+            measured++;
+            // The edge of its line in the list, or of the window.
+            float end = c.GetGlobalRect().End.X, limit = edge;
+            for (Node? n = c.GetParent(); n != null && n != root; n = n.GetParent())
+                if (n is Button line && _list.DevScroll.IsAncestorOf(line)) { limit = line.GetGlobalRect().End.X; break; }
+            bool beyond = end > limit + 0.5f;
+            if (verdict == "whole" && !beyond) continue;
+            if (verdict == "CUT") cut++;
+            if (verdict.StartsWith("SHORTENED")) shortened++;
             if (beyond) past++;
-            notWhole.Add((whole ? "" : "CUT ") + words + (beyond ? cell ? $", PAST THE EDGE of its column ({c.Size.X:0} wide where it is {c.CustomMinimumSize.X:0})" : $", PAST THE EDGE ({end:0} > {edge:0})" : ""));
+            string tip = "";
+            for (Node? n = c; n is Control k; n = k.GetParent())
+                if (k.TooltipText != "") { tip = k.TooltipText; break; }
+            notWhole.Add($"{verdict} '{One(text)}' {wide:0.#} wide in {room:0.#}" +
+                (verdict.StartsWith("SHORTENED") ? tip.Contains(text, StringComparison.OrdinalIgnoreCase) ? ", its tooltip holds it" : ", ITS TOOLTIP DOES NOT HOLD IT WHOLE" : "") +
+                (beyond ? $", PAST THE EDGE ({end:0} > {limit:0})" : ""));
         }
-        DevLog($"cut | {when} | {measured} labels and buttons with words measured, the lines out of sight too, at size {_window.Style.Scale:0.##}: " +
-            $"{(cut == 0 ? "none cut" : $"{cut} CUT")}, {(past == 0 ? "none past the edge" : $"{past} PAST THE EDGE")}" +
-            (notWhole.Count > 0 ? " | " + string.Join(" | ", notWhole) : ""));
-        DevLog($"cut | {when} | not measured: the tooltips (their words are in the 'row ... tooltip' lines), the window's X and fold buttons (pictures, no words), " +
-            "the round button and the game's own screen");
+        DevLog($"cut | {when} | {measured} measured at {_window.Style.Scale:0.##}: " + (notWhole.Count == 0 ? "every one whole and within its edge"
+            : $"{notWhole.Count} not whole or past the edge ({cut} CUT, {shortened} SHORTENED WITH ..., {past} PAST THE EDGE): {string.Join("; ", notWhole)}"));
     }
 
-    // The line of the list a control is on, or null.
-    static Control? DevLineAround(Control c, HashSet<Button> lines)
+    // ---- the game's own words on a card's parts, as a player reads them by resting the pointer on them -------------
+
+    // The card whose parts the pointer rests on: unlocked and wholly in sight, never the tree being cut while woodcutting
+    // runs (its hit points and the page's big panel move with every hit; Mining Rates' code review of turn 3, fault 1);
+    // best one whose tree has the most chances that change the hits a cut takes (a list of bonuses may show only the
+    // stats that are not 0), equals in the page's order.
+    WoodcuttingTreeSelectView? DevStatsCard(out string why)
     {
-        for (Node? node = c.GetParent(); node != null; node = node.GetParent())
-            if (node is Button line && lines.Contains(line)) return line;
-        return null;
+        why = "";
+        var action = _woodcutting!.Action;
+        WoodcuttingTree? cut = action.IsStarted || DevCuttingNow() ? action.CuttingTree : null;
+        var cards = DevNative.CardBox(_page!).GetChildren().OfType<WoodcuttingTreeSelectView>()
+            .Where(c => GodotObject.IsInstanceValid(c) && c.Visible && DevNative.Tree(c) != null && !ReferenceEquals(DevNative.Tree(c), cut) &&
+                !DevNative.LockedPart(c).IsVisibleInTree() && c.IsVisibleInTree() && Native.Place(c, Cover(), out _) == CardSight.Clear &&
+                DevNative.StatsIcon(c).IsVisibleInTree() && DevSight(DevNative.StatsIcon(c)).HasArea()).ToList();
+        if (cards.Count == 0)
+        {
+            why = cut == null ? "no card of a tree that can be cut is wholly in sight"
+                : $"no card of a tree that can be cut, other than {cut.Recipe.Id} being cut, is wholly in sight";
+            return null;
+        }
+        int Score(WoodcuttingTreeSelectView card)
+        {
+            WoodcuttingActionStats s = DevNative.Tree(card)!.Stats;
+            return new[] { s.DoubleDamageChance, s.WeakSpotChance, s.InstantCutChance }.Count(n => n != null && n.Total.Value > 0);
+        }
+        return cards.OrderByDescending(Score).First();
     }
 
-    static IEnumerable<Control> DevWordsUnder(Node node)
+    // One part of a card the pointer rests on for the game's tooltip, and what is kept from tick to tick: where the
+    // pointer was put, the tooltip's words when it was first seen shown, and the screen before the pointer came (for the
+    // proof of the picture). Tooltip null: the part has only Godot's own tooltip text. Words: the game's words only (their
+    // numbers are named, and they must not move while read); Detail: what the request adds to them in the log (null for
+    // nothing), such as the tree's stat each row of a list of bonuses is bound to.
+    sealed class DevAim(string what, WoodcuttingTree tree, Control aim, string aimed, Tooltip? tooltip, Func<string> words, string? shot, Func<string>? detail = null)
     {
-        if (node is Control c && !c.IsQueuedForDeletion() && c.IsVisibleInTree() && (c is Label { Text.Length: > 0 } || c is Button { Text.Length: > 0 })) yield return c;
-        foreach (Node child in node.GetChildren())
-            foreach (Control inner in DevWordsUnder(child))
-                yield return inner;
+        public readonly string What = what, Aimed = aimed;
+        public readonly WoodcuttingTree Tree = tree;
+        public readonly Control Aim = aim;
+        public readonly Tooltip? Tooltip = tooltip;
+        public readonly Func<string> Words = words;
+        public readonly Func<string>? Detail = detail;
+        public readonly string? Shot = shot;
+        public Image? Before;
+        public Vector2 At;
+        public string? First;
     }
 
-    // ---- through the game's input, as a player's hand would (Fishing Rates' Dev.cs) ------------------------------------
+    // The parts of the card to rest the pointer on, each with the control the game's tooltip shows for: its list of
+    // bonuses (WoodcuttingStatsIcon, WoodcuttingStatsTooltip), its hit points (TreeMaxHP, when a tooltip of the game shows
+    // for it or a part around it on the card), its XP tag (SkillXPPanel's XPTooltip). Logs every tooltip of the card with
+    // its targets, and every word the card shows, once.
+    List<DevAim> DevAims(WoodcuttingTreeSelectView card)
+    {
+        WoodcuttingTree tree = DevNative.Tree(card)!;
+        var aims = new List<DevAim>();
+        var tips = card.FindChildren("*", "", true, false).OfType<Tooltip>().ToList();
+        DevLog($"card stats | the card of {tree.Recipe.Id}: every word it shows [{string.Join(" ", card.FindChildren("*", "", true, false).OfType<Control>()
+            .Where(c => c.IsVisibleInTree() && (c is Label { Text.Length: > 0 } || c is RichTextLabel { Text.Length: > 0 })).Select(c => $"'{One(c is Label l ? l.Text : DevWordsOf(((RichTextLabel)c).Text))}'"))}] | " +
+            $"its tooltips: {string.Join("; ", tips.Select(t => $"{DevName(t)} for [{string.Join(", ", DevNative.Targets(t).Select(DevName))}]"))}");
+
+        // Where to rest the pointer for a tooltip: one of its targets that is a part of the card in sight, around or inside
+        // the given part first, else the given part.
+        Control Aim(Tooltip? tooltip, Control fallback, out string aimed)
+        {
+            var targets = tooltip == null ? new List<Control>() : DevNative.Targets(tooltip)
+                .Where(c => (c == card || card.IsAncestorOf(c)) && c.IsVisibleInTree() && DevSight(c).HasArea()).ToList();
+            Control? found = targets.FirstOrDefault(c => c == fallback || c.IsAncestorOf(fallback) || fallback.IsAncestorOf(c)) ?? targets.FirstOrDefault();
+            aimed = found != null ? $"the tooltip's target {DevName(found)}" : $"{DevName(fallback)} (no target of its tooltip found in sight on the card)";
+            return found ?? fallback;
+        }
+
+        Tooltip? stats = null;
+        try { stats = DevNative.StatsTooltip(card); } catch (Exception e) { DevLog($"card stats | its stats tooltip could not be read (WoodcuttingTreeSelectView.WoodcuttingStatsTooltip: {e.GetType().Name})"); }
+        Control icon = DevNative.StatsIcon(card);
+        if (stats == null) DevLog("card stats | the card has no stats tooltip (WoodcuttingTreeSelectView.WoodcuttingStatsTooltip): its list of bonuses is not pointed at");
+        else
+        {
+            Control statsAim = Aim(stats, icon, out string statsAimed);
+            aims.Add(new DevAim("the card's list of bonuses", tree, statsAim, statsAimed, stats, () => DevStatsWords(card, stats), "stats-tooltip",
+                () => DevStatsBound(card, tree)));
+        }
+
+        // The hit points: a tooltip of the card's whose target is the label or a part around it on the card, or the
+        // label's own tooltip text.
+        Int32Label hp = DevNative.HitPoints(card);
+        Control? hpPart = null;
+        Tooltip? hpTip = null;
+        foreach (Tooltip t in tips)
+            foreach (Control c in DevNative.Targets(t))
+                if (c != card && card.IsAncestorOf(c) && (c == hp || c.IsAncestorOf(hp)) && (hpPart == null || hpPart.IsAncestorOf(c))) { hpPart = c; hpTip = t; }
+        Control? textPart = null;
+        for (Node? n = hp; n != null && n != card; n = n.GetParent())
+            if (n is Control k && k.TooltipText.Length > 0) { textPart = k; break; }
+        if (hpTip != null && hpPart != null)
+            aims.Add(new DevAim("its hit points", tree, hpPart, $"the tooltip's target {DevName(hpPart)}, around the label {DevName(hp)}", hpTip, () => DevTipWords(hpTip), null));
+        else if (textPart != null)
+            aims.Add(new DevAim("its hit points", tree, textPart, $"{DevName(textPart)} with Godot's own tooltip text", null, () => textPart.TooltipText, null));
+        else DevLog($"card stats | its hit points '{hp.Text}': no tooltip of the card's has the label {DevName(hp)} or a part around it as a target, and none has tooltip text: not pointed at");
+
+        SkillXPPanel xp = DevNative.Xp(card);
+        TextTooltip? xpTip = DevNative.XpTooltip(xp);
+        if (xpTip == null) DevLog("card stats | its XP tag has no tooltip (SkillXPPanel.XPTooltip): not pointed at");
+        else
+        {
+            Control xpAim = Aim(xpTip, xp, out string xpAimed);
+            aims.Add(new DevAim("its XP tag", tree, xpAim, xpAimed, xpTip, () => DevTipWords(xpTip), null));
+        }
+        return aims;
+    }
+
+    // The words of a game's tooltip: a text tooltip's title and content, or every word it draws.
+    static string DevTipWords(Tooltip? tooltip)
+    {
+        if (tooltip == null) return "";
+        if (tooltip is TextTooltip text)
+        {
+            string title = "";
+            try { title = DevWordsOf(DevNative.TooltipTitle(text).Text ?? ""); } catch (Exception) { }
+            string content = DevWordsOf(string.Join("\n", DevNative.Content(text) ?? []));
+            return title.Length > 0 && !content.StartsWith(title, StringComparison.Ordinal) ? title + "\n" + content : content;
+        }
+        return string.Join("\n", tooltip.FindChildren("*", "", true, false).OfType<Control>().Where(c => c.IsVisibleInTree())
+            .Select(c => c is Label l ? l.Text : c is RichTextLabel r ? DevWordsOf(r.Text) : "").Where(w => w.Length > 0));
+    }
+
+    // The card's list of bonuses as its tooltip shows it, in the game's words only: every row the game filled in (its
+    // name, its value as written, its words and its own tooltip's), then every other word the tooltip draws.
+    static string DevStatsWords(WoodcuttingTreeSelectView card, Tooltip? tooltip)
+    {
+        var rows = new List<string>();
+        WoodcuttingActionStatsView? list = DevStatsList(card);
+        foreach (ModifierStatLabel r in DevShownRows(list))
+        {
+            string value = "", own = "";
+            try { value = DevNative.RowValue(r).Text; } catch (Exception) { }
+            try { own = DevTooltipText(DevNative.RowTooltip(r)); } catch (Exception) { }
+            rows.Add($"['{DevWordsOf(r.StatName ?? "")}' '{value}': '{DevWordsOf(r.StatTooltipContent ?? "")}'{(own.Length > 0 && own != "none" ? $", its own tooltip '{own}'" : "")}]");
+        }
+        if (tooltip != null)
+            rows.AddRange(tooltip.FindChildren("*", "", true, false).OfType<Control>()
+                .Where(c => c.IsVisibleInTree() && (list == null || !list.IsAncestorOf(c)) && (c is Label { Text.Length: > 0 } || c is RichTextLabel { Text.Length: > 0 }))
+                .Select(c => $"'{(c is Label l ? l.Text : DevWordsOf(((RichTextLabel)c).Text))}'"));
+        return rows.Count == 0 ? "" : string.Join("\n", rows);
+    }
+
+    // The same rows with the tree's stat each is bound to and its value as the game keeps it (DevRow).
+    static string DevStatsBound(WoodcuttingTreeSelectView card, WoodcuttingTree tree) =>
+        "the rows bound: " + string.Join(" | ", DevShownRows(DevStatsList(card)).Select(r => DevRow(r, tree)));
+
+    static WoodcuttingActionStatsView? DevStatsList(WoodcuttingTreeSelectView card)
+    {
+        try { return DevNative.Stats(card) is { } list && GodotObject.IsInstanceValid(list) ? list : null; }
+        catch (Exception) { return null; }
+    }
+
+    static IEnumerable<ModifierStatLabel> DevShownRows(WoodcuttingActionStatsView? list) =>
+        list == null ? [] : list.FindChildren("*", "", true, false).OfType<ModifierStatLabel>().Where(r => r.IsVisibleInTree());
+
+    // The game says the pointer is on the control: on it or on a part of it, or on a control around it that the pointer
+    // goes through to at the spot it was put (a label lets the pointer through to the control under it).
+    bool DevPointerOn(Control aim, Vector2 at)
+    {
+        Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
+        if (over == null || !GodotObject.IsInstanceValid(aim)) return false;
+        return over == aim || aim.IsAncestorOf(over) || (over.IsAncestorOf(aim) && aim.GetGlobalRect().HasPoint(at));
+    }
+
+    // The game's tooltip says it is shown, and not for another control than the one aimed at or the one under the spot
+    // the pointer was put (Tooltip.IsShown and CurrentTarget, public members by ApiDump); when they cannot be read, its
+    // being on the screen is taken, and said (Mining Rates' DevShownFor).
+    static bool DevShownFor(Tooltip tooltip, Control aim, Vector2 at, out string said)
+    {
+        try
+        {
+            bool shown = tooltip.IsShown || tooltip.IsVisibleInTree();
+            Control? target = tooltip.CurrentTarget;
+            bool other = target != null && GodotObject.IsInstanceValid(target) && target != aim && !target.IsAncestorOf(aim) && !aim.IsAncestorOf(target) &&
+                !target.GetGlobalRect().HasPoint(at);
+            said = $"shown {tooltip.IsShown}, on the screen {tooltip.IsVisibleInTree()}, for {(target == null ? "no target" : DevName(target))}{(other ? "  ANOTHER CONTROL" : "")}";
+            return shown && !other;
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            said = $"Tooltip.IsShown or CurrentTarget not read ({e.GetType().Name}), on the screen {tooltip.IsVisibleInTree()}";
+            return tooltip.IsVisibleInTree();
+        }
+    }
+
+    // Rests the pointer on one part of the card until the game shows its tooltip for it, filled, then reads it two drawn
+    // frames later, only while the pointer is on it, and pictures it when it is the list of bonuses. Its words when it was
+    // first seen shown are held against the read: ITS WORDS CHANGED when they moved. A tooltip not shown in 20 s is one
+    // line, and the request goes on. True when this part is done.
+    bool DevAimStep(DevAim a)
+    {
+        if (DevHandAtMouse(a.What)) { _devTipSince = 0; a.First = null; return false; }
+        if (_devTipSince == 0)
+        {
+            _devTipSince = Time.GetTicksMsec();
+            a.Before ??= _ctx.Tree.Root.GetTexture().GetImage();
+        }
+        string content;
+        try { content = DevWordsOf(a.Words()); }
+        catch (Exception e) { content = ""; DevLog($"card stats | {a.What}: its words could not be read ({e.GetType().Name}: {e.Message})"); }
+        bool on = DevPointerOn(a.Aim, a.At);
+        string state;
+        bool shown;
+        if (a.Tooltip != null) shown = DevShownFor(a.Tooltip, a.Aim, a.At, out state);
+        else
+        {
+            string up = GameStyle.DevTooltips(_ctx.Tree.Root);
+            string first = a.Aim.TooltipText.Split('\n')[0];
+            shown = first.Length > 0 && up.Contains(first);
+            state = shown ? "Godot's tooltip shown" : "Godot's tooltip not shown";
+        }
+        if (!(on && shown && content.Length > 0))
+        {
+            a.First = null;
+            if (Time.GetTicksMsec() - _devTipSince >= TipWait)
+            {
+                DevLog($"card stats | {a.What} of {a.Tree.Recipe.Id}: its tooltip was not shown filled in {TipWait / 1000} s with the pointer on " +
+                    $"{DevName(_ctx.Tree.Root.GuiGetHoveredControl())}, aimed at {a.Aimed} (the tooltip: {state}; it holds '{content}'): not read this time");
+                DevPointerBack();
+                return true;
+            }
+            if (!on)
+            {
+                Rect2 rect = DevSight(a.Aim);
+                if (!rect.HasArea())
+                {
+                    DevLog($"card stats | {a.What} of {a.Tree.Recipe.Id} went out of sight: not read this time");
+                    return true;
+                }
+                a.At = rect.GetCenter();
+                DevPointer(a.At);
+            }
+            return false;
+        }
+        if (a.First == null)
+        {
+            a.First = content;
+            _devFrameMark = 0;
+        }
+        // Two drawn frames after it came up, for the picture.
+        if (!DevFramesDrawn()) return false;
+        string detail = "";
+        try { detail = a.Detail?.Invoke() ?? ""; }
+        catch (Exception e) { detail = $"not read ({e.GetType().Name})"; }
+        DevLog($"card stats | {a.What} of {a.Tree.Recipe.Id}, the pointer on {a.Aimed}, the tooltip {state}: '{content}'" +
+            (content == a.First ? "" : $"  ITS WORDS CHANGED while read (first seen: '{a.First}')") + $" | {DevNumbersIn(content, a.Tree)}" +
+            (detail.Length > 0 ? $" | {detail}" : ""));
+        if (a.Shot != null)
+        {
+            Shot(a.Shot);
+            if (a.Before != null && a.Tooltip != null)
+            {
+                using var shot = _ctx.Tree.Root.GetTexture().GetImage();
+                DevLog($"shot-woodcutting-{a.Shot}.png | " + (DevDrawn(a.Tooltip, out string where) is { } drawn
+                    ? DevChangedPixels(a.Before, shot, drawn, $"the game's tooltip: {where}", "VISIBLE", "NOT VISIBLE")
+                    : $"NOT PROVED: where the game's tooltip is drawn is not known ({where})"));
+            }
+        }
+        DevPointerBack();
+        return true;
+    }
+
+    // Every number in a tooltip's words, named against the tree's numbers and the game's two numbers of a weak spot, so
+    // that words stating how much a hit takes from a tree can be read for what their numbers are (Mining Rates' break
+    // rule read "Base chance" and "Current chance" this way).
+    string DevNumbersIn(string words, WoodcuttingTree tree)
+    {
+        TreeRates t = TreeRates.Read(tree, _woodcutting!, Shown);
+        int b = WoodcuttingActionComponent.BaseWeakSpotDamage;
+        double f = WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage;
+        var known = new List<(string Name, double Value)>
+        {
+            ("the game's base weak spot damage (BaseWeakSpotDamage)", b), ("the game's share of hit points of a weak spot (MaxHitpointsWeakSpotDamage)", f),
+            ("the tree's hit points", t.HitPoints), ("the tree's time of a hit in seconds", t.HitSeconds), ("the tree's XP of a hit", t.XpEach),
+            ("the tree's XP an hour with XP on every hit (ours)", t.XpPerHour), ("the tree's hits an hour", t.HitsPerHour),
+            ("the tree's double damage chance", t.DoubleDamageChance), ("the tree's weak spot chance", t.WeakSpotChance),
+            ("the tree's instant cut chance", t.InstantCutChance), ("the tree's doubling chance", t.Doubling), ("the tree's logs at a time", t.LogQuantity),
+            ("the share of the tree's hit points", f * t.HitPoints),
+            ("a weak spot by the base and the share rounded down", b + Math.Floor(f * t.HitPoints + 1e-9)),
+            ("... rounded to the nearest", b + Math.Round(f * t.HitPoints, MidpointRounding.AwayFromZero)), ("... rounded up", b + Math.Ceiling(f * t.HitPoints - 1e-9)),
+        };
+        var said = new List<string>();
+        foreach (Match m in Regex.Matches(words, @"-?\d[\d,]*(?:\.\d+)?\s*%?"))
+        {
+            string raw = m.Value.Trim();
+            bool percent = raw.EndsWith('%');
+            if (!double.TryParse(raw.TrimEnd('%').Trim().Replace(",", ""), NumberStyles.Float, CultureInfo.InvariantCulture, out double n)) continue;
+            var names = known.Where(k => Math.Abs(k.Value - n) <= 1e-6 + 0.0005 * Math.Abs(n) || (percent && Math.Abs(k.Value * 100 - n) <= 0.006))
+                .Select(k => k.Name).Distinct().ToList();
+            said.Add($"{raw}: {(names.Count == 0 ? "none of the tree's numbers" : string.Join(" = ", names))}");
+        }
+        return said.Count == 0 ? "no number in it" : "its numbers [" + string.Join("; ", said) + "]";
+    }
+
+    // Where the words of a game's tooltip are drawn, in the picture's own pixels: its labels that are shown, each through
+    // its canvas and its viewport (Viewport.GetScreenTransform), not the tooltip's own place in the root (Mining Rates'
+    // check-3: the tooltip, drawn where the real pointer was, proved "outside the picture" by its own place). Null when
+    // none is shown.
+    static Rect2? DevDrawn(BaseTooltip tooltip, out string where)
+    {
+        Rect2? drawn = null;
+        int parts = 0;
+        foreach (Control c in tooltip.FindChildren("*", "", true, false).OfType<Control>())
+        {
+            if (c is not (RichTextLabel or Label) || !c.IsVisibleInTree() || c.Size.X < 1 || c.Size.Y < 1) continue;
+            Rect2 at = c.GetViewport().GetScreenTransform() * c.GetGlobalTransformWithCanvas() * new Rect2(Vector2.Zero, c.Size);
+            drawn = drawn is { } so ? so.Merge(at) : at;
+            parts++;
+        }
+        string content;
+        try { content = $"its content at {tooltip.LastContentPosition}"; }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException) { content = "its content's place not read"; }
+        where = $"{parts} of its labels drawn at {drawn?.ToString() ?? "-"} in the picture's pixels; its own place {tooltip.GetGlobalRect()}, {content}";
+        return drawn;
+    }
+
+    // ---- through the game's input, as a player's hand would (Fishing Rates' and Mining Rates' Dev.cs) -----------------
 
     Vector2I _devPointer;
     bool _devPointerSeen, _devHandSinceStep;
     ulong _devHandAt, _devGuardSince, _devTipSince;
     Control? _devAim;
     Vector2 _devAimAt;
+    // How often in a row the game said the pointer is on another control than the one aimed at: something lies over it,
+    // and after MostMisses the step says so at once instead of waiting out its time.
+    int _devMisses;
+    const int MostMisses = 10;
 
-    // Every tick of a request: where the real pointer is, and whether a mouse button is down. Both are the system's
-    // own, which the request's pushed pointer does not change (CombatGoals/DevWindowShots.cs, WatchHand).
+    // Every tick of a request: where the real pointer is, and whether a mouse button is down. Both are the system's own,
+    // which the request's pushed pointer does not change (CombatGoals/DevWindowShots.cs, WatchHand).
     void DevWatchHand()
     {
         Vector2I pointer = DisplayServer.MouseGetPosition();
@@ -1223,8 +2072,8 @@ public partial class WoodcuttingRatesMod
         _devPointerSeen = true;
     }
 
-    // True while a step that points or presses waits for a hand to leave the mouse; after GiveUpAfter the request
-    // ends, which puts everything back (CombatGoals/DevWindowShots.cs, HandAtMouse).
+    // True while a step that points or presses waits for a hand to leave the mouse; after GiveUpAfter the request ends,
+    // which puts everything back (CombatGoals/DevWindowShots.cs, HandAtMouse).
     bool DevHandAtMouse(string what)
     {
         ulong now = Time.GetTicksMsec();
@@ -1245,14 +2094,15 @@ public partial class WoodcuttingRatesMod
     }
 
     // A player's click in two steps (ItemEncyclopediaMod.DevAim, DevPressAimed): the pointer is put on the part of the
-    // control that is in sight, and a later tick presses only when the game says the pointer is on that control, so
-    // the click can never land on a control of the game's beside it or over it. True once it was pressed.
+    // control that is in sight, and a later tick presses only when the game says the pointer is on that control, so the
+    // click can never land on a control of the game's beside it or over it. True once it was pressed.
     bool DevPress(Control target, string what)
     {
         if (!GodotObject.IsInstanceValid(target) || !target.IsVisibleInTree()) throw new InvalidOperationException($"{what} is not on the screen to be clicked.");
         if (DevHandAtMouse(what)) return false;
         Rect2 rect = DevSight(target);
-        if (!rect.HasArea()) throw new InvalidOperationException($"no part of {what} is in sight.");
+        if (!rect.HasArea())
+            throw new InvalidOperationException($"no part of {what} is in sight{(DevUnderWindow(target) ? ": it lies under the mod's own window" : "")}.");
         if (_devAim != target || !rect.HasPoint(_devAimAt))
         {
             _devAim = target;
@@ -1263,6 +2113,8 @@ public partial class WoodcuttingRatesMod
         Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
         if (over == null || (over != target && !target.IsAncestorOf(over)))
         {
+            if (++_devMisses >= MostMisses)
+                throw new InvalidOperationException($"the pointer was put on {what} {MostMisses} times, and each time the game said it is on {DevName(over)}: nothing was pressed");
             DevLog($"the pointer is on {DevName(over)}, not on {what}: nothing was pressed, it is put there again");
             DevPointer(_devAimAt);
             return false;
@@ -1271,22 +2123,47 @@ public partial class WoodcuttingRatesMod
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = true, ButtonMask = MouseButtonMask.Left });
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = false });
         _devAim = null;
+        _devMisses = 0;
         DevLog($"pressed {what} at {_devAimAt}, the pointer on {DevName(over)}");
         return true;
     }
 
-    // The part of a control that can be seen: on the screen, and inside the list when it is a line of it.
+    // The part of a control that can be seen: on the screen, inside the window's list when it is a line of it, inside
+    // the page's list of trees when it is in there, and, for a control of the game, beside the mod's own window, which
+    // lies over the page: the pointer put on the window's part would never be on the control.
     Rect2 DevSight(Control control)
     {
         Rect2 rect = control.GetGlobalRect().Intersection(_ctx.Tree.Root.GetVisibleRect());
         if (_list != null && GodotObject.IsInstanceValid(_list.DevScroll) && _list.DevScroll.IsAncestorOf(control))
             rect = rect.Intersection(_list.DevScroll.GetGlobalRect());
+        else if (Native.ScrollOf(control) is { } scroll)
+            rect = rect.Intersection(scroll.GetGlobalRect());
+        if (DevUnderWindow(control)) rect = DevBeside(rect, _window!.Root.GetGlobalRect());
         return rect;
     }
 
-    // The pointer rests on a line and the game's tooltip comes up. A hand at the mouse moves it away: then it waits
-    // and points again. A tooltip that has not come up in 20 s of pointing is one line, and the request goes on.
-    bool DevTooltip(Button target)
+    // A control that is not the mod's own window's, with the window on the screen over its place.
+    bool DevUnderWindow(Control control) => _window is { IsAlive: true, Visible: true } window && control != window.Root &&
+        !window.Root.IsAncestorOf(control) && control.GetGlobalRect().Intersects(window.Root.GetGlobalRect());
+
+    // The largest part of a place that a cover leaves free: left, right, above or below it. Empty when it covers all.
+    static Rect2 DevBeside(Rect2 place, Rect2 cover)
+    {
+        if (!place.Intersects(cover)) return place;
+        Rect2[] parts =
+        [
+            new Rect2(place.Position, new Vector2(cover.Position.X - place.Position.X, place.Size.Y)),
+            new Rect2(new Vector2(cover.End.X, place.Position.Y), new Vector2(place.End.X - cover.End.X, place.Size.Y)),
+            new Rect2(place.Position, new Vector2(place.Size.X, cover.Position.Y - place.Position.Y)),
+            new Rect2(new Vector2(place.Position.X, cover.End.Y), new Vector2(place.Size.X, place.End.Y - cover.End.Y)),
+        ];
+        return parts.Where(p => p.Size.X > 0 && p.Size.Y > 0).OrderByDescending(p => p.Size.X * p.Size.Y).FirstOrDefault();
+    }
+
+    // The pointer rests on a control and the game's tooltip comes up; its picture is shot-woodcutting-<shot>.png. A hand
+    // at the mouse moves it away: then it waits and points again. A tooltip that has not come up in 20 s of pointing is
+    // one line, and the request goes on.
+    bool DevTooltip(Button target, Image? before, string shot)
     {
         if (DevHandAtMouse("the tooltip")) { _devTipSince = 0; return false; }
         if (_devTipSince == 0) _devTipSince = Time.GetTicksMsec();
@@ -1294,7 +2171,7 @@ public partial class WoodcuttingRatesMod
         if (over == null || (over != target && !target.IsAncestorOf(over)))
         {
             Rect2 rect = DevSight(target);
-            if (!rect.HasArea()) throw new InvalidOperationException("The line is outside the list.");
+            if (!rect.HasArea()) throw new InvalidOperationException($"No part of '{target.Text}' is in sight for its tooltip.");
             DevPointer(rect.GetCenter());
             return false;
         }
@@ -1302,22 +2179,49 @@ public partial class WoodcuttingRatesMod
         string first = target.TooltipText.Split('\n')[0];
         if (first.Length > 0 && tooltip.Contains(first))
         {
-            // The tooltip came up: its picture two drawn frames later.
-            if (_devTipShownAt == 0) { _devTipShownAt = Engine.GetFramesDrawn(); return false; }
-            if (Engine.GetFramesDrawn() < _devTipShownAt + 2) return false;
-            _devTipShownAt = 0;
-            DevLog("tooltip " + tooltip);
-            Shot("tooltip", tooltip: true);
+            // Two drawn frames after it came up, for the picture.
+            if (!DevFramesDrawn()) return false;
+            DevLog($"tooltip | {shot} | {tooltip}");
+            Shot(shot);
+            if (before != null && DevTooltipRect() is { } at)
+            {
+                using var now = _ctx.Tree.Root.GetTexture().GetImage();
+                DevLog($"shot-woodcutting-{shot}.png | " + DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE"));
+            }
             DevPointerBack();
             return true;
         }
-        if (Time.GetTicksMsec() - _devTipSince < 20000) return false;
-        DevLog($"tooltip | NOT SHOWN in 20 s with the pointer on {DevName(over)}; its words are in the 'row ... tooltip' lines, and there is no picture of it");
+        if (Time.GetTicksMsec() - _devTipSince < TipWait) return false;
+        DevLog($"tooltip | {shot} | NOT SHOWN in 20 s with the pointer on {DevName(over)}; its words are in the 'row' and 'tips' lines, and there is no picture of it");
         DevPointerBack();
         return true;
     }
 
-    long _devTipShownAt;
+    // A control in the picture just taken against a picture taken before it came, over the part of it that is beside the
+    // mod's own window (DevSight): the window lies over the Woodcutting page, and a card it covers is not in the picture.
+    string DevProofBeside(Image before, Control control, string what)
+    {
+        Rect2 whole = control.GetGlobalRect(), seen = DevSight(control);
+        double under = whole.Area > 0 ? 1 - seen.Area / whole.Area : 0;
+        string share = $"{what} at {whole}, {under:P0} of it under the mod's window or out of sight";
+        if (!seen.HasArea()) return $"NOT PROVED: {share}";
+        using var now = _ctx.Tree.Root.GetTexture().GetImage();
+        return $"{share}; " + DevChanged(before, now, seen, what + " beside the window", "VISIBLE", "NOT VISIBLE");
+    }
+
+    // Where the Godot tooltip that is up lies, in the root's own coordinates (GameStyle.DevTooltips finds it the same way).
+    Rect2? DevTooltipRect()
+    {
+        Rect2? found = null;
+        void Walk(Node node)
+        {
+            if (found != null) return;
+            if (node is PopupPanel { Visible: true } popup) { found = new Rect2(popup.Position, popup.Size); return; }
+            foreach (Node child in node.GetChildren(true)) Walk(child);
+        }
+        Walk(_ctx.Tree.Root);
+        return found;
+    }
 
     void DevPointer(Vector2 at)
     {
@@ -1336,162 +2240,81 @@ public partial class WoodcuttingRatesMod
     // Said in the line of a picture taken after a hand was at the mouse.
     string HandNote => _devHandSinceStep ? "; A HAND WAS AT THE MOUSE since the step before: this picture may show what it did" : "";
 
-    // ---- the pictures, proved from their pixels (ThievingOverview/Dev.cs, DevSeen) -------------------------------------
+    // ---- pictures, and what their pixels prove ------------------------------------------------------------------------
 
-    /// <summary>A picture of the screen as RGBA bytes, for the pixel proofs.</summary>
-    sealed class DevPicture : IDisposable
-    {
-        public readonly Image Image;
-        public readonly int Width, Height;
-        public readonly byte[] Data;
-
-        DevPicture(Image image)
-        {
-            if (image.GetFormat() != Image.Format.Rgba8) image.Convert(Image.Format.Rgba8);
-            Image = image;
-            Width = image.GetWidth();
-            Height = image.GetHeight();
-            Data = image.GetData();
-        }
-
-        public static DevPicture OfScreen(SceneTree tree) => new(tree.Root.GetTexture().GetImage());
-
-        public Color At(int x, int y)
-        {
-            int i = (y * Width + x) * 4;
-            return Color.Color8(Data[i], Data[i + 1], Data[i + 2]);
-        }
-
-        public void Dispose() => Image.Dispose();
-    }
-
-    // Where a part of the game's screen lies in a picture of it: in the game's own pixels, stretched as the game
-    // stretches the screen, cut to the picture (ThievingOverviewMod.DevPixels).
-    Rect2I DevPixels(Rect2 global, DevPicture picture) =>
-        ((Rect2I)(_ctx.Tree.Root.GetFinalTransform() * global)).Intersection(new Rect2I(0, 0, picture.Width, picture.Height));
-
-    // The share of a part's pixels that differ between two pictures of the screen; -1 when they cannot be compared.
-    static double DevChanged(DevPicture a, DevPicture? b, Rect2I r)
-    {
-        if (b == null || a.Width != b.Width || a.Height != b.Height || !r.HasArea()) return -1;
-        int count = 0;
-        for (int y = r.Position.Y; y < r.End.Y; y++)
-            for (int x = r.Position.X; x < r.End.X; x++)
-            {
-                int i = (y * a.Width + x) * 4;
-                // A pixel the same frame draws the same way twice; a little room for rounding.
-                if (Math.Max(Math.Abs(a.Data[i] - b.Data[i]), Math.Max(Math.Abs(a.Data[i + 1] - b.Data[i + 1]), Math.Abs(a.Data[i + 2] - b.Data[i + 2]))) > 2) count++;
-            }
-        return count / (double)Math.Max(1, r.Size.X * r.Size.Y);
-    }
-
-    // How many of a part's pixels are drawn in a colour (the gold of the name a list is sorted by).
-    static int DevInk(DevPicture p, Rect2I r, Color colour)
-    {
-        int count = 0;
-        for (int y = r.Position.Y; y < r.End.Y; y++)
-            for (int x = r.Position.X; x < r.End.X; x++)
-            {
-                Color c = p.At(x, y);
-                if (Math.Abs(c.R - colour.R) < 0.12f && Math.Abs(c.G - colour.G) < 0.12f && Math.Abs(c.B - colour.B) < 0.12f) count++;
-            }
-        return count;
-    }
-
-    static string Share(double share) => share < 0 ? "cannot be compared" : $"{share:P0}";
-
-    // A picture of the whole screen, and with crop one of the window alone, each proved from its pixels against the screen
-    // without the window and the picture before: the window in it, the gold name the list is sorted by, the tooltip, the
-    // page's list after a click, the window gone. A picture of a window that is not there, or of a list with no line in
-    // sight, is not taken.
-    void Shot(string state, bool crop = false, string? sortedBy = null, bool tooltip = false, WoodcuttingTree? listOf = null, Rect2? closedAt = null)
+    // A picture of the whole screen, and with crop one of the window alone, with the window's pixels against the screen
+    // without it (DevChanged). A picture of a window that is not there, or of a list with no line in sight, is not taken.
+    // A picture's name is letters, digits, - and _ only (lesson 49).
+    void Shot(string state, bool crop = false)
     {
         if (!Regex.IsMatch(state, "^[A-Za-z0-9_-]+$")) throw new InvalidOperationException($"'{state}' is no name for a picture: letters, digits, - and _ only.");
-        var picture = DevPicture.OfScreen(_ctx.Tree);
-        var proof = new List<string>();
-        if (crop || sortedBy != null)
+        using var image = _ctx.Tree.Root.GetTexture().GetImage();
+        void Save(Image picture, string file, string proof = "")
         {
-            if (_window is not { IsAlive: true, Visible: true } window) { picture.Dispose(); throw new InvalidOperationException("The window is not on the screen for " + state + "."); }
-            if (!window.Minimised && DevRowsInSight() == 0) { picture.Dispose(); throw new InvalidOperationException("No line of the list is in sight for " + state + "."); }
-            Rect2I at = DevPixels(window.Root.GetGlobalRect(), picture);
-            double changed = DevChanged(picture, _devBase, at);
-            proof.Add(changed >= 0.25 ? $"THE WINDOW IS IN THE PICTURE: {Share(changed)} of its {at.Size.X * at.Size.Y:N0} pixels at {at} differ from the screen without it"
-                : $"THE WINDOW IS NOT IN THE PICTURE: {Share(changed)} of its pixels at {at} differ from the screen without it");
-            proof.Add($"{DevRowsInSight()} lines in sight: {DevInSight()}");
+            Error result = picture.SavePng(Path.Combine(_ctx.Directory, file));
+            if (result != Error.Ok) throw new IOException(file + ": " + result);
+            DevLog(file + proof + HandNote);
         }
-        if (sortedBy != null && _list!.DevHeader(sortedBy) is { } header && _list.DevHeader(RatesList.NameKey) is { } name)
+        if (crop)
         {
-            int gold = DevInk(picture, DevPixels(header.GetGlobalRect(), picture), GameStyle.TextGold), other = DevInk(picture, DevPixels(name.GetGlobalRect(), picture), GameStyle.TextGold);
-            proof.Add((gold >= 15 && gold > 3 * other ? "THE NAME IT IS SORTED BY IS GOLD" : "THE NAME IT IS SORTED BY IS NOT GOLD") +
-                $": {gold} gold pixels in '{header.Text}', {other} in '{name.Text}'");
+            if (_window is not { IsAlive: true, Visible: true } window) throw new InvalidOperationException("The window is not on the screen for " + state + ".");
+            if (!window.Minimised && DevRowsInSight() == 0) throw new InvalidOperationException("No line of the list is in sight for " + state + ".");
+            // The picture is in the screen's pixels, the window in the game's own, which the game stretches.
+            var frame = _ctx.Tree.Root.GetFinalTransform() * window.Root.GetGlobalRect().Grow(10);
+            var part = ((Rect2I)frame).Intersection(new Rect2I(0, 0, image.GetWidth(), image.GetHeight()));
+            if (!part.HasArea()) throw new InvalidOperationException("The window is outside the picture.");
+            string proof = _devWithout == null ? " | NOT PROVED: no picture of the screen without the window"
+                : " | " + DevChanged(_devWithout, image, window.Root.GetGlobalRect(), "the window", "VISIBLE", "NOT VISIBLE");
+            Save(image, $"shot-woodcutting-{state}.png");
+            using var region = image.GetRegion(part);
+            Save(region, $"crop-woodcutting-{state}.png", proof);
+            return;
         }
-        if (tooltip && DevTooltipRect() is { } tip)
-        {
-            Rect2I at = DevPixels(tip, picture);
-            double changed = DevChanged(picture, _devLast, at);
-            proof.Add(changed >= 0.25 ? $"THE TOOLTIP IS IN THE PICTURE: {Share(changed)} of its pixels at {at} differ from the picture before it came up"
-                : $"THE TOOLTIP IS NOT IN THE PICTURE: {Share(changed)} of its pixels at {at} differ from the picture before");
-        }
-        if (listOf != null && Cards() is { } cards && cards.TryGetValue(listOf, out var card) && ListOf(card) is { } list)
-        {
-            Rect2I at = DevPixels(list.GetGlobalRect(), picture);
-            double changed = DevChanged(picture, _devLast, at);
-            bool inSight = list.GetGlobalRect().Grow(1).Encloses(card.GetGlobalRect());
-            proof.Add((changed >= 0.05 ? "THE PAGE'S LIST CHANGED IN THE PICTURE" : "THE PAGE'S LIST DID NOT CHANGE IN THE PICTURE") +
-                $": {Share(changed)} of its pixels at {at} differ from the picture before the click; the card at {card.GetGlobalRect()} is {(inSight ? "inside" : "NOT INSIDE")} the list at {list.GetGlobalRect()}");
-        }
-        if (closedAt is { } was)
-        {
-            Rect2I at = DevPixels(was, picture);
-            double fromLast = DevChanged(picture, _devLast, at), fromBase = DevChanged(picture, _devBase, at);
-            proof.Add((fromLast >= 0.25 ? "THE WINDOW IS GONE FROM THE PICTURE" : "THE WINDOW IS STILL IN THE PICTURE") +
-                $": {Share(fromLast)} of the pixels where it was differ from the picture with it, {Share(fromBase)} from the screen without it at the start");
-        }
-        Save(picture.Image, $"shot-woodcutting-{state}.png", proof);
-        if (crop && _window is { IsAlive: true } shown)
-        {
-            var part = DevPixels(shown.Root.GetGlobalRect().Grow(10), picture);
-            if (!part.HasArea()) { picture.Dispose(); throw new InvalidOperationException("The window is outside the picture."); }
-            using var region = picture.Image.GetRegion(part);
-            Save(region, $"crop-woodcutting-{state}.png", null);
-        }
-        _devLast?.Dispose();
-        _devLast = picture;
+        Save(image, $"shot-woodcutting-{state}.png");
     }
 
-    void Save(Image image, string file, List<string>? proof)
+    // How many of the pixels of a place (in the root's coordinates) differ between two pictures of the screen: a quarter
+    // or more is "yes" (something else is drawn there now), as Thieving Overview proves its Risky tag (DevSeen).
+    string DevChanged(Image before, Image after, Rect2 place, string what, string yes, string no) =>
+        DevChangedPixels(before, after, _ctx.Tree.Root.GetFinalTransform() * place, what, yes, no);
+
+    // The same over a place given in the picture's own pixels (DevDrawn).
+    static string DevChangedPixels(Image before, Image after, Rect2 screen, string what, string yes, string no)
     {
-        Error result = image.SavePng(Path.Combine(_ctx.Directory, file));
-        if (result != Error.Ok) throw new IOException(file + ": " + result);
-        DevLog(file + (proof is { Count: > 0 } ? " | " + string.Join(" | ", proof) : "") + HandNote);
+        if (before.GetSize() != after.GetSize()) return $"{no}: the two pictures differ in size ({before.GetSize()} and {after.GetSize()}), so they cannot be compared";
+        Rect2I at = ((Rect2I)screen).Intersection(new Rect2I(0, 0, after.GetWidth(), after.GetHeight()));
+        if (!at.HasArea()) return $"{no}: {what} is outside the picture";
+        long changed = 0, all = 0;
+        // Every second pixel each way: enough to tell, and a quarter of the work.
+        for (int y = at.Position.Y; y < at.End.Y; y += 2)
+            for (int x = at.Position.X; x < at.End.X; x += 2)
+            {
+                Color a = before.GetPixel(x, y), b = after.GetPixel(x, y);
+                all++;
+                if (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) > 0.1f) changed++;
+            }
+        double share = all == 0 ? 0 : (double)changed / all;
+        return $"{(share >= 0.25 ? yes : no)}: {share:P0} of the {all:N0} pixels read at {at} ({what}) differ from the picture before";
     }
 
-    // The place of the Godot tooltip that is up, in the game's own pixels, or null.
-    Rect2? DevTooltipRect()
+    int DevRowsInSight()
     {
-        Rect2? found = null;
-        void Walk(Node node)
-        {
-            if (found != null) return;
-            if (node is PopupPanel { Visible: true } popup) { found = new Rect2(popup.Position, popup.Size); return; }
-            foreach (Node child in node.GetChildren(true)) Walk(child);
-        }
-        Walk(_ctx.Tree.Root);
-        return found;
+        Rect2 sight = _list!.DevScroll.GetGlobalRect();
+        return _list.DevLines().Count(l => l.Button.IsVisibleInTree() && l.Button.GetGlobalRect().Intersects(sight));
     }
 
     // The strip of round buttons around the mod's own, which must be on the screen and lit.
     void ShotStrip()
     {
         if (_opener?.GetParent() is not Control strip || !_opener.IsVisibleInTree()) throw new InvalidOperationException("The round button is not on the screen.");
-        using var picture = DevPicture.OfScreen(_ctx.Tree);
-        var part = DevPixels(strip.GetGlobalRect().Grow(12), picture);
+        using var image = _ctx.Tree.Root.GetTexture().GetImage();
+        var frame = _ctx.Tree.Root.GetFinalTransform() * strip.GetGlobalRect().Grow(12);
+        var part = ((Rect2I)frame).Intersection(new Rect2I(0, 0, image.GetWidth(), image.GetHeight()));
         if (!part.HasArea()) throw new InvalidOperationException("The strip is outside the picture.");
-        Rect2I button = DevPixels(_opener.GetGlobalRect(), picture);
-        double changed = DevChanged(picture, _devBase, button);
-        using var region = picture.Image.GetRegion(part);
-        Save(region, "crop-woodcutting-strip.png", [$"the button at {_opener.GetGlobalRect()}, lit={_opener.ButtonPressed}, {strip.GetChildCount()} buttons in the strip; " +
-            $"{Share(changed)} of the button's pixels differ from the screen when it was unlit" + (changed >= 0.05 ? " (THE LIT BUTTON IS IN THE PICTURE)" : " (THE BUTTON LOOKS AS UNLIT)")]);
+        using var region = image.GetRegion(part);
+        Error result = region.SavePng(Path.Combine(_ctx.Directory, "crop-woodcutting-strip.png"));
+        if (result != Error.Ok) throw new IOException("crop-woodcutting-strip.png: " + result);
+        DevLog($"crop-woodcutting-strip.png | the button at {_opener.GetGlobalRect()}, lit={_opener.ButtonPressed}, {strip.GetChildCount()} buttons in the strip{HandNote}");
     }
 }
 #endif

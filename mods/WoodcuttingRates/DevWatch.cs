@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Components.Inventories;
-using GamesByMalcs.Melvor2.Components.Trackers;
 using GamesByMalcs.Melvor2.Core;
 using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities.Woodcutting;
@@ -15,95 +14,128 @@ using MelvorModLoader;
 
 namespace WoodcuttingRates;
 
-// Development: a file "woodcuttingwatch.request" in the mod's folder starts a silent watch of the game's woodcutting, and
-// "woodcuttingwatch.done" is written when it ends. The file holds a number of minutes (10 when empty), which the watch
-// logs: that is how long it runs at most, the request's own choice. It opens nothing, clicks nothing, does not wait on
-// the mouse and changes nothing: it only listens to the game's own events, as Fishing Rates' DevWatch listens to its
-// catches (mods/FishingRates/Dev.cs). If the character is not cutting a tree when it starts, it says so in one line and
-// ends. Otherwise every hit is one "Dev: hit" line (the tree, the damage, double, weak spot, the tree's hit points before
-// and after, the XP and the items the game added in the same frame) and every cut is in the line of its frame (instant
-// or not, what it added, the overgrowth it put on). It ends when the minutes are up, or after a minute without a hit,
-// with one summary line and the verdicts in capitals, and its last line says it stopped listening and changed nothing.
-//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod WoodcuttingRates -Request woodcuttingwatch.request -Produces woodcuttingwatch.done -Text 10 -Seconds 900 -Out ...
-// Every listener is guarded (a fault of the watch never reaches the game's tick) and is taken off when the watch ends,
-// when the mod stops and when another character is opened (DevUnlisten).
+// Development: a file "woodcuttingwatch.request" in the mod's folder starts a silent watch of the character's
+// woodcutting, and "woodcuttingwatch.done" says how it ended. The file holds a number of minutes (10 when it is empty),
+// which is logged. It opens nothing, clicks nothing, does not wait on the mouse and changes nothing: it only listens to
+// the game's own events, as Mining Rates' watch listens to its hits (mods/MiningRates/DevWatch.cs): a hit
+// (WoodcuttingActionComponent.TreeDamaged), a cut (TreeCut), a tree's hit points (RecipeHealth.CurrentChanged), its
+// overgrowth (WoodcuttingTree.EffectAdded, EffectRemoved), the Woodcutting XP (ExperienceComponent.XpChanged) and the items
+// the action adds (ActionComponent.ItemAdded). If the character is not cutting a tree when it starts, it says so in one
+// line and ends. It runs alone: a light check sent meanwhile waits for it to end.
+//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod WoodcuttingRates -Request woodcuttingwatch.request -Produces woodcuttingwatch.done -Text 10 -Seconds 900 -Out <folder>
+// Every frame with a hit or a cut is one "Dev: hit" line: the tree, the damage, double and weak spot as the game says
+// them, the tree's hit points before and after, the cut (instant or not), the order of the game's events, the XP and the
+// items it added, the overgrowth it put on. It ends when the minutes are up or after a minute without a hit, with, for
+// every tree hit, one line per question, each with a verdict in capitals; NOT DECIDED below MostCuts whole cuts or
+// MostHits frames. The questions are the parts of the rule the window's hour rests on (TreeRates.LogsRule, HitsRule): how
+// much an ordinary, a double and a weak spot hit takes (against the game's two numbers of a weak spot and each reading of
+// TreeRates.HitRule), the hits a cut takes against each reading's, what the logs and the XP come with. Then the game's
+// own tracker (WoodcuttingEntity.Tracker) over its periods beside ours. Its last line says it stopped listening and
+// changed nothing. Every listener runs inside a try, and all are taken off when it ends, on Stop (with the done file,
+// DevStopped) and on another character (DevUnwatchAll).
 public partial class WoodcuttingRatesMod
 {
-    const string WatchFile = "woodcuttingwatch.request", WatchDoneFile = "woodcuttingwatch.done";
-    const ulong QuietFor = 60000;
+    const string WatchRequestFile = "woodcuttingwatch.request", WatchDoneFile = "woodcuttingwatch.done";
+    // A minute without a hit ends the watch.
+    const ulong WatchIdle = 60000;
+    // Fewer whole cuts than this decide nothing about the hits a cut takes, and fewer frames of a kind nothing about what
+    // they bring: Mining Rates' watch floor (its code review of turn 1: about 30 breaks before a verdict). At about 3 s a
+    // hit and 5 to 10 hits a cut, ten minutes give 200 hits and 20 to 40 cuts.
+    const int MostCuts = 30, MostHits = 30;
 
     // What the game did in one frame: a hit, and with it, or alone, a cut; the XP, the items and the overgrowth of it.
     // Everything one action of the game does happens in one tick of the game, so in one frame.
     sealed class DevMoment
     {
-        public ulong Frame, At;
+        public long Frame;
+        public ulong At;
         public readonly List<(WoodcuttingTree Tree, int Damage, bool Double, bool Weak, int MaxHp)> Hits = new();
-        public readonly List<(string Tree, int Old, int New)> Health = new();
+        public readonly List<(WoodcuttingTree Tree, int Old, int New)> Health = new();
         public readonly List<(WoodcuttingTree Tree, bool Instant)> Cuts = new();
         public double Xp;
-        public readonly Dictionary<Item, int> Items = new(ReferenceEqualityComparer.Instance);
+        public int XpChanges;
+        public readonly List<(Item Item, int Quantity)> Items = new();
         public readonly List<string> Effects = new();
+        // The game's events of this frame in the order they came: hit, health, cut, xp, item, effect.
+        public readonly List<string> Order = new();
+
+        public int ItemsOf(Item item) => Items.Where(i => ReferenceEquals(i.Item, item)).Sum(i => i.Quantity);
     }
 
     sealed class DevHitWatch
     {
-        public ulong Since, Minutes, LastHit;
+        public ulong Since, LastHit, Length;
+        public WoodcuttingActionComponent Action = null!;
         public readonly List<Action> Off = new();
-        public DevMoment? Open;
         public readonly List<DevMoment> Moments = new();
+        // Every tree's numbers when the watch began, to see whether they changed while it ran.
+        public readonly Dictionary<WoodcuttingTree, string> Start = new(ReferenceEqualityComparer.Instance);
+        public DevMoment? Open;
         public bool Failed;
         public int TwoHitsInAFrame;
-        public string Start = "";
-        public IReadOnlyTrackerPeriod? Period;
-        public double TrackerXp;
-        public readonly Dictionary<Item, int> TrackerItems = new(ReferenceEqualityComparer.Instance);
     }
 
     DevHitWatch? _devHits;
 
+    // A watch asked for, when no light check runs.
     void DevWatchRequest()
     {
-        if (GameAccess.IsComputingOffline || _stopped || _woodcutting == null) return;
-        try
+        string path = Path.Combine(_ctx.Directory, WatchRequestFile);
+        if (!File.Exists(path)) return;
+        string asked = File.ReadAllText(path).Trim();
+        File.Delete(path);
+        int minutes = 10;
+        if (asked.Length > 0 && !(int.TryParse(asked, NumberStyles.Integer, CultureInfo.InvariantCulture, out minutes) && minutes is >= 1 and <= 60))
         {
-            if (_devHits is not { } w)
-            {
-                string path = Path.Combine(_ctx.Directory, WatchFile);
-                if (!File.Exists(path)) return;
-                string asked = File.ReadAllText(path).Trim();
-                File.Delete(path);
-                DevWatchStart(asked);
-                return;
-            }
-            // A frame that has passed is written out; the watch ends when its minutes are up or after a minute without a hit.
-            if (w.Open is { } open && open.Frame != Engine.GetProcessFrames()) DevFlushMoment(w);
-            ulong now = Time.GetTicksMsec();
-            if (now - w.Since >= w.Minutes * 60000) DevWatchEnd($"its {w.Minutes} minutes are up");
-            else if (now - w.LastHit >= QuietFor) DevWatchEnd($"no hit for {QuietFor / 1000} s (woodcutting {(_woodcutting.Action.IsStarted ? "started" : "stopped")})");
+            DevLog($"watch | the request's '{asked}' is not a number of minutes from 1 to 60: it watches 10");
+            minutes = 10;
         }
-        catch (Exception e)
-        {
-            // A fault of the watch ends the watch, never the mod.
-            DevLog($"watch | failed: {e.GetType().Name}: {e.Message}");
-            if (_devHits != null) DevWatchEnd("it failed (the line before)", summary: false);
-            else File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), "failed before it began: " + e.Message);
-        }
-    }
-
-    void DevWatchStart(string asked)
-    {
-        ulong minutes = asked.Length == 0 ? 10 : ulong.TryParse(asked, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong m) && m is > 0 and <= 120 ? m : 10;
         var action = _woodcutting!.Action;
-        DevLog($"watch | started: up to {minutes} minutes (the request file said '{asked}'{(asked.Length == 0 ? ", so 10" : "")}), or until a minute without a hit; only listening, nothing is changed");
-        if (!action.IsStarted || action.CuttingTree == null)
+        DevLog($"watch | {minutes} minutes asked{(asked.Length == 0 ? " (the request was empty)" : $" (the request said '{asked}')")}, or until a minute without a hit; " +
+            $"only listening, nothing is changed; {DevCutting()}");
+        if (!action.IsStarted || !DevCuttingNow() || action.CuttingTree == null)
         {
-            DevLog($"watch | the character is not cutting a tree ({DevCutting()}): nothing to watch. Start cutting a tree by hand and send the request again.");
-            File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), "not cutting: nothing watched, nothing changed");
+            const string not = "not cutting when the watch began: nothing was listened to, nothing changed. Start cutting a tree by hand and send the request again.";
+            DevLog("watch | " + not);
+            File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), not);
             return;
         }
-        var w = _devHits = new DevHitWatch { Since = Time.GetTicksMsec(), Minutes = minutes, LastHit = Time.GetTicksMsec(), Start = DevCutting() };
-        ExperienceComponent xp = _woodcutting.Experience;
-        EventHandler<TreeDamagedEventArgs> damaged = (_, e) => DevWatchEvent(w, () =>
+        var w = new DevHitWatch { Action = action, Since = Time.GetTicksMsec(), Length = (ulong)minutes * 60000 };
+        w.LastHit = w.Since;
+        foreach (WoodcuttingTree tree in action.Trees.Values) w.Start[tree] = DevTreeStats(tree);
+        _devHits = w;
+        DevWatchListen(w);
+        WoodcuttingTree cut = action.CuttingTree;
+        DevLog($"watch | listening; the tree cut {cut.Recipe.Id}, its hit points {cut.Health?.Current} of {cut.Stats.MaxHealth.Value}; its numbers {w.Start[cut]}; " +
+            $"the game's two numbers of a weak spot {WoodcuttingActionComponent.BaseWeakSpotDamage} and {R(WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage)}");
+        DevTracker("at the start", null);
+    }
+
+    // A tree's numbers as the game has them now, with every bonus of the character.
+    static string DevTreeStats(WoodcuttingTree tree)
+    {
+        WoodcuttingActionStats s = tree.Stats;
+        return $"interval {R(s.Interval.Value)} ms, hit points {s.MaxHealth.Value}, XP {R(s.Experience.XpToAdd.Value)}, logs x{s.ProductQuantity.Value}, " +
+            $"doubling {R(s.DoublingChance?.Total.Value ?? 0)}, double damage {R(s.DoubleDamageChance?.Total.Value ?? 0)}, weak spot {R(s.WeakSpotChance?.Total.Value ?? 0)}, " +
+            $"instant cut {R(s.InstantCutChance?.Total.Value ?? 0)}, overgrowth [{string.Join(", ", tree.ActiveEffects?.Values.Select(e => $"{e.Effect?.LocalId} {e.StacksLeft}") ?? [])}]";
+    }
+
+    // The game's events, each listener inside a try: one that fails says so once and the watch ends on the next tick.
+    void DevWatchListen(DevHitWatch w)
+    {
+        var action = w.Action;
+        ExperienceComponent experience = _woodcutting!.Experience;
+        void Safe(Action listen)
+        {
+            if (w.Failed || !ReferenceEquals(_devHits, w) || GameAccess.IsComputingOffline) return;
+            try { listen(); }
+            catch (Exception e)
+            {
+                w.Failed = true;
+                DevLog("watch | a listener failed, the watch ends: " + e.Message);
+            }
+        }
+        EventHandler<TreeDamagedEventArgs> damaged = (_, e) => Safe(() =>
         {
             DevMoment m = DevMomentNow(w);
             if (m.Hits.Count > 0)
@@ -114,245 +146,333 @@ public partial class WoodcuttingRatesMod
                 m = DevMomentNow(w);
             }
             m.Hits.Add((e.Tree, e.DamageDealt, e.DoubleDamage, e.IsWeakSpot, e.Tree?.Stats.MaxHealth.Value ?? 0));
-            w.LastHit = Time.GetTicksMsec();
+            m.Order.Add("hit");
         });
-        EventHandler<TreeCutEventArgs> cut = (_, e) => DevWatchEvent(w, () => DevMomentNow(w).Cuts.Add((e.Tree, e.Instant)));
-        EventHandler<ItemAddedEventArgs> item = (_, e) => DevWatchEvent(w, () =>
+        EventHandler<TreeCutEventArgs> cut = (_, e) => Safe(() =>
+        {
+            DevMoment m = DevMomentNow(w);
+            m.Cuts.Add((e.Tree, e.Instant));
+            m.Order.Add("cut");
+        });
+        EventHandler<ItemAddedEventArgs> item = (_, e) => Safe(() =>
         {
             if (e.Item == null) return;
-            var items = DevMomentNow(w).Items;
-            items[e.Item] = items.GetValueOrDefault(e.Item) + e.Quantity;
+            DevMoment m = DevMomentNow(w);
+            m.Items.Add((e.Item, e.Quantity));
+            m.Order.Add("item");
         });
-        EventHandler<ValueChangedEventArgs<double>> gained = (_, e) => DevWatchEvent(w, () => DevMomentNow(w).Xp += e.NewValue - e.OldValue);
+        EventHandler<ValueChangedEventArgs<double>> xp = (_, e) => Safe(() =>
+        {
+            DevMoment m = DevMomentNow(w);
+            m.Xp += e.NewValue - e.OldValue;
+            m.XpChanges++;
+            m.Order.Add("xp");
+        });
         action.TreeDamaged += damaged;
         action.TreeCut += cut;
         action.ItemAdded += item;
-        xp.XpChanged += gained;
+        experience.XpChanged += xp;
         w.Off.Add(() =>
         {
             action.TreeDamaged -= damaged;
             action.TreeCut -= cut;
             action.ItemAdded -= item;
-            xp.XpChanged -= gained;
+            experience.XpChanged -= xp;
         });
         foreach (WoodcuttingTree tree in action.Trees.Values)
         {
             if (tree?.Health is not { } health) continue;
-            EventHandler<ValueChangedEventArgs<int>> hp = (_, e) => DevWatchEvent(w, () => DevMomentNow(w).Health.Add((tree.Recipe.LocalId, e.OldValue, e.NewValue)));
-            EventHandler<OvergrowthEffectEventArgs> added = (_, e) => DevWatchEvent(w, () => DevMomentNow(w).Effects.Add($"{tree.Recipe.LocalId} gets {e.Effect?.Effect?.LocalId} ({e.Effect?.StacksLeft} stacks)"));
-            EventHandler<OvergrowthEffectEventArgs> removed = (_, e) => DevWatchEvent(w, () => DevMomentNow(w).Effects.Add($"{tree.Recipe.LocalId} loses {e.Effect?.Effect?.LocalId}"));
+            WoodcuttingTree watched = tree;
+            EventHandler<ValueChangedEventArgs<int>> hp = (_, e) => Safe(() =>
+            {
+                DevMoment m = DevMomentNow(w);
+                m.Health.Add((watched, e.OldValue, e.NewValue));
+                m.Order.Add("health");
+            });
+            EventHandler<OvergrowthEffectEventArgs> added = (_, e) => Safe(() =>
+            {
+                DevMoment m = DevMomentNow(w);
+                m.Effects.Add($"{watched.Recipe.LocalId} gets {e.Effect?.Effect?.LocalId} ({e.Effect?.StacksLeft} stacks)");
+                m.Order.Add("effect");
+            });
+            EventHandler<OvergrowthEffectEventArgs> removed = (_, e) => Safe(() =>
+            {
+                DevMoment m = DevMomentNow(w);
+                m.Effects.Add($"{watched.Recipe.LocalId} loses {e.Effect?.Effect?.LocalId}");
+                m.Order.Add("effect");
+            });
             health.CurrentChanged += hp;
             tree.EffectAdded += added;
             tree.EffectRemoved += removed;
             w.Off.Add(() =>
             {
                 health.CurrentChanged -= hp;
-                tree.EffectAdded -= added;
-                tree.EffectRemoved -= removed;
+                watched.EffectAdded -= added;
+                watched.EffectRemoved -= removed;
             });
         }
-        // The game's own tracker over the same minutes: its longest period, read now and at the end.
-        try
-        {
-            w.Period = _woodcutting.Tracker?.Periods?.OrderByDescending(p => p.CycleDuration).FirstOrDefault();
-            if (w.Period != null)
-            {
-                w.TrackerXp = w.Period.Experience.TryGetValue(xp, out var list) ? list.Total : 0;
-                foreach (var (key, samples) in w.Period.Items) if (key != null) w.TrackerItems[key] = samples.Total;
-            }
-        }
-        catch (Exception e) { DevLog("watch | the game's tracker could not be read: " + e.Message); w.Period = null; }
-        WoodcuttingTree tree0 = action.CuttingTree;
-        TreeRates ours = TreeRates.Read(tree0, _woodcutting, null, Shown);
-        DevLog($"watch | {w.Start}; the tree {tree0.Recipe.Id}: hit points {tree0.Health?.Current} of {ours.HitPoints}, ours a hit every {R(ours.HitSeconds)} s, XP {R(ours.XpEach)} a hit, " +
-            $"chances double {R(ours.DoubleDamageChance)} weak {R(ours.WeakSpotChance)} instant {R(ours.InstantCutChance)} doubling {R(ours.Doubling)}, logs {ours.Log?.Id} x{ours.LogQuantity}, " +
-            $"per hit [{string.Join(", ", ours.PerHit.Select(DevDrop))}], per cut [{string.Join(", ", ours.PerCut.Select(DevDrop))}]; the game's two numbers of a weak spot " +
-            $"{WoodcuttingActionComponent.BaseWeakSpotDamage} and {R(WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage)}; the tracker's period " +
-            (w.Period == null ? "none" : $"{R(w.Period.CycleDuration)} ({w.Period.SampleCount} samples of {R(w.Period.SamplePeriod)}): XP {R(w.TrackerXp)} so far"));
     }
 
+    // The moment of this frame: a new one when the frame has changed, after the one before is logged.
     DevMoment DevMomentNow(DevHitWatch w)
     {
-        ulong frame = Engine.GetProcessFrames();
+        long frame = (long)Engine.GetProcessFrames();
         if (w.Open is { } open && open.Frame == frame) return open;
-        if (w.Open != null) DevFlushMoment(w);
+        DevFlushMoment(w);
         return w.Open = new DevMoment { Frame = frame, At = Time.GetTicksMsec() };
-    }
-
-    // A guarded listener: a fault reading the game's event never reaches the game's tick; the rest are then not read.
-    void DevWatchEvent(DevHitWatch w, Action read)
-    {
-        if (w.Failed || !ReferenceEquals(_devHits, w) || GameAccess.IsComputingOffline) return;
-        try { read(); }
-        catch (Exception e)
-        {
-            w.Failed = true;
-            _ctx.Log($"Dev: watch | reading the game's event failed, the rest are not read: {e.GetType().Name}: {e.Message}");
-        }
     }
 
     void DevFlushMoment(DevHitWatch w)
     {
         if (w.Open is not { } m) return;
         w.Open = null;
-        if (w.Moments.Count < 5000) w.Moments.Add(m);
+        if (m.Hits.Count > 0 || m.Cuts.Count > 0)
+        {
+            if (w.Moments.Count < 20000) w.Moments.Add(m);
+            if (m.Hits.Count > 0) w.LastHit = m.At;
+        }
+        if (m.Hits.Count == 0 && m.Cuts.Count == 0 && m.Effects.Count == 0) return;
         string hits = string.Join("; ", m.Hits.Select(h => $"{h.Tree?.Recipe.LocalId}: damage {h.Damage}{(h.Double ? ", DOUBLE" : "")}{(h.Weak ? ", WEAK SPOT" : "")} of {h.MaxHp} hit points"));
-        string health = string.Join(", ", m.Health.Select(h => $"{h.Tree} {h.Old} -> {h.New}"));
+        string health = string.Join(", ", m.Health.Select(h => $"{h.Tree.Recipe.LocalId} {h.Old} -> {h.New}"));
         string cuts = string.Join(", ", m.Cuts.Select(c => $"{c.Tree?.Recipe.LocalId}{(c.Instant ? " INSTANT" : "")}"));
-        string items = string.Join(", ", m.Items.Select(i => $"{i.Key.Id} x{i.Value}"));
         DevLog($"{(m.Hits.Count > 0 ? "hit" : "cut")} | {(hits.Length > 0 ? hits : "no hit")} | hit points {(health.Length > 0 ? health : "unchanged")} | " +
-            $"{(cuts.Length > 0 ? "CUT " + cuts : "no cut")} | XP +{R(m.Xp)} | items [{items}]{(m.Effects.Count > 0 ? " | overgrowth: " + string.Join(", ", m.Effects) : "")}");
+            $"{(cuts.Length > 0 ? "CUT " + cuts : "no cut")} | events [{string.Join(" ", m.Order)}] | XP +{R(m.Xp)} in {m.XpChanges} changes | " +
+            $"items [{string.Join(", ", m.Items.Select(i => $"{i.Item.Id} x{i.Quantity}"))}]{(m.Effects.Count > 0 ? " | overgrowth: " + string.Join(", ", m.Effects) : "")}");
     }
 
-    void DevWatchUnlisten()
+    // Every tick while the watch runs: the last frame is logged, and the watch ends when its minutes are up, after a
+    // minute without a hit, or when a listener failed.
+    void DevWatchTick()
+    {
+        if (_devHits is not { } w) return;
+        if (w.Open != null && w.Open.Frame != (long)Engine.GetProcessFrames()) DevFlushMoment(w);
+        ulong now = Time.GetTicksMsec();
+        if (w.Failed) DevWatchEnd("a listener failed");
+        else if (now - w.Since >= w.Length) DevWatchEnd($"the {w.Length / 60000} minutes are up");
+        else if (now - w.LastHit >= WatchIdle) DevWatchEnd($"a minute without a hit (woodcutting {(w.Action.IsStarted ? "started" : "stopped")})");
+    }
+
+    void DevUnwatchHits()
     {
         if (_devHits is not { } w) return;
         foreach (Action off in w.Off)
         {
-            try { off(); } catch { }
+            try { off(); }
+            catch (Exception) { }
         }
         w.Off.Clear();
     }
 
-    // The summary: what the game did against the window's numbers, one verdict in capitals per question.
-    void DevWatchEnd(string why, bool summary = true)
+    // The summary: for every tree hit, one line per question with its verdict; then the tracker, then the last line.
+    // Without a summary when another character was opened or the mod stopped: the trees of the one watched may be gone.
+    void DevWatchEnd(string why, bool summarise = true)
     {
         if (_devHits is not { } w) return;
         DevFlushMoment(w);
-        DevWatchUnlisten();
+        DevUnwatchHits();
         _devHits = null;
-        if (!summary) DevLog($"watch | no summary: {why}");
-        else
+        double seconds = (Time.GetTicksMsec() - w.Since) / 1000.0;
+        int hits = w.Moments.Sum(m => m.Hits.Count);
+        var verdicts = new List<string>();
+        try
         {
-            try { DevWatchSummary(w, why); }
-            catch (Exception e) { DevLog($"watch | the summary could not be made: {e.GetType().Name}: {e.Message}"); }
+            DevLog($"watch | ended after {seconds:0} s: {why}; {hits} hits and {w.Moments.Sum(m => m.Cuts.Count)} cuts seen at " +
+                $"[{string.Join(", ", w.Moments.SelectMany(m => m.Hits).GroupBy(h => h.Tree?.Recipe.LocalId ?? "?").Select(g => $"{g.Key} {g.Count()}"))}]; " +
+                $"two hits in one frame {w.TwoHitsInAFrame} times");
+            if (!summarise || _woodcutting == null) verdicts.Add("NO SUMMARY");
+            else
+            {
+                foreach (var group in w.Moments.SelectMany(m => m.Hits.Select(h => h.Tree)).Where(t => t != null).GroupBy(t => t, ReferenceEqualityComparer.Instance)
+                    .OrderByDescending(g => g.Count()))
+                {
+                    var tree = (WoodcuttingTree)group.Key!;
+                    var mine = w.Moments.Where(m => m.Hits.Any(h => ReferenceEquals(h.Tree, tree)) || m.Cuts.Any(c => ReferenceEquals(c.Tree, tree))).ToList();
+                    var said = DevWatchSummary(mine, tree, TreeRates.Read(tree, _woodcutting, Shown), w.Start.GetValueOrDefault(tree, "not read"), seconds);
+                    verdicts.Add($"{tree.Recipe.LocalId}: {string.Join(", ", said)}");
+                }
+                if (verdicts.Count == 0) verdicts.Add("NO HIT SEEN");
+                DevTracker($"at the end, after {seconds:0} s", w.Moments);
+            }
         }
-        DevLog($"watch | stopped listening ({why}); nothing was changed: no click, no page, no setting, {(_woodcutting != null ? DevCutting() : "no character")}");
-        File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), $"ended: {why}; nothing changed");
+        catch (Exception e) { DevLog("watch | the summary failed: " + e.Message); verdicts.Add("THE SUMMARY FAILED"); }
+        const string last = "stopped listening to the game's events; nothing was changed: no click, no page, no setting";
+        DevLog($"watch | {last}; {(_woodcutting != null ? DevCutting() : "no character")}");
+        File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), $"{why}; {hits} hits in {seconds:0} s; {string.Join("; ", verdicts)}; {last}");
     }
 
-    void DevWatchSummary(DevHitWatch w, string why)
+    // The hits a cut takes by a reading, from the tree's numbers at the end, with an ordinary hit of the damage measured.
+    static double? DevExpected(HitRule rule, TreeRates t) => TreeRates.ExpectedHits(rule, t);
+
+    List<string> DevWatchSummary(List<DevMoment> moments, WoodcuttingTree tree, TreeRates ours, string start, double seconds)
     {
-        var hits = w.Moments.SelectMany(m => m.Hits).ToList();
-        var cuts = w.Moments.SelectMany(m => m.Cuts).ToList();
-        double seconds = (Time.GetTicksMsec() - w.Since) / 1000.0;
-        if (hits.Count == 0) { DevLog($"watch | summary: no hit in {seconds:0} s ({why}), {cuts.Count} cuts: nothing to compare"); return; }
-        // The tree most hits went to; the comparisons are of it.
-        WoodcuttingTree tree = hits.GroupBy(h => h.Tree).OrderByDescending(g => g.Count()).First().Key;
-        TreeRates ours = TreeRates.Read(tree, _woodcutting!, null, Shown);
-        var mine = w.Moments.Where(m => m.Hits.Any(h => ReferenceEquals(h.Tree, tree)) || m.Cuts.Any(c => ReferenceEquals(c.Tree, tree))).ToList();
-        var hitOnly = mine.Where(m => m.Hits.Count > 0 && m.Cuts.Count == 0).ToList();
-        var withCut = mine.Where(m => m.Cuts.Count > 0).ToList();
-        var treeHits = hits.Where(h => ReferenceEquals(h.Tree, tree)).ToList();
-        var treeCuts = cuts.Where(c => ReferenceEquals(c.Tree, tree)).ToList();
-        int instant = treeCuts.Count(c => c.Instant);
+        var verdicts = new List<string>();
+        string id = tree.Recipe.Id;
+        void Say(string question, string verdict, string words)
+        {
+            verdicts.Add(verdict);
+            DevLog($"watch | {id} | {question} | {verdict}: {words}");
+        }
+        var hits = moments.SelectMany(m => m.Hits.Where(h => ReferenceEquals(h.Tree, tree))).ToList();
+        var cuts = moments.SelectMany(m => m.Cuts.Where(c => ReferenceEquals(c.Tree, tree))).ToList();
+        var hitOnly = moments.Where(m => m.Hits.Count > 0 && m.Cuts.Count == 0).ToList();
+        var withCut = moments.Where(m => m.Cuts.Count > 0).ToList();
+        int b = WoodcuttingActionComponent.BaseWeakSpotDamage;
+        double f = WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage;
+
+        // The tree's numbers at the start and at the end: a level up or an overgrowth while it ran changes them.
+        string end = DevTreeStats(tree);
+        DevLog($"watch | {id} | the tree's numbers | at the start {start}; at the end {end}" + (start == end ? "" : "  CHANGED WHILE IT RAN"));
 
         // The time of a hit.
-        var times = mine.Where(m => m.Hits.Count > 0).Select(m => m.At).ToList();
-        string time = times.Count < 2 ? "too few hits to time"
-            : $"a hit every {R((times[^1] - times[0]) / 1000.0 / (times.Count - 1))} s measured, ours {R(ours.HitSeconds)} s";
+        var times = moments.Where(m => m.Hits.Count > 0).Select(m => m.At).ToList();
+        DevLog($"watch | {id} | the time of a hit | " + (times.Count < 2 ? "too few hits to time"
+            : $"{R((times[^1] - times[0]) / 1000.0 / (times.Count - 1))} s measured over {times.Count} hits, ours {R(ours.HitSeconds)} s"));
 
-        // Hits per cut, the hits of each cut counted from the cut before (the first cut's hits are cut short by the start).
-        var perCut = new List<int>();
+        // How much an ordinary hit takes.
+        var ordinary = hits.Where(h => !h.Double && !h.Weak).ToList();
+        var damages = ordinary.Select(h => h.Damage).Distinct().Order().ToList();
+        int? d = ordinary.Count >= 10 && damages.Count == 1 ? damages[0] : null;
+        Say("an ordinary hit", ordinary.Count < 10 ? "NOT DECIDED" : d is { } one ? $"AN ORDINARY HIT DEALS {one}" : "ORDINARY HITS DIFFER",
+            $"{ordinary.Count} ordinary hits, damage [{string.Join(" ", ordinary.GroupBy(h => h.Damage).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}] of " +
+            $"[{string.Join(" ", ordinary.Select(h => h.MaxHp).Distinct().Order())}] hit points{(ordinary.Count < 10 ? " (fewer than 10 decide nothing)" : "")}");
+
+        // A double hit.
+        var doubled = hits.Where(h => h.Double && !h.Weak).ToList();
+        Say("a double hit", doubled.Count == 0 ? "NO DOUBLE HIT SEEN" : d == null ? "NOT DECIDED"
+                : doubled.All(h => h.Damage == 2 * d) ? "A DOUBLE HIT DEALS TWICE AN ORDINARY ONE" : "A DOUBLE HIT DEALS ANOTHER AMOUNT",
+            $"{doubled.Count} double hits, damage [{string.Join(" ", doubled.GroupBy(h => h.Damage).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}]; " +
+            $"the chance {R(ours.DoubleDamageChance)}, seen on {R(hits.Count == 0 ? 0 : hits.Count(h => h.Double) / (double)hits.Count)} of the hits");
+
+        // A weak spot, against each reading of the game's two numbers (with the ordinary damage measured, or 1).
+        int ordinaryDamage = d ?? 1;
+        var readings = TreeRatesReadings(ordinaryDamage);
+        var weak = hits.Where(h => h.Weak && !h.Double).ToList();
+        var weakDouble = hits.Where(h => h.Weak && h.Double).ToList();
+        var fitting = readings.Where(r => weak.Count > 0 && weak.All(h => TreeRates.Outcomes(r, h.MaxHp, 0, 1)[2].Damage == h.Damage)).ToList();
+        bool fraction = weak.Any(h => Math.Abs(f * h.MaxHp - Math.Round(f * h.MaxHp)) > 1e-9);
+        Say("a weak spot", weak.Count == 0 ? "NO WEAK SPOT SEEN" : fitting.Count == 0 ? "A WEAK SPOT IS NOT EXPLAINED BY THE GAME'S TWO NUMBERS"
+                : fitting.Count == 1 ? $"A WEAK SPOT DEALS THE BASE AND THE SHARE OF HIT POINTS {DevReadingName(fitting[0]).ToUpperInvariant()}"
+                : $"A WEAK SPOT FITS {fitting.Count} READINGS",
+            $"{weak.Count} weak spots, damage [{string.Join(" ", weak.Select(h => $"{h.Damage}/{h.MaxHp} hp"))}], the game's numbers {b} and {R(f)}; " +
+            $"the readings that fit [{string.Join(", ", fitting.Select(DevReadingName))}]" + (weak.Count > 0 && !fraction ? "; the hit points give no fraction, so the rounding is NOT DECIDED" : "") +
+            $"; double weak spots [{string.Join(" ", weakDouble.Select(h => $"{h.Damage}/{h.MaxHp} hp"))}]" +
+            (weakDouble.Count > 0 && fitting.Count > 0 ? weakDouble.All(h => h.Damage == 2 * TreeRates.Outcomes(fitting[0], h.MaxHp, 0, 1)[2].Damage) ? ", TWICE A WEAK SPOT" : ", NOT TWICE A WEAK SPOT" : ""));
+
+        // The hit points against the damage of a hit (a cut puts them back to the full ones).
+        var steps = moments.Where(m => m.Hits.Count == 1 && m.Cuts.Count == 0 && ReferenceEquals(m.Hits[0].Tree, tree))
+            .Select(m => (Damage: m.Hits[0].Damage, Down: m.Health.Where(x => ReferenceEquals(x.Tree, tree)).Sum(x => x.Old - x.New))).ToList();
+        Say("the hit points on a hit that does not cut", steps.Count == 0 ? "NOT DECIDED"
+                : steps.All(s => s.Down == s.Damage) ? "THEY GO DOWN BY THE DAMAGE" : "THEY GO DOWN BY ANOTHER AMOUNT",
+            $"{steps.Count} such hits, [{string.Join(" ", steps.GroupBy(s => $"{s.Damage}->{s.Down}").Select(g => $"damage {g.Key} x{g.Count()}"))}]");
+
+        // How many hits a cut takes: from one cut to the next, so that the hits before the first cut seen do not count.
+        var cycles = new List<int>();
         int since = 0;
         bool first = true;
-        foreach (DevMoment m in mine)
+        foreach (DevMoment m in moments)
         {
             since += m.Hits.Count(h => ReferenceEquals(h.Tree, tree));
-            if (m.Cuts.Count == 0) continue;
-            if (!first) perCut.Add(since);
+            if (!m.Cuts.Any(c => ReferenceEquals(c.Tree, tree))) continue;
+            if (!first) cycles.Add(since);
             first = false;
             since = 0;
         }
-        string hitsPerCut = perCut.Count == 0 ? "NO WHOLE CUT SEEN"
-            : $"HITS PER CUT MEASURED {R(perCut.Average())} over {perCut.Count} whole cuts [{string.Join(" ", perCut)}], ours {(ours.HitsPerCut is { } h ? R(h) : "- (not counted)")}";
-
-        // The damage of each kind of hit, against the tree's hit points and the game's two numbers of a weak spot.
-        string Kind(string name, Func<(WoodcuttingTree Tree, int Damage, bool Double, bool Weak, int MaxHp), bool> of)
+        double mean = cycles.Count > 0 ? cycles.Average() : double.NaN;
+        double se = cycles.Count > 1 ? Math.Sqrt(cycles.Sum(c => (c - mean) * (c - mean)) / (cycles.Count - 1) / cycles.Count) : double.NaN;
+        bool enough = cycles.Count >= MostCuts;
+        var fits = new List<HitRule>();
+        var words = new List<string>();
+        foreach (HitRule rule in readings)
         {
-            var some = treeHits.Where(of).ToList();
-            return some.Count == 0 ? $"{name}: none" : $"{name}: {some.Count}, damage [{string.Join(" ", some.Select(x => x.Damage).Distinct().Order())}] of [{string.Join(" ", some.Select(x => x.MaxHp).Distinct().Order())}] hit points";
+            double? expected = DevExpected(rule, ours);
+            double z = expected is { } e && double.IsFinite(se) && se > 0 ? (mean - e) / se : double.NaN;
+            bool fit = double.IsFinite(z) && Math.Abs(z) <= 2;
+            if (fit) fits.Add(rule);
+            words.Add($"{DevReadingName(rule)} {(expected is { } x ? R(Math.Round(x, 3)) : "never")}{(double.IsFinite(z) ? $" ({R(Math.Round(z, 2))} standard errors off{(fit ? ", fits" : "")})" : "")}");
         }
-        var ordinary = treeHits.Where(x => !x.Double && !x.Weak).Select(x => x.Damage).Distinct().ToList();
-        var doubled = treeHits.Where(x => x.Double && !x.Weak).ToList();
-        var weak = treeHits.Where(x => x.Weak && !x.Double).ToList();
-        string ordinaryVerdict = ordinary.Count == 0 ? "NO ORDINARY HIT SEEN" : ordinary.Count == 1 ? $"AN ORDINARY HIT DEALS {ordinary[0]}" : $"ORDINARY HITS DIFFER ({string.Join(" ", ordinary.Order())})";
-        string doubleVerdict = doubled.Count == 0 ? "NO DOUBLE HIT SEEN" : ordinary.Count != 1 ? "DOUBLE HITS NOT COMPARED"
-            : doubled.All(x => x.Damage == 2 * ordinary[0]) ? "A DOUBLE HIT DEALS TWICE AN ORDINARY ONE" : "A DOUBLE HIT DOES NOT DEAL TWICE AN ORDINARY ONE";
-        int b = WoodcuttingActionComponent.BaseWeakSpotDamage;
-        double f = WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage;
-        var candidates = new (string Name, Func<int, double> Of)[]
-        {
-            ("the first + the second x the hit points, rounded down", hp => b + Math.Floor(f * hp)),
-            ("rounded to the nearest", hp => b + Math.Round(f * hp, MidpointRounding.AwayFromZero)),
-            ("rounded up", hp => b + Math.Ceiling(f * hp)),
-            ("the first + the second x the hit points, not rounded", hp => b + f * hp),
-        };
-        string weakVerdict = weak.Count == 0 ? "NO WEAK SPOT SEEN" : candidates.FirstOrDefault(c => weak.All(x => Math.Abs(c.Of(x.MaxHp) - x.Damage) < 1e-9)) is { Name: { } match }
-            ? $"A WEAK SPOT DEALS {match} ({weak.Count} of {weak.Count} match{(weak.Select(x => x.MaxHp).Distinct().Count() == 1 && Math.Abs(f * weak[0].MaxHp % 1) < 1e-9 ? "; the hit points give no fraction, so the rounding is NOT DECIDED" : "")})"
-            : "A WEAK SPOT IS NOT EXPLAINED BY THE GAME'S TWO NUMBERS";
-        DevLog($"watch | summary | {seconds:0} s ({why}), the tree {tree.Recipe.Id}: {treeHits.Count} hits, {treeCuts.Count} cuts ({instant} instant), {time} | {hitsPerCut} | " +
-            $"{Kind("ordinary", x => !x.Double && !x.Weak)}; {Kind("double", x => x.Double && !x.Weak)}; {Kind("weak spot", x => x.Weak && !x.Double)}; {Kind("double weak spot", x => x.Double && x.Weak)} | " +
-            $"{ordinaryVerdict} | {doubleVerdict} | {weakVerdict} | measured shares: double {R(treeHits.Count(x => x.Double) / (double)treeHits.Count)} (ours {R(ours.DoubleDamageChance)}), " +
-            $"weak spot {R(treeHits.Count(x => x.Weak) / (double)treeHits.Count)} (ours {R(ours.WeakSpotChance)}), instant cuts per hit {R(instant / (double)treeHits.Count)} (ours {R(ours.InstantCutChance)}); " +
-            $"instant cuts with a hit in their frame {withCut.Count(m => m.Cuts.Any(c => c.Instant) && m.Hits.Count > 0)} of {instant}; two hits in one frame {w.TwoHitsInAFrame}");
+        Say("hits a cut takes", !enough ? "NOT DECIDED" : fits.Count == 0 ? "NO READING FITS" : fits.Count == readings.Count ? "EVERY READING FITS"
+                : $"THE READINGS THAT FIT: {string.Join(", ", fits.Select(DevReadingName)).ToUpperInvariant()}",
+            $"MEASURED {R(mean)} hits on average over {cycles.Count} whole cuts (standard error {R(se)}), {cuts.Count(c => c.Instant)} of {cuts.Count} cuts instant; " +
+            $"by the readings with an ordinary hit of {ordinaryDamage}{(d == null ? " (not measured)" : "")}, from the tree's numbers at the end [{string.Join("; ", words)}]; " +
+            $"the window's {(ours.HitsPerCut is { } h ? R(h) : "- (no rule settled)")}{(enough ? "" : $" (fewer than {MostCuts} whole cuts decide nothing)")}");
 
-        // XP: on every hit, or on a cut only.
-        int hitXp = hitOnly.Count(m => m.Xp > 0), cutXp = withCut.Count(m => m.Xp > 0);
-        string xpVerdict = hitOnly.Count >= 3 && hitXp == hitOnly.Count ? "XP ON EVERY HIT" : hitOnly.Count >= 3 && hitXp == 0 && cutXp > 0 ? "XP ON A CUT ONLY" : "XP NOT DECIDED";
-        double xpEach = hitOnly.Count == 0 ? 0 : hitOnly.Average(m => m.Xp);
-        DevLog($"watch | summary | XP: {hitXp} of {hitOnly.Count} frames with a hit and no cut added XP, {R(xpEach)} on average (ours {R(ours.XpEach)} a hit: " +
-            $"{(Math.Abs(xpEach - ours.XpEach) < 0.01 ? "the same" : "DIFFER")}); {cutXp} of {withCut.Count} frames with a cut added XP, {R(withCut.Count == 0 ? 0 : withCut.Average(m => m.Xp))} on average | {xpVerdict}");
+        // Instant cuts: a cut in a frame whose hit did not take the last hit points.
+        DevLog($"watch | {id} | instant cuts | {cuts.Count(c => c.Instant)} instant of {cuts.Count} cuts over {hits.Count} hits ({R(hits.Count == 0 ? 0 : cuts.Count(c => c.Instant) / (double)hits.Count)} a hit), " +
+            $"the chance {R(ours.InstantCutChance)} a hit; instant cuts in a frame with a hit {withCut.Count(m => m.Cuts.Any(c => c.Instant) && m.Hits.Count > 0)}");
 
-        // The logs: with every hit, with a cut only, or by the damage of a hit.
-        Item? log = tree.Recipe.Product?.Item;
-        if (log != null)
+        // XP on every hit, or on a cut only.
+        int xpOnHit = hitOnly.Count(m => m.Xp > 1e-9), xpOnCut = withCut.Count(m => m.Xp > 1e-9);
+        double xpEach = hitOnly.Count > 0 ? hitOnly.Average(m => m.Xp) : double.NaN;
+        Say("XP", hitOnly.Count < MostHits ? "NOT DECIDED" : xpOnHit >= 0.9 * hitOnly.Count ? "XP ON EVERY HIT" : xpOnHit == 0 && xpOnCut > 0 ? "XP ON A CUT ONLY" : "NOT DECIDED",
+            $"XP on {xpOnHit} of {hitOnly.Count} frames with a hit and no cut, on {xpOnCut} of {withCut.Count} with a cut; {R(xpEach)} a hit without a cut, " +
+            $"ours {R(ours.XpEach)} a hit: {(Math.Abs(xpEach - ours.XpEach) < 0.01 ? "the same" : "DIFFER")}; measured {R(moments.Sum(m => m.Xp) / Math.Max(1, seconds) * 3600)} an hour, " +
+            $"ours {R(ours.XpPerHour)}{(hitOnly.Count < MostHits ? $" (fewer than {MostHits} frames decide nothing)" : "")}");
+
+        // The logs: with every hit, with every hit for each hit point it takes, or with a cut only.
+        if (ours.Log is { } log)
         {
-            int hitLogs = hitOnly.Count(m => m.Items.ContainsKey(log)), cutLogs = withCut.Count(m => m.Items.ContainsKey(log));
-            bool byDamage = hitLogs > 0 && hitOnly.Where(m => m.Items.ContainsKey(log)).All(m => m.Items[log] % Math.Max(1, m.Hits.Sum(x => x.Damage)) == 0 && m.Items[log] >= m.Hits.Sum(x => x.Damage)) &&
-                hitOnly.Any(m => m.Hits.Sum(x => x.Damage) > 1);
-            string logsVerdict = hitOnly.Count >= 3 && hitLogs == hitOnly.Count ? byDamage ? "LOGS ON EVERY HIT, AS MANY AS ITS DAMAGE" : "LOGS ON EVERY HIT"
-                : hitOnly.Count >= 3 && hitLogs == 0 && cutLogs > 0 ? "LOGS ON A CUT ONLY" : "LOGS NOT DECIDED";
-            DevLog($"watch | summary | logs ({log.Id}, ours x{ours.LogQuantity} at a time, doubling {R(ours.Doubling)}): in {hitLogs} of {hitOnly.Count} frames with a hit and no cut " +
-                $"[{string.Join(" ", hitOnly.Where(m => m.Items.ContainsKey(log)).Take(20).Select(m => $"{m.Items[log]}/dmg {m.Hits.Sum(x => x.Damage)}"))}], " +
-                $"in {cutLogs} of {withCut.Count} frames with a cut [{string.Join(" ", withCut.Where(m => m.Items.ContainsKey(log)).Take(20).Select(m => m.Items[log]))}]; " +
-                $"{w.Moments.Sum(m => m.Items.GetValueOrDefault(log))} in all, {R(w.Moments.Sum(m => m.Items.GetValueOrDefault(log)) / seconds * 3600)} an hour measured, ours " +
-                $"{(ours.LogsPerHour is { } l ? R(l) : "- (not counted)")} | {logsVerdict}");
+            int q = ours.LogQuantity;
+            var plain = hitOnly.Where(m => m.Hits.Count == 1).ToList();
+            int logsOnHit = plain.Count(m => m.ItemsOf(log) > 0), logsOnCut = withCut.Count(m => m.ItemsOf(log) > 0);
+            // A doubling may double a hit's logs: the plain and the doubled number both fit.
+            bool PerHit(DevMoment m) => m.ItemsOf(log) == q || m.ItemsOf(log) == 2 * q;
+            bool PerPoint(DevMoment m) => m.ItemsOf(log) == q * m.Hits[0].Damage || m.ItemsOf(log) == 2 * q * m.Hits[0].Damage;
+            var told = plain.Where(m => m.ItemsOf(log) > 0 && m.Hits[0].Damage != 1).ToList();
+            string verdict = plain.Count < MostHits ? "NOT DECIDED"
+                : logsOnHit >= 0.9 * plain.Count ? told.Count == 0 ? "LOGS ON EVERY HIT (no hit took more than 1 hit point, so per hit point is NOT DECIDED)"
+                    : told.All(PerPoint) && !told.All(PerHit) ? "LOGS ON EVERY HIT, FOR EACH HIT POINT IT TAKES" : told.All(PerHit) ? "LOGS ON EVERY HIT" : "LOGS ON EVERY HIT, IN ANOTHER NUMBER"
+                : logsOnHit == 0 && logsOnCut > 0 ? "LOGS ON A CUT ONLY" : "NOT DECIDED";
+            Say("the logs", verdict,
+                $"{log.Id} in {logsOnHit} of {plain.Count} frames with one hit and no cut [{string.Join(" ", plain.Where(m => m.ItemsOf(log) > 0).GroupBy(m => $"{m.ItemsOf(log)}/damage {m.Hits[0].Damage}").Select(g => $"{g.Key} x{g.Count()}"))}], " +
+                $"in {logsOnCut} of {withCut.Count} frames with a cut [{string.Join(" ", withCut.GroupBy(m => m.ItemsOf(log)).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}]; " +
+                $"the tree's quantity {q}, doubling {R(ours.Doubling)}; {moments.Sum(m => m.ItemsOf(log))} in all, measured {R(moments.Sum(m => m.ItemsOf(log)) / Math.Max(1, seconds) * 3600)} an hour, " +
+                $"ours {(ours.LogsPerHour is { } l ? R(l) : "- (no rule settled)")}, with every hit it would be {R(ours.HitsPerHour * q * (1 + ours.Doubling))}" +
+                (plain.Count < MostHits ? $" (fewer than {MostHits} frames decide nothing)" : ""));
         }
 
         // Every other item: per hit against our chances of a hit, per cut against our chances of a cut.
-        var others = w.Moments.SelectMany(m => m.Items.Keys).Where(i => !ReferenceEquals(i, log)).Distinct(ReferenceEqualityComparer.Instance).Cast<Item>()
-            .Concat(ours.PerHit.Select(d => d.Item)).Concat(ours.PerCut.Select(d => d.Item)).Distinct(ReferenceEqualityComparer.Instance).Cast<Item>().ToList();
-        var said = new List<string>();
+        var others = moments.SelectMany(m => m.Items.Select(i => i.Item)).Where(i => !ReferenceEquals(i, ours.Log))
+            .Concat(ours.PerHit.Select(x => x.Item)).Concat(ours.PerCut.Select(x => x.Item)).Distinct(ReferenceEqualityComparer.Instance).Cast<Item>().ToList();
         foreach (Item item in others)
         {
-            int inHits = hitOnly.Sum(m => m.Items.GetValueOrDefault(item)), inCuts = withCut.Sum(m => m.Items.GetValueOrDefault(item));
-            double expectHits = ours.PerHit.Where(d => ReferenceEquals(d.Item, item)).Sum(d => d.Chance * d.Each) * hitOnly.Sum(m => m.Hits.Count);
-            double expectCuts = (ours.PerCut.Where(d => ReferenceEquals(d.Item, item)).Sum(d => d.Chance * d.Each) + ours.PerHit.Where(d => ReferenceEquals(d.Item, item)).Sum(d => d.Chance * d.Each)) * withCut.Count;
+            int inHits = hitOnly.Sum(m => m.ItemsOf(item)), inCuts = withCut.Sum(m => m.ItemsOf(item));
+            double onHit = ours.PerHit.Where(x => ReferenceEquals(x.Item, item)).Sum(x => x.Chance * x.Each);
+            double expectHits = onHit * hitOnly.Sum(m => m.Hits.Count);
+            double expectCuts = (ours.PerCut.Where(x => ReferenceEquals(x.Item, item)).Sum(x => x.Chance * x.Each) + onHit) * withCut.Count;
             bool far = Math.Abs(inHits - expectHits) > 3 * Math.Sqrt(expectHits) + 2 || Math.Abs(inCuts - expectCuts) > 3 * Math.Sqrt(expectCuts) + 2;
-            said.Add($"{item.Id}: {inHits} in frames with a hit and no cut (ours {R(expectHits)} with our chance of a hit), {inCuts} in frames with a cut " +
-                $"(ours {R(expectCuts)} with our chances of a hit and a cut){(far ? "  FAR FROM OURS" : "")}");
+            DevLog($"watch | {id} | item {item.Id} | {inHits} in frames with a hit and no cut (ours {R(expectHits)} by our chance of a hit), {inCuts} in frames with a cut " +
+                $"(ours {R(expectCuts)} by our chances of a hit and a cut){(far ? "  FAR FROM OURS" : "")}");
         }
-        DevLog($"watch | summary | other items: {(said.Count == 0 ? "none came and none is in our lists" : string.Join("; ", said))}; overgrowth put on: " +
-            string.Join(", ", w.Moments.SelectMany(m => m.Effects).DefaultIfEmpty("none")));
+        DevLog($"watch | {id} | overgrowth put on or taken off | {string.Join(", ", moments.SelectMany(m => m.Effects).DefaultIfEmpty("none"))}");
+        return verdicts;
+    }
 
-        // The game's own tracker over the same minutes.
-        if (w.Period is { } period)
+    // The readings of TreeRates.HitRule with an ordinary hit of the given damage (Dev.cs, DevHitReadings).
+    static List<HitRule> TreeRatesReadings(int damage) => DevHitReadings.Select(r => r with { Damage = damage }).ToList();
+
+    // The game's own tracker of Woodcutting (WoodcuttingEntity.Tracker): over each of its periods the Woodcutting XP and
+    // the items, and an hour by it beside ours, if its times are in seconds (the log says which numbers it read).
+    void DevTracker(string when, List<DevMoment>? moments)
+    {
+        try
         {
-            double xpNow = period.Experience.TryGetValue(_woodcutting!.Experience, out var list) ? list.Total : 0;
-            double xpSeen = w.Moments.Sum(m => m.Xp);
-            var items = new List<string>();
-            foreach (var (key, samples) in period.Items)
+            var tracker = _woodcutting!.Tracker;
+            ExperienceComponent experience = _woodcutting.Experience;
+            var items = moments?.SelectMany(m => m.Items.Select(i => i.Item)).Distinct().ToList() ?? new List<Item>();
+            TreeRates? ours = _woodcutting.Action.CuttingTree is { } tree ? TreeRates.Read(tree, _woodcutting, Shown) : null;
+            int i = 0;
+            foreach (var period in tracker.Periods)
             {
-                if (key == null) continue;
-                int gained = samples.Total - w.TrackerItems.GetValueOrDefault(key);
-                int seen = w.Moments.Sum(m => m.Items.GetValueOrDefault(key));
-                if (gained != 0 || seen != 0) items.Add($"{key.Id} {gained} (the watch {seen}){(gained == seen ? "" : "  DIFFER")}");
+                double xp = period.Experience.TryGetValue(experience, out var list) ? list.Total : 0;
+                double covered = Math.Min(period.CycleDuration, period.Experience.RecordedCount * period.SamplePeriod);
+                string perHour = covered > 0 ? R(xp / covered * 3600) : "-";
+                DevLog($"tracker | {when} | period {i++}: cycle {R(period.CycleDuration)}, {period.SampleCount} samples of {R(period.SamplePeriod)}, " +
+                    $"{period.Experience.RecordedCount} recorded | Woodcutting XP {R(xp)}, an hour by it (if in seconds) {perHour}, ours {(ours == null ? "-" : R(ours.XpPerHour))} | " +
+                    $"items [{string.Join(", ", items.Select(item => $"{item.Id} {(period.Items.TryGetValue(item, out var l) ? l.Total : 0)}"))}]");
             }
-            DevLog($"watch | summary | the game's tracker over the same {seconds:0} s: Woodcutting XP {R(xpNow - w.TrackerXp)} (the watch {R(xpSeen)}" +
-                $"{(Math.Abs(xpNow - w.TrackerXp - xpSeen) < 0.5 ? "" : "  DIFFER")}; per hour {R((xpNow - w.TrackerXp) / seconds * 3600)}, ours {R(ours.XpPerHour)}) | items {string.Join(", ", items)}");
+            if (i == 0) DevLog($"tracker | {when} | the tracker has no periods");
         }
-        else DevLog("watch | summary | the game's tracker was not read");
+        catch (Exception e) { DevLog($"tracker | {when} | could not be read: {e.Message}"); }
     }
 }
 #endif

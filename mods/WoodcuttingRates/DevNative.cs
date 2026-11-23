@@ -1,6 +1,9 @@
 #if DEVTOOLS
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Core;
@@ -18,7 +21,9 @@ using Godot;
 namespace WoodcuttingRates;
 
 // Development only: the parts of the game's Woodcutting page it keeps to itself, read (never pressed, never changed) by
-// the requests in Dev.cs and DevWatch.cs. Member names and types from tools/ApiDump only; no method body is read.
+// the requests in Dev.cs and DevWatch.cs, as Mining Rates' Dev.cs reads its page's. Member names and types from
+// tools/ApiDump only; no method body is read. A card's button that starts cutting (CutButton) and the big panel's stop
+// button are not named here at all.
 static class DevNative
 {
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CurrentPage")]
@@ -34,13 +39,16 @@ static class DevNative
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ActiveTree")]
     internal static extern ActiveTreeView BigPanel(WoodcuttingActiveView page);
 
-    // The category filter: a button per category, the row they stand in (with the "All" button), "Show hidden".
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_categoryButtons")]
-    internal static extern ref Dictionary<WoodcuttingRecipeCategory, Button>? CategoryButtons(WoodcuttingCategoryFilterView filter);
+    // The category filter: the row its buttons stand in, its box for hidden trees, and its own words: its "All"
+    // button's, by which the request finds that button, and its box's.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CategoryFilterList")]
     internal static extern HBoxContainer CategoryRow(WoodcuttingCategoryFilterView filter);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ShowHiddenCheckBox")]
     internal static extern CheckBox ShowHidden(WoodcuttingCategoryFilterView filter);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_all")]
+    internal static extern ref LocalizedString AllWords(WoodcuttingCategoryFilterView? filter);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_showHidden")]
+    internal static extern ref LocalizedString ShowHiddenWords(WoodcuttingCategoryFilterView? filter);
 
     // A tree's card on the page.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Tree")]
@@ -61,6 +69,10 @@ static class DevNative
     internal static extern Int32Label HitPoints(WoodcuttingTreeSelectView card);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SkillXPPanel")]
     internal static extern SkillXPPanel Xp(WoodcuttingTreeSelectView card);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_WoodcuttingStatsIcon")]
+    internal static extern TextureRect StatsIcon(WoodcuttingTreeSelectView card);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_WoodcuttingStatsTooltip")]
+    internal static extern Tooltip? StatsTooltip(WoodcuttingTreeSelectView card);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_WoodcuttingStats")]
     internal static extern WoodcuttingActionStatsView Stats(WoodcuttingTreeSelectView card);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_OvergrowthEffectContainer")]
@@ -69,6 +81,9 @@ static class DevNative
     internal static extern Control Unlocked(WoodcuttingTreeSelectView card);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_LockedContainer")]
     internal static extern Control LockedPart(WoodcuttingTreeSelectView card);
+    // Read for its pressed state only: the card's hide button (pressed while the player hid the tree).
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ToggleVisibilityButton")]
+    internal static extern TextureButton HideButton(WoodcuttingTreeSelectView card);
 
     // The big panel: the tree being cut.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Tree")]
@@ -77,6 +92,8 @@ static class DevNative
     internal static extern Label Name(ActiveTreeView panel);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_NoTreeSelectedPanel")]
     internal static extern PanelContainer NoTree(ActiveTreeView panel);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_TreeSelectedPanel")]
+    internal static extern VBoxContainer TreeShown(ActiveTreeView panel);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_PerHealthGrantsContainer")]
     internal static extern GrantsContainer PerHit(ActiveTreeView panel);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_PerHitNothingLabel")]
@@ -103,12 +120,31 @@ static class DevNative
     internal static extern ValueStatNode<double>? XpInterval(SkillXPPanel panel);
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_contentText")]
     internal static extern ref List<string>? Content(TextTooltip tooltip);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Title")]
+    internal static extern Label TooltipTitle(TextTooltip tooltip);
 
-    // A row of a list of bonuses: the stat it shows and its value as written.
+    // A row of a list of bonuses: the stat it shows, its value as written and its own tooltip.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Stats")]
     internal static extern ModifierStatNodes? RowStat(ModifierStatLabel row);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ValueText")]
     internal static extern DoubleLabel RowValue(ModifierStatLabel row);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Tooltip")]
+    internal static extern TextTooltip? RowTooltip(ModifierStatLabel row);
+
+    // One item of a card's per-hit or per-cut list, as the card shows it, and which of the game's stats a list shows
+    // (Mining Rates' Dev.cs reads its cards' lists the same way).
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_isChance")]
+    internal static extern ref bool IconIsChance(ItemInfoIcon icon);
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_quantityValue")]
+    internal static extern ref double IconQuantity(ItemInfoIcon icon);
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_chanceValue")]
+    internal static extern ref double IconChance(ItemInfoIcon icon);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ItemQuantityIcons")]
+    internal static extern Dictionary<ValueStatNode<int>, ItemInfoIcon>? GrantQuantities(GrantsContainer grants);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ExperienceIcons")]
+    internal static extern Dictionary<ExperienceStats, SkillExperienceIcon>? GrantXp(GrantsContainer grants);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ItemChanceGroups")]
+    internal static extern Dictionary<ValuesStatNode<GamesByMalcs.Melvor2.Data.Items.ItemQuantityChance>, ItemInfoIconGroup>? GrantChances(GrantsContainer grants);
 
     // An overgrowth effect's icon on a card.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_EffectName")]
@@ -118,57 +154,60 @@ static class DevNative
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_StacksLeftLabel")]
     internal static extern Int32FormattedLabel EffectStacksLeft(OvergrowthEffectIcon icon);
 
-    // The words the page gives a tree's chances, its doubling, its XP tag and the icons of the game's other tree card.
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "DoubleDamageChanceTitle")]
-    internal static extern ref string DoubleDamageTitle(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "DoubleDamageChanceTooltip")]
-    internal static extern ref string DoubleDamageTip(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "InstantCutChanceTitle")]
-    internal static extern ref string InstantCutTitle(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "InstantCutChanceTooltip")]
-    internal static extern ref string InstantCutTip(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "WeakSpotChanceTitle")]
-    internal static extern ref string WeakSpotTitle(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "WeakSpotChanceTooltip")]
-    internal static extern ref string WeakSpotTip(WoodcuttingActionStatsView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "DoublingChanceTitle")]
-    internal static extern ref string DoublingTitle(ModifierStatView? owner);
-    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "DoublingChanceTooltip")]
-    internal static extern ref string DoublingTip(ModifierStatView? owner);
+    // The page's own words kept as LocalizedString fields (read as Mining Rates' check read its own: s_all worked there).
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_skillXpGained")]
-    internal static extern ref LocalizedString? XpGained(SkillXPPanel? owner);
+    internal static extern ref LocalizedString XpGained(SkillXPPanel? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_xpPerSecond")]
-    internal static extern ref LocalizedString? XpPerSecond(SkillXPPanel? owner);
+    internal static extern ref LocalizedString XpPerSecond(SkillXPPanel? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statName")]
-    internal static extern ref LocalizedString? IconName(DoublingIcon? owner);
+    internal static extern ref LocalizedString IconName(DoublingIcon? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statDescription")]
-    internal static extern ref LocalizedString? IconWords(DoublingIcon? owner);
+    internal static extern ref LocalizedString IconWords(DoublingIcon? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statName")]
-    internal static extern ref LocalizedString? IconName(TreeDoubleDamageIcon? owner);
+    internal static extern ref LocalizedString IconName(TreeDoubleDamageIcon? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statDescription")]
-    internal static extern ref LocalizedString? IconWords(TreeDoubleDamageIcon? owner);
+    internal static extern ref LocalizedString IconWords(TreeDoubleDamageIcon? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statName")]
-    internal static extern ref LocalizedString? IconName(TreeFellChanceIcon? owner);
+    internal static extern ref LocalizedString IconName(TreeFellChanceIcon? owner);
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_statDescription")]
-    internal static extern ref LocalizedString? IconWords(TreeFellChanceIcon? owner);
+    internal static extern ref LocalizedString IconWords(TreeFellChanceIcon? owner);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_tooltipTitleChance")]
+    internal static extern ref LocalizedString ItemChanceTitle(ItemInfoIcon? owner);
+    [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_skillXP")]
+    internal static extern ref LocalizedString SkillXpIconWords(SkillExperienceIcon? owner);
 
-    /// <summary>The words of one of the game's static strings, read where it is kept and translated as the game shows it.</summary>
-    internal static string Said(Func<string?> read)
+    /// <summary>
+    /// A constant of the game's words, by the name ApiDump gives it, read by reflection: a constant is not a field an
+    /// UnsafeAccessor can reach (Mining Rates' check-2: MissingFieldException), which turn 1 of this mod tried for
+    /// WoodcuttingActionStatsView's titles and tooltips. Throws, with the type and member named, when it is not there.
+    /// </summary>
+    internal static string Constant(Type type, string member)
     {
-        try
-        {
-            string? key = read();
-            if (key == null) return "(none)";
-            string shown = TranslationServer.Translate(key).ToString();
-            return shown == key ? $"'{key}'" : $"'{shown}' (kept as '{key}')";
-        }
-        catch (Exception e) { return $"(could not be read: {e.GetType().Name})"; }
+        FieldInfo field = type.GetField(member, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(type.Name, member);
+        object? value = field.IsLiteral ? field.GetRawConstantValue() : field.GetValue(null);
+        return value as string ?? throw new InvalidCastException($"{type.Name}.{member} holds no words");
     }
 
-    internal static string Said(Func<LocalizedString?> read)
+    /// <summary>
+    /// The controls a game tooltip shows for (Tooltip.Targets, private, of a type of its own that cannot be named here,
+    /// so read by reflection, by name), with its Labelling (public). Empty when they cannot be read.
+    /// </summary>
+    internal static List<Control> Targets(Tooltip tooltip)
     {
-        try { return read() is { } words ? $"'{words.Text}'" : "(none)"; }
-        catch (Exception e) { return $"(could not be read: {e.GetType().Name})"; }
+        var found = new List<Control>();
+        try
+        {
+            if (typeof(Tooltip).GetProperty("Targets", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(tooltip) is IDictionary targets)
+                found.AddRange(targets.Keys.OfType<Control>().Where(GodotObject.IsInstanceValid));
+        }
+        catch (Exception) { }
+        try
+        {
+            if (tooltip.Labelling is { } labelling && GodotObject.IsInstanceValid(labelling) && !found.Contains(labelling)) found.Add(labelling);
+        }
+        catch (Exception) { }
+        return found;
     }
 }
 #endif

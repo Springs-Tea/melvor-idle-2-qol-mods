@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using GamesByMalcs.Melvor2;
 using GamesByMalcs.Melvor2.Entities.Woodcutting;
 using Godot;
@@ -13,12 +12,13 @@ namespace WoodcuttingRates;
 
 /// <summary>
 /// Which tree gives what per hour. On the Woodcutting page a round button in the strip on the right edge of the screen
-/// opens a window with one line per tree the page shows: its picture, its category, and per hour the time per log, the
-/// logs, Woodcutting XP and gold, from the game's own numbers for each tree (TreeRates); what the game gives no number
-/// for is "-". The best number of each column is gold, a click on a column's name sorts by it, the tree being cut has a
-/// lit outline, and a line's tooltip has the hour as far as it is counted. A click on a line shows that tree on the
-/// Woodcutting page, as the player's own clicks there would (ShowOnPage); nothing is started or stopped from it.
-/// Made the way Fishing Rates is (mods/FishingRates/FishingRatesMod.cs); its patterns are copied here.
+/// opens a window with one line per tree the page shows: its picture, its category, the time of a log, and the logs,
+/// Woodcutting XP and gold of an hour, from the game's own numbers for each tree (TreeRates); what rests on a rule not
+/// settled yet (TreeRates.LogsRule, HitsRule) is "-", and a note under the list says why. The best number of each column
+/// is gold, a click on a column's name sorts by it, the tree the Woodcutting page shows has a lit outline, and a line's
+/// tooltip has the hour as far as it is counted. A click on a line shows that tree on the Woodcutting page, clear of the
+/// window, as the player's own clicks there would (ShowOnPage); nothing is started or stopped from it. Built the way
+/// Mining Rates is (mods/MiningRates/MiningRatesMod.cs), itself Fishing Rates' (mods/FishingRates).
 /// </summary>
 public partial class WoodcuttingRatesMod : IMod
 {
@@ -56,12 +56,17 @@ public partial class WoodcuttingRatesMod : IMod
     // The window's size at 100%, measured from the window itself (AstrologyOverviewMod.BuildWindow).
     Vector2 _fullSize;
     // The player opened the window and has not closed it: it is there whenever the Woodcutting page is.
-    bool _wanted, _fitPending, _stopped;
-    // The page's cards could not be read (the game was updated?): a click on a line only sets the page's category.
-    bool _cardsOff;
-    // The card a click on a line brings into sight, once the page has laid out its list again (ScrollToCard).
-    WoodcuttingTreeSelectView? _scrollTo;
-    long _scrollFrom;
+    bool _wanted, _fitPending, _clicksOff, _stopped;
+    // The page's category button did not set its category: a click on a line no longer changes the filter.
+    bool _filterOff;
+    // A click on a line: the tree whose card the page's list scrolls to once the page has laid out its cards again
+    // (two drawn frames after the click), and the frame the click came in.
+    WoodcuttingTree? _scrollTo;
+    long _scrollAfter;
+    // The page's category filter, looked for once per page: not in the page's tree on every tick, and when it is not
+    // there (a game update), that is remembered until the page is found again (_filterLooked).
+    WoodcuttingCategoryFilterView? _filter;
+    bool _filterLooked;
 
     string SettingsFile => Path.Combine(_ctx.Directory, "settings.json");
 
@@ -74,12 +79,13 @@ public partial class WoodcuttingRatesMod : IMod
         ctx.Log("Ready. On the Woodcutting page, a round button on the right edge of the screen opens the window.");
     }
 
-    // Twice a second: which character, whether the Woodcutting page is on the screen, and the window's numbers.
+    // Twice a second: which character, whether the Woodcutting page is on the screen, and the window's numbers. A click
+    // on a line that waits for the page to lay out its cards is the only thing looked at on other frames.
     void OnFrame()
     {
         try
         {
-            if (_scrollTo != null) ScrollToCard();
+            if (_scrollTo != null && (long)Engine.GetFramesDrawn() >= _scrollAfter) ScrollToCard();
             if (!_tick.Due()) return;
             Game? game = GameAccess.CurrentGame;
             if (game is not { IsSaveLoaded: true }) game = null;
@@ -106,7 +112,6 @@ public partial class WoodcuttingRatesMod : IMod
             }
 #if DEVTOOLS
             DevRequest();
-            DevWatchRequest();
 #endif
         }
         catch (Exception e) { Stop(e); }
@@ -124,6 +129,8 @@ public partial class WoodcuttingRatesMod : IMod
     {
         if (GodotObject.IsInstanceValid(_page)) _page!.VisibilityChanged -= PageVisibilityChanged;
         _page = null;
+        _filter = null;
+        _filterLooked = false;
         _scrollTo = null;
         if (_window is { IsAlive: true }) _window.Visible = false;
         if (GodotObject.IsInstanceValid(_opener)) _opener!.Visible = false;
@@ -245,17 +252,20 @@ public partial class WoodcuttingRatesMod : IMod
         SyncStripButton();
     }
 
-    // Every tree the page lists, in the order of the game's list of trees, the order the page shows them in (the
-    // development request compares the two).
+    // Every tree the game shows, in the order of the Woodcutting page: the order of the skill's trees in the game's data
+    // (WoodcuttingEntityConfig.Recipes), each with its tree (WoodcuttingActionComponent.Trees); the development request
+    // compares the two orders.
     List<TreeRates> ReadTrees()
     {
         var action = _woodcutting!.Action;
-        var cards = Cards();
         var trees = new List<TreeRates>();
         foreach (WoodcuttingRecipe recipe in action.Config.Recipes)
         {
             if (recipe == null || !action.Trees.TryGetValue(recipe, out WoodcuttingTree? tree) || tree == null || !TreeRates.Listed(tree, action)) continue;
-            trees.Add(TreeRates.Read(tree, _woodcutting, CardOf(tree, cards), Shown));
+            TreeRates t = TreeRates.Read(tree, _woodcutting, Shown);
+            t.Clickable = ClickChanges(tree, out CardSight? sight);
+            t.Sight = sight;
+            trees.Add(t);
         }
         return trees;
     }
@@ -351,87 +361,150 @@ public partial class WoodcuttingRatesMod : IMod
 
     // ---- a click on a line ---------------------------------------------------------------------------------------------
 
-    // The page's card of every tree. Private (WoodcuttingActiveView.TreeViews): one that is gone after a game update
-    // throws when it is first used; a click on a line then only sets the page's category filter and never scrolls, with
-    // one line in the log.
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_TreeViews")]
-    static extern Dictionary<WoodcuttingTree, WoodcuttingTreeSelectView>? TreeViews(WoodcuttingActiveView page);
-
-    Dictionary<WoodcuttingTree, WoodcuttingTreeSelectView>? Cards()
-    {
-        if (_cardsOff || _page == null || !GodotObject.IsInstanceValid(_page)) return null;
-        try { return ReadCards(_page); }
-        catch (Exception e) when (e is MissingMemberException or TypeLoadException or InvalidCastException)
-        {
-            _cardsOff = true;
-            Report("The Woodcutting page's tree cards could not be read (the game was updated?): a click on a line only sets the page's category, and does not scroll. " + e.Message);
-            return null;
-        }
-    }
-
-    // In a method of its own: a member that is gone in a game version fails when the method is first run.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    static Dictionary<WoodcuttingTree, WoodcuttingTreeSelectView>? ReadCards(WoodcuttingActiveView page) => TreeViews(page);
-
-    // What the page shows of a tree's card: shown under its category filter, and wholly in sight in its list.
-    static TreeRates.Card? CardOf(WoodcuttingTree tree, Dictionary<WoodcuttingTree, WoodcuttingTreeSelectView>? cards)
-    {
-        if (cards == null || !cards.TryGetValue(tree, out WoodcuttingTreeSelectView? card) || !GodotObject.IsInstanceValid(card) || card.IsQueuedForDeletion())
-            return null;
-        bool shown = card.IsVisibleInTree();
-        return new TreeRates.Card(shown, shown && ListOf(card) is { } list && list.GetGlobalRect().Grow(1).Encloses(card.GetGlobalRect()));
-    }
-
-    // The page's list of trees a card is in: the nearest scroll container around it on the page.
-    static ScrollContainer? ListOf(Control card)
-    {
-        for (Node? node = card.GetParent(); node != null && node is not WoodcuttingActiveView; node = node.GetParent())
-            if (node is ScrollContainer list) return list;
-        return null;
-    }
-
-    // Asked for in issue #71, the way Fishing Rates opens a spot (FishingRatesMod.OpenOnPage, allowed by the maintainer,
-    // 22 Nov 2026): a click on a line shows that tree on the Woodcutting page and does what the player's own clicks there
-    // would, nothing more. The page has no tree that is selected without being cut, so "shows" means: the page's
-    // category filter on the tree's category, as its own category buttons set it (the public
-    // WoodcuttingActionComponent.SelectedCategory; the development request compares it with the page's own button),
-    // when the tree's card is not shown under the filter now; and the page's list of trees scrolled until the card is in
-    // sight, as the player's scrolling would. Nothing that cuts, selects, hides or changes a tree is called, and the
-    // page's "Show hidden" is left as it is. The window stays open; the lit line follows the page.
+    // Asked for in issue #71, as the maintainer allowed it for Fishing Rates and Thieving Overview (22 Nov 2026) and for
+    // the four rate windows of #70 to #73 (23 Nov 2026): a click on a line shows that tree on the Woodcutting page, and
+    // does what the player's own clicks there would, nothing more. The page has no tree that is selected without being
+    // cut (a card's only button starts cutting: WoodcuttingTreeSelectView.CutButton), so "shows" is, as in Mining Rates
+    // (MiningRatesMod.ShowOnPage): the page's category filter on the tree's category when it is on another one, as the
+    // page's own category button sets it (CategoryFilter), and the page's list of trees scrolled so that the tree's whole
+    // card is in sight clear of this window, beside it (Mining Rates' review 4: a card under the window is not seen),
+    // once the page has laid its cards out again (ScrollToCard). Woodcutting is not started or stopped, no tree is
+    // selected, hidden or shown, the page's "Show hidden" is left as it is, and the window stays open and where the
+    // player put it. The tree being cut is no exception: its card can be out of sight too, and the click then only
+    // scrolls to it. The development request compares the click with the page's own category button.
     void ShowOnPage(TreeRates line)
     {
-        if (!PageShown || _woodcutting == null) return;
-        var action = _woodcutting.Action;
+        if (!PageShown || _clicksOff) return;
         WoodcuttingTree tree = line.Tree;
-        if (ReferenceEquals(action.CuttingTree, tree)) return;
-        var cards = Cards();
+        var action = _woodcutting!.Action;
         // As it is now, not as it was at the last tick.
-        TreeRates.Opens opens = TreeRates.ClickOpens(tree, action, CardOf(tree, cards));
-        if (opens == TreeRates.Opens.Nothing) return;
-        if (opens == TreeRates.Opens.Category) action.SelectedCategory = tree.Category;
-        if (cards != null && cards.TryGetValue(tree, out WoodcuttingTreeSelectView? card))
+        if (!ClickChanges(tree, out _)) return;
+        try
         {
-            _scrollTo = card;
-            _scrollFrom = Engine.GetFramesDrawn();
+            if (Native.Card(_page!, tree) is not { } card) return;
+            if (!card.Visible && !OnFilter(action, tree) && !CategoryFilter(tree.Category)) return;
+            _scrollTo = tree;
+            _scrollAfter = (long)Engine.GetFramesDrawn() + 2;
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+            return;
         }
         Refresh();
     }
 
-    // The card a click brings into sight, once the page has laid out its list: a card the filter has just shown has its
-    // place only after the page's containers have sorted their children, which Godot does at the end of a frame
-    // (ScrollContainer.EnsureControlVisible "will not work on a node that was just added during the same frame"); two
-    // drawn frames later it has it. Once, not on a clock: nothing is walked.
+    // The page's filter shows this tree's category: all of them, or its own.
+    static bool OnFilter(WoodcuttingActionComponent action, WoodcuttingTree tree) =>
+        action.SelectedCategory == null || ReferenceEquals(action.SelectedCategory, tree.Category);
+
+    // A click on the tree's line would change what the page shows. A card the page shows: when a scroll of its list shows
+    // the whole card clear of this window and it is not so now (Native.Place); a card under another category: when the
+    // page's own category button can bring it. Read on every tick, for the line's look and its tooltip, and again at the
+    // click. sight: how a card the page shows stands (null for one it does not show), which the tooltip says when no
+    // scroll shows it clear. A card in its list but under the window does not count as in sight.
+    bool ClickChanges(WoodcuttingTree tree, out CardSight? sight)
+    {
+        sight = null;
+        if (_clicksOff || !PageShown) return false;
+        try
+        {
+            if (Native.Card(_page!, tree) is not { } card) return false;
+            if (card.Visible)
+            {
+                if (!card.IsVisibleInTree()) return false;
+                sight = Native.Place(card, Cover(), out _);
+                return sight == CardSight.Scroll;
+            }
+            return !OnFilter(_woodcutting!.Action, tree) && CanPress(CategoryButton(tree.Category));
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+            return false;
+        }
+    }
+
+    // The part of the screen this window covers, read from the window as it is drawn now (its frame, at the size it is
+    // shown, wherever the player dragged it); null while it is not on the screen.
+    Rect2? Cover() => _window is { IsAlive: true, Visible: true } window ? Native.Drawn(window.Root) : null;
+
+    // The page's own button of a category (WoodcuttingCategoryFilterView), or null when the game has none. The filter is
+    // looked for once per page; when it is not there, that is said once and remembered until the page is found again,
+    // so a hidden card does not walk the page's tree twice a second.
+    Button? CategoryButton(WoodcuttingRecipeCategory? category)
+    {
+        if (category == null || _filterOff) return null;
+        if (!GodotObject.IsInstanceValid(_filter))
+        {
+            // Looked for when the page is new, or when the filter it had was freed: never twice for one that is not there.
+            if (_filter == null && _filterLooked) return null;
+            _filter = GameAccess.FindNode<WoodcuttingCategoryFilterView>(_page!);
+            _filterLooked = true;
+            if (_filter == null)
+            {
+                Report("The Woodcutting page's category filter was not found (the game was updated?): a click on a line no longer changes it.");
+                return null;
+            }
+        }
+        return Native.CategoryButtons(_filter!) is { } buttons && buttons.TryGetValue(category, out Button? button) && GodotObject.IsInstanceValid(button) ? button : null;
+    }
+
+    // A category button the player could click now: there, shown and not disabled.
+    static bool CanPress(Button? button) => button != null && !button.Disabled && button.IsVisibleInTree();
+
+    // The category filter on a category, the way the player's click on its button sets it: that very button pressed (a
+    // toggle button first goes down, which lets the others of its group go, as a click does), as Mining Rates presses it
+    // (MiningRatesMod.CategoryFilter) and Thieving Overview presses the page's own Select button. The filter is never set
+    // behind the page's buttons (WoodcuttingActionComponent.SelectedCategory has a setter, which turn 1 used): the page's
+    // buttons would then say another category than its cards show (Mining Rates' code review of turn 1). If the button
+    // did not set it, one line in the log, and from then on a click on a line no longer changes the filter (_filterOff):
+    // it only scrolls to a card the page shows. False when the filter is not on the category.
+    bool CategoryFilter(WoodcuttingRecipeCategory? category)
+    {
+        if (category == null) return false;
+        var action = _woodcutting!.Action;
+        Button? button = CategoryButton(category);
+        if (!CanPress(button)) return false;
+        if (button!.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+        if (ReferenceEquals(action.SelectedCategory, category)) return true;
+        _filterOff = true;
+        Report("The Woodcutting page's category button did not set its category when pressed (the game was updated?): a click on a line no longer changes the filter.");
+        return false;
+    }
+
+    // Two drawn frames after a click: the page has laid its cards out for the filter, and the list is scrolled as little
+    // as it takes to show the whole card clear of this window (Native.Place): above or below the window when the window
+    // lies across the card's column. A card the page has no room for there can only come after a click that changed the
+    // filter (the line of a card the page shows is clickable only when there is room): it is brought into its list as far
+    // as the list can scroll (ScrollContainer.EnsureControlVisible), and from the next tick on its line's tooltip says
+    // that the window is in the way.
     void ScrollToCard()
     {
-        if (Engine.GetFramesDrawn() < _scrollFrom + 2) return;
-        WoodcuttingTreeSelectView? card = _scrollTo;
+        WoodcuttingTree? tree = _scrollTo;
         _scrollTo = null;
-        if (card == null || !GodotObject.IsInstanceValid(card) || !card.IsVisibleInTree() || !PageShown) return;
-        if (ListOf(card) is { } list)
+        if (tree == null || !PageShown || _clicksOff) return;
+        try
         {
-            list.EnsureControlVisible(card);
-            Refresh();
+            if (Native.Card(_page!, tree) is not { } card || !card.IsVisibleInTree() || Native.ScrollOf(card) is not { } scroll) return;
+            CardSight sight = Native.Place(card, Cover(), out int to);
+            if (sight == CardSight.Scroll) scroll.ScrollVertical = to;
+            else if (sight != CardSight.Clear) scroll.EnsureControlVisible(card);
         }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+        }
+    }
+
+    // A part of the page the click needs is gone after a game update (WoodcuttingActiveView.TreeViews, or
+    // WoodcuttingCategoryFilterView._categoryButtons, both private): the lines show the numbers and open nothing.
+    void ClicksOff(Exception e)
+    {
+        _clicksOff = true;
+        _scrollTo = null;
+        Report($"A click on a line shows nothing from now on: the Woodcutting page has changed (the game was updated?): {e.Message}");
     }
 
     void Sorted(string key, bool descending)
@@ -493,7 +566,8 @@ public partial class WoodcuttingRatesMod : IMod
     void Detach()
     {
 #if DEVTOOLS
-        try { DevUnlisten(); } catch { }
+        // A development request's listeners on the game are taken off with the character they were hung on.
+        try { DevUnwatchAll(); } catch { }
 #endif
         LetGoOfPage();
         _window?.Free();
@@ -515,7 +589,8 @@ public partial class WoodcuttingRatesMod : IMod
         _ctx.Frame -= OnFrame;
         _ctx.Log("Stopped (the game was updated?): " + e);
 #if DEVTOOLS
-        try { DevAbandon(); } catch { }
+        // A request that runs ends with its done file, so the check does not wait its whole time for it.
+        try { DevStopped(); } catch { }
 #endif
         try { Detach(); } catch { }
     }

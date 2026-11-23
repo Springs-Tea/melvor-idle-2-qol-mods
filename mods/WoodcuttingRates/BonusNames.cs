@@ -30,12 +30,12 @@ sealed class BonusNames
     readonly Tempo _again = new(5000);
     bool _failed;
 
-    /// <summary>What a chance is, when the game's name for it has not been read.</summary>
+    /// <summary>What a chance is, when the game's name for it has not been read: the start of a tooltip's line.</summary>
     public static string Kind(string key) => key switch
     {
-        TreeRates.DoubleDamage => "chance of double damage",
-        TreeRates.WeakSpot => "chance to hit a weak spot",
-        _ => "chance of an instant cut",
+        TreeRates.DoubleDamage => "Chance of double damage",
+        TreeRates.WeakSpot => "Chance to hit a weak spot",
+        _ => "Chance of an instant cut",
     };
 
     /// <summary>The game's name for this chance, or null.</summary>

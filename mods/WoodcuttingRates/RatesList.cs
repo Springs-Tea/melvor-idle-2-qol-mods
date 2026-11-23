@@ -11,9 +11,10 @@ namespace WoodcuttingRates;
 enum Better { More, Less, Neither }
 
 /// <summary>
-/// One number of the list, as Fishing Rates makes its columns (mods/FishingRates/RatesList.cs, RateColumn), which made
-/// them as the Combat Simulator's are (mods/CombatSim/SimColumns.cs, SimColumn): its short name over the list, what it
-/// is in the name's tooltip, its width at full size, the number of a tree (null for none) and which way it is better.
+/// One number of the list, as Mining Rates and Fishing Rates make their columns (mods/MiningRates/RatesList.cs,
+/// RateColumn), which made them as the Combat Simulator's are (mods/CombatSim/SimColumns.cs, SimColumn): its short name
+/// over the list, what it is in the name's tooltip, its width at full size, the number of a tree (null for none) and
+/// which way it is better.
 /// </summary>
 sealed record RateColumn(string Key, string Title, string Tip, float Width, Func<TreeRates, double?> Value, Func<double, string> Format, Better Better)
 {
@@ -26,29 +27,50 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     };
 
     /// <summary>
-    /// The columns, left to right: the issue's (#71), in Fishing Rates' widths. Mastery XP is not a column: Woodcutting in
-    /// this game keeps no mastery XP per action (its Mastery Guild, WoodcuttingEntity.MasteryGuild, counts ranks, points
-    /// and tasks).
+    /// The columns, left to right: the issue's (#71), with Mining Rates' names and widths where they mean the same.
+    /// Mastery XP is not a column: Woodcutting in this game keeps no mastery XP per action by the game's names (its
+    /// Mastery Guild, WoodcuttingEntity.MasteryGuild, counts ranks, points and tasks). The time of a log, the logs and the
+    /// gold rest on the rules that are settled (TreeRates.LogsRule, HitsRule): the Logs column's tip quotes the game's
+    /// words for them once they are what they rest on; while they are not, those columns are "-" and the note under the
+    /// list says why, once (the review of turn 1). A tip's line is never longer than Fishing Rates' longest (82
+    /// characters): Godot's tooltip does not wrap.
     /// </summary>
-    public static List<RateColumn> For() => new()
+    public static List<RateColumn> For()
     {
-        new("time", "Time", "Seconds for one log, every hit of a cut counted in", 58,
-            t => t.HasTime ? t.SecondsPerLog : null, Words.Seconds, Better.Less),
-        new("logs", "Logs", "Logs per hour", 66, t => t.HasTime ? t.LogsPerHour : null, Words.Number, Better.More),
-        new("xp", "XP", "Woodcutting XP per hour", 66, t => t.HasTime ? t.XpPerHour : null, Words.Number, Better.More),
-        new("gold", "Gold", "What the logs and items of an hour sell for", 66, t => t.HasTime ? t.GoldPerHour : null, Words.Number, Better.More),
-    };
+        // The game's own words, quoted whole, when they are what a rule rests on (Mining Rates' Ore column).
+        var logs = new List<string> { "The tree's logs per hour" };
+        void Rule<T>(Settled<T>? rule, string what)
+        {
+            if (rule == null) return;
+            bool quoted = rule.Source == RuleSource.GameWords && rule.Quote.Length > 0;
+            logs.Add($"{what}: {Words.How(rule.Source)}{(quoted ? ", in the game's words:" : "")}");
+            if (quoted) logs.AddRange(rule.Quote.Split('\n').Select(line => $"\"{line}\""));
+        }
+        Rule(TreeRates.LogsRule, "What they come with");
+        if (TreeRates.LogsRule?.Reading != LogsWith.EveryHit) Rule(TreeRates.HitsRule, "The hits a cut takes");
+        return
+        [
+            new("time", "Time", "Seconds for one log: an hour over the logs of an hour", 58,
+                t => t.HasTime ? t.SecondsPerLog : null, Words.Seconds, Better.Less),
+            new("logs", "Logs", string.Join("\n", logs), 66, t => t.HasTime ? t.LogsPerHour : null, Words.Number, Better.More),
+            new("xp", "XP", "Woodcutting XP per hour: the XP of a hit, on every hit", 66,
+                t => t.HasTime ? t.XpPerHour : null, Words.Number, Better.More),
+            new("gold", "Gold", "What the logs and the other items of an hour sell for", 66,
+                t => t.HasTime ? t.GoldPerHour : null, Words.Number, Better.More),
+        ];
+    }
 }
 
 /// <summary>
-/// The window's list: one line per tree the Woodcutting page shows, in a titled column. Copied from Fishing Rates'
-/// list (mods/FishingRates/RatesList.cs), which is made like the Combat Simulator's results (mods/CombatSim/SimView.cs,
-/// BuildResults): the names over the numbers sort the list, the game's own arrow beside the one it is sorted by
-/// (SimViewColumns.cs). The best number of each column is in the gold of Recipe Rates' best recipe
-/// (GameStyle.Highlight). A tree that cannot be cut yet is greyed, with the level it needs. Each line starts with the
-/// tree's own picture, as its card on the Woodcutting page shows it, never the game's grey stand-in. A click on a line
-/// shows that tree on the Woodcutting page (WoodcuttingRatesMod.ShowOnPage); it starts nothing. Under the list, why
-/// whole columns show "-", as Thieving Overview says it (mods/ThievingOverview/OverviewView.cs, its note).
+/// The window's list: one line per tree the Woodcutting page shows, in a titled column. Copied from Mining Rates' list
+/// (mods/MiningRates/RatesList.cs), itself Fishing Rates' (mods/FishingRates/RatesList.cs), which is made like the
+/// Combat Simulator's results (mods/CombatSim/SimView.cs, BuildResults): the names over the numbers sort the list, the
+/// game's own arrow beside the one it is sorted by (SimViewColumns.cs). The best number of each column is in the gold of
+/// Recipe Rates' best recipe (GameStyle.Highlight). A tree that cannot be cut yet is greyed, with the level it needs.
+/// Each line starts with the tree's own picture, as its card on the Woodcutting page shows it, never the game's grey
+/// stand-in. A click on a line shows that tree on the Woodcutting page (WoodcuttingRatesMod.ShowOnPage); it starts
+/// nothing. Under the list, why whole columns show "-", as Thieving Overview says it (mods/ThievingOverview/
+/// OverviewView.cs, its note).
 /// </summary>
 sealed class RatesList
 {
@@ -139,7 +161,7 @@ sealed class RatesList
         _empty.Hide();
         body.AddChild(_empty);
 
-        // Why whole columns show "-" for now, when they do (OverviewView's note: wrapped, grey, 12).
+        // Why whole columns show "-", when they do, said once (OverviewView's note: wrapped, grey, 12).
         _note = _s.Text("", GameStyle.TextGrey, 12);
         _note.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _note.CustomMinimumSize = new Vector2(_s.Px(width - 30), 0);
@@ -188,11 +210,13 @@ sealed class RatesList
         }
         _empty.Visible = index == 0;
         _scroll.Visible = index > 0;
+        // Other words may take another number of lines: the window is fitted again then too.
+        bool said = _note.Text != note || _noteShown != (note != "");
         if (_note.Text != note) _note.Text = note;
         _note.Visible = note != "";
-        int shown = Math.Clamp(index, 1, MostRows);
-        if (shown == _shownRows && _noteShown == _note.Visible) return false;
         _noteShown = _note.Visible;
+        int shown = Math.Clamp(index, 1, MostRows);
+        if (shown == _shownRows && !said) return false;
         _shownRows = shown;
         _scroll.CustomMinimumSize = new Vector2(0, _s.Px(RowHeight) * shown + _s.Px(RowGap) * (shown - 1));
         return true;
@@ -336,10 +360,12 @@ sealed class RatesList
     // Simulator (its pressed one), so it can be found in a sorted list. A line a click shows something for has the
     // theme's own looks, lighter under the pointer, with the pointing hand, as Astrology Overview's rows that open a
     // constellation (OverviewRowView.Update); one that a click changes nothing for keeps its resting look in every
-    // state, with the arrow (Fishing Rates' RatesList.Restyle).
+    // state, with the arrow (Fishing Rates' RatesList.Restyle). As in Mining Rates, the lit line can be clicked too: the
+    // card of the tree being cut can be out of sight on the Woodcutting page, and a click then scrolls to it. It keeps
+    // its pressed look, lighter under the pointer (the theme's hover_pressed).
     void Restyle(Row row, bool lit, bool clickable)
     {
-        var look = (Lit: lit, Clickable: clickable && !lit);
+        var look = (Lit: lit, Clickable: clickable);
         if (row.Look == look || !row.Button.IsInsideTree()) return;
         // The theme's own look, not one this line was given before.
         foreach (string state in RowStates) row.Button.RemoveThemeStyleboxOverride(state);
@@ -347,6 +373,11 @@ sealed class RatesList
         {
             StyleBox resting = row.Button.GetThemeStylebox(lit ? "pressed" : "normal");
             foreach (string state in RowStates) row.Button.AddThemeStyleboxOverride(state, resting);
+        }
+        else if (lit)
+        {
+            StyleBox pressed = row.Button.GetThemeStylebox("pressed"), hover = row.Button.GetThemeStylebox("hover_pressed");
+            foreach (string state in RowStates) row.Button.AddThemeStyleboxOverride(state, state is "hover" or "hover_pressed" ? hover : pressed);
         }
         row.Button.MouseDefaultCursorShape = look.Clickable ? Control.CursorShape.PointingHand : Control.CursorShape.Arrow;
         row.Look = look;
@@ -467,6 +498,11 @@ sealed class RatesList
 
     /// <summary>Development: the name over a column, by its key.</summary>
     public Button? DevHeader(string key) => _headers.FirstOrDefault(h => h.GetMeta("column").AsString() == key);
+
+    /// <summary>Development: the keys of the columns, left to right.</summary>
+    public IEnumerable<string> DevColumns => _columns.Select(c => c.Key);
+
+    public IReadOnlyList<Button> DevHeaders => _headers;
 
     public ScrollContainer DevScroll => _scroll;
     public string DevNote => _note.Visible ? _note.Text : "";
