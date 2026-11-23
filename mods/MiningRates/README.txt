@@ -20,14 +20,15 @@ hit with its chance and how many an hour brings, and the gold.
 The numbers come from the game's own values for each rock, so whatever changes those changes
 the window too. The ore comes when the rock breaks. How many hits that takes follows the
 game's own words on a rock's break chance: "Your chance to break the rock per hit. Rock
-automatically breaks when a sum of 100% is reached." The window reads them as: every hit
-breaks the rock at its break chance, and the hit that brings the sum of those chances to
-100% breaks it for sure. Three more things are the window's reading too: every hit gives the
-rock's XP, whether it breaks the rock or not; the doubling chance doubles the ore and the
-items of a hit; and a minimum break bar is where the sum starts after a break. Chances count
-as their long-run average. It is an estimate, not a promise. A chance to shatter a rock, a
-chance of more ore, and a rock's own stone, essence or bar are not counted; the tooltip says
-so when you have one. Mining has no mastery XP in this game, so there is no column for it.
+automatically breaks when a sum of 100% is reached." Every hit breaks the rock at its break
+chance, the one its card shows (the card's tooltip shows it as the "Current chance for this
+Rock" even when the sum is part filled), and the hit that brings the sum of those chances to
+100% breaks it for sure. Three things are the window's reading: every hit gives the rock's
+XP, whether it breaks the rock or not; the doubling chance doubles the ore and the items of
+a hit; and a minimum break bar is where the sum starts after a break. Chances count as their
+long-run average. It is an estimate, not a promise. A chance to shatter a rock, a chance of
+more ore, and a rock's own stone, essence or bar are not counted; the tooltip says so when
+you have one. Mining has no mastery XP in this game, so there is no column for it.
 
 Click a line to see that rock on the Mining page: the page's category filter goes to the
 rock's category when it is on another one, and its list of rocks scrolls to the rock's card.

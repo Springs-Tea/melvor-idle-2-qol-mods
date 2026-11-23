@@ -99,7 +99,7 @@ How many hits a break takes rests on the words the Mining page shows on a rock's
 | Rule | Where it comes from |
 | --- | --- |
 | A hit takes the rock's time of a hit. | The game's value for the rock. |
-| Every hit breaks the rock at its break chance. One that does not adds the chance to a sum, and the hit that brings the sum to 100% breaks it for sure (ten hits of 10% reach it). The hits a break takes on average follow from that. | The game's own words above. That the chance of a hit stays the rock's break chance, and does not grow with the sum, is how the window reads them. |
+| Every hit breaks the rock at its break chance, the one its card shows. One that does not adds the chance to a sum, and the hit that brings the sum to 100% breaks it for sure (ten hits of 10% reach it). The hits a break takes on average follow from that. | The game's own words above. The tooltip of a card's break chance shows it as the "Current chance for this Rock", with your bonuses, even when the sum is part filled. |
 | A minimum break bar is where the sum starts after a break. | The mod's reading of its name. |
 | A break gives the rock's ore, as many as the game's quantity for it. | The game's value for the quantity; the Mining page lists the ore under "On Break Rewards". |
 | Every hit gives the rock's XP, whether it breaks the rock or not. | The mod's reading of the XP tag's words, "The Skill XP gained per action.": a hit is the game's action for Mining. |

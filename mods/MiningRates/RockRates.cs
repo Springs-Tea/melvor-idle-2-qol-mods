@@ -31,7 +31,8 @@ enum BreakRule
     /// <summary>
     /// Every hit breaks the rock at its break chance; a hit that does not break adds it to the bar, a sum, and the hit
     /// that brings the sum to 100% breaks the rock. The card's break chance says so in the game's own words (<see
-    /// cref="RockRates.GameWords"/>).
+    /// cref="RockRates.GameWords"/>), and its tooltip calls that chance the rock's current chance (<see
+    /// cref="RockRates.Settled"/>).
     /// </summary>
     SameChanceUntilFull,
 }
@@ -71,16 +72,17 @@ sealed class RockRates
     public const string GameWords = "Your chance to break the rock per hit.\nRock automatically breaks when a sum of 100% is reached.";
 
     /// <summary>
-    /// The rule the hour rests on, and what backs it: set here, in this one place. The light check of 23 Nov 2026
-    /// (check-2, "Dev: words") read the card's break chance in the game's words: "Your chance to break the rock per hit.
-    /// / Rock automatically breaks when a sum of 100% is reached. Base chance for this Rock: {0:P2} / Current chance for
-    /// this Rock: {1:P2}". The chance of a hit is the rock's break chance, the one the card shows (60.00% for Stone, its
-    /// RockBreakChance); the sum is the break bar, which grows by that chance on a hit that does not break (a "+x%" after
-    /// the hit); and the hit that brings it to 100% breaks the rock. "Base" and "Current" read as the chance without and
-    /// with the character's bonuses, as the XP tag's "Base Skill XP" and "With Modifiers" do, and as the game's info
-    /// icon of the break chance keeps the recipe's base (RockBreakIcon._baseProductChance, set from the recipe): so the
-    /// chance of a hit does not grow. The light check reads the two numbers the card's tooltip shows ("Dev: break rule");
-    /// null here would leave the window with the time of a hit and the XP only.
+    /// The rule the hour rests on, and what backs it: set here, in this one place. The card's break chance says it in
+    /// the game's words (check-2, "Dev: words"): "Your chance to break the rock per hit. / Rock automatically breaks when
+    /// a sum of 100% is reached. Base chance for this Rock: {0:P2} / Current chance for this Rock: {1:P2}". The light
+    /// check of 23 Nov 2026 (check-3, "Dev: break rule") read that tooltip on Copper Ore's card while its bar stood part
+    /// filled: "Base chance for this Rock: 30.00% / Current chance for this Rock: 45.00%", against the recipe's base 0.3,
+    /// the rock's break chance 0.45 (its RockBreakChance, the one the card shows) and its bar 0.375. The game's current
+    /// chance is the rock's break chance, not the bar and not the bar with a hit's raise: a hit breaks the rock at that
+    /// chance, one that does not adds it to the sum (the break bar, which grows by it: a "+x%" after the hit), and the hit
+    /// that brings the sum to 100% breaks the rock. Every light check reads it again ("Dev: break rule", AS SETTLED);
+    /// the watch (miningwatch.request, DevWatch.cs) can measure it on a character's own mining. Null here would leave the
+    /// window with the time of a hit and the XP only.
     /// </summary>
     static readonly (BreakRule Rule, RuleSource Source)? Known = (BreakRule.SameChanceUntilFull, RuleSource.GameWords);
 
