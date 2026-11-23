@@ -532,12 +532,26 @@ sealed partial class SimView
 
     /// <summary>
     /// This setup against another, column by column, by the simulator's one rule (<see cref="Judge"/>): green where
-    /// this one is better, red where it is worse, grey with "could be luck" where the two ranges overlap. The columns
+    /// this one is better, red where it is worse, grey with "could be luck" where the two ranges overlap. Against B of the
+    /// same compare, which met the same dice (issue #57), the bar is lowered by the luck the two met alike, and the small
+    /// line says how far luck could move the change: "± 18%" under "+22%" (<see cref="SameDiceNote"/>). The columns
     /// in which the two are the same share one line at the end, so a long list stays short to read.
     /// </summary>
     IEnumerable<Control> Compared(SimResult r, SimResult other)
     {
         var same = new List<string>();
+        foreach (var (name, text, verdict, note) in ComparedLines(r, other))
+        {
+            if (text == null) same.Add(name);
+            else yield return Stat(name, text, Tint(verdict), note);
+        }
+        if (same.Count > 0) yield return Wrapped("The same: " + string.Join(", ", same), 250, GameStyle.TextGrey, 12);
+    }
+
+    // The lines of Compared in words: each column's name, what it shows (null for a column that goes into "The same"), its
+    // verdict and its small line.
+    IEnumerable<(string Name, string? Text, Verdict Verdict, string? Note)> ComparedLines(SimResult r, SimResult other)
+    {
         foreach (SimColumn column in BaseShown())
         {
             // A number one of the two does not have (nothing killed, not a dungeon, not recorded) is left out.
@@ -545,28 +559,55 @@ sealed partial class SimView
             string name = NameOf(column);
             Verdict verdict = Judge(column, r, other);
             string? luck = verdict == Verdict.Luck ? SimRanges.Words(verdict) : null;
+            // Against B of the same compare: the reach of luck the verdict went by (SimRanges.Apart).
+            SimLuck? dice = verdict != Verdict.Same && column.Rate?.Invoke() is { } rate ? SimRanges.Apart(r, other, rate) : null;
+            var (change, note) = dice is { } reach ? SameDiceNote(column, mine, theirs, reach, luck) : (null, luck);
             if (!column.Percent)
             {
                 // This setup's own words or number, coloured against the other's.
-                yield return Stat(name, column.Text(r), Tint(verdict), luck);
+                yield return (name, column.Text(r), verdict, note);
                 continue;
             }
             if (verdict == Verdict.Same)
             {
-                same.Add(name);
+                yield return (name, null, verdict, null);
                 continue;
             }
-            // There is no percent of nothing: this setup's own number against the other's 0.
-            string text = theirs == 0 ? column.Text(r) + " vs 0" : Change(mine, theirs);
-            yield return Stat(name, text, Tint(verdict), luck);
+            // There is no percent of nothing: this setup's own number against the other's 0. Above a ±, the change is
+            // written as the ± is (SameDiceNote).
+            string text = theirs == 0 ? column.Text(r) + " vs 0" : change ?? Change(mine, theirs);
+            yield return (name, text, verdict, note);
         }
-        if (same.Count > 0) yield return Wrapped("The same: " + string.Join(", ", same), 250, GameStyle.TextGrey, 12);
+    }
+
+    // Against B of the same compare (issue #57): how far luck could move the change, on the base of its percent (Change, the
+    // other's number), "± 18%", so the change is green or red exactly when it is larger. The change and its ± are both
+    // written by SimRanges.Percents, as Details writes a lead and its ±: "+4.6%" over "± 4.7%" where Change alone would
+    // write "+5%", and "+64.4%" over "± 64.1%" where both would read 64%, so the larger of the two never shows as the
+    // smaller or as the same. The change is null where the number is this setup's own: the small line then has the
+    // difference with it in the column's format, "+1,234 ± 2,000". After "could be luck" where it is that.
+    (string? Change, string? Note) SameDiceNote(SimColumn column, double mine, double theirs, SimLuck reach, string? luck)
+    {
+        string sign = mine >= theirs ? "+" : "-", plus;
+        string? change = null;
+        if (column.Percent && theirs > 0)
+        {
+            var (lead, of) = SimRanges.Percents(Math.Abs(mine / theirs - 1), reach.Reach / theirs);
+            (change, plus) = (sign + lead, "± " + of);
+        }
+        else
+        {
+            Func<double, string> format = column.Format ?? Fmt;
+            plus = $"{sign}{format(Math.Abs(mine - theirs))} ± {format(reach.Reach)}";
+        }
+        return (change, luck != null ? $"{luck}, {plus}" : plus);
     }
 
     /// <summary>
     /// This setup's number in a column against another setup's, by the one rule of <see cref="SimRanges.Judge"/>:
-    /// better or worse only when their ranges do not overlap. For "Compared with", and for the setups side by side
-    /// of issue #2.
+    /// better or worse only when their ranges do not overlap, or for A and B of one compare, which met the same dice, when
+    /// the difference is beyond the reach of luck, which the luck they met alike lowers (issue #57). For "Compared with",
+    /// and for the setups side by side of issue #2.
     /// </summary>
     Verdict Judge(SimColumn column, SimResult r, SimResult other) =>
         column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)

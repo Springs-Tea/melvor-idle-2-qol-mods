@@ -239,7 +239,8 @@ sealed partial class SimView
 
     // Under the name of another setup in "Compared with": its stance, in the look of this one's under the name above, when
     // the stance tells the two apart: another one, or the same one asked for on one side and as the game has it on the
-    // other (two setups of their own, each with its own luck). Null when it does not, or when its scan did not keep it.
+    // other (two setups of their own, each with its own luck outside Compare). Null when it does not, or when its scan did
+    // not keep it.
     Control? StanceAgainst(SimResult mine, SimResult other) =>
         other.StanceShown == "" || SameStance(mine, other) ? null : StanceLine(other, fight: false);
 

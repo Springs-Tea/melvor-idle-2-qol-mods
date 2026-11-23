@@ -283,8 +283,11 @@ sealed partial class SimView
                (cut.Count == 0 ? "every choice whole" : "CUT " + string.Join(", ", cut.Select(c => $"'{c.Text}' by {c.Width - room:0.#}")));
     }
 
-    // Development: the verdicts of "Compared with" for the selected line, as its colours show them, and what each went
-    // by: the two ranges, the counts behind a quantity one of them had none of, or a real 0 (SimRanges.Basis).
+    // Development: the verdicts of "Compared with" for the selected line, as its colours show them, what each line shows
+    // (ComparedLines: the change and its small line, as drawn), and what each went by: for B of the same compare the same
+    // dice (issue #57: the difference against the bar, the two own halves added times the share of luck left raised by its
+    // noise, SimRanges.Apart), otherwise the two ranges, the counts behind a quantity one of them had none of, or a real 0
+    // (SimRanges.Basis).
     void DevCompared()
     {
         var shown = _state.ShownResults;
@@ -292,18 +295,29 @@ sealed partial class SimView
         foreach (SimResult other in shown.Values.Where(o => o.Target.Key == r.Target.Key && o.SetupKey != r.SetupKey && !o.Failed))
         {
             var said = new List<string>();
+            var lines = ComparedLines(r, other).GroupBy(l => l.Name).ToDictionary(g => g.Key, g => g.First());
             foreach (SimColumn column in BaseShown())
             {
                 if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
                 string why = "no rate";
-                if (column.Rate?.Invoke() is { } rate)
+                if (column.Rate?.Invoke() is { } rate && SimRanges.Apart(r, other, rate) is { } luck)
                 {
-                    var (a, b, realZero) = SimRanges.Basis(r, other, rate);
-                    bool behind = a != null && b != null && (a != SimRanges.Of(r, rate) || b != SimRanges.Of(other, rate));
-                    string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
-                    why = realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}";
+                    why = $"RULE SAME DICE: |d| {Fmt(Math.Abs(luck.Difference))} against a bar of {Fmt(luck.Reach)}, {SimRanges.DevBar(luck, Fmt)}";
+                    // A change and a ± that SimRanges.Percent alone would write alike, which SimRanges.Percents tells apart.
+                    string alike = column.Percent && theirs > 0 ? SimRanges.Percent(Math.Abs(mine / theirs - 1)) : "";
+                    if (alike != "" && alike == SimRanges.Percent(luck.Reach / theirs)) why += $"; BOTH READ '{alike}' BY PERCENT ALONE";
                 }
-                said.Add($"{NameOf(column)} {column.Text(r)} vs {column.Text(other)} {Judge(column, r, other)} ({why})");
+                else if (column.Rate?.Invoke() is { } asBefore)
+                {
+                    var (a, b, realZero) = SimRanges.Basis(r, other, asBefore);
+                    bool behind = a != null && b != null && (a != SimRanges.Of(r, asBefore) || b != SimRanges.Of(other, asBefore));
+                    string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
+                    why = $"RULE AS BEFORE ({SimRanges.DevWhy(r, other, asBefore).Or("-")}): " +
+                          (realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}");
+                }
+                string drawn = lines.TryGetValue(NameOf(column), out var line)
+                    ? line.Text == null ? "in The same" : $"shows '{line.Text}'" + (line.Note != null ? $" over '{line.Note}'" : "") : "not shown";
+                said.Add($"{NameOf(column)} {column.Text(r)} vs {column.Text(other)} {Judge(column, r, other)}, {drawn} ({why})");
             }
             DevLog?.Invoke($"Dev: ranges: compared with {other.SetupLabel}: {string.Join("; ", said)}");
         }

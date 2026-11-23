@@ -39,21 +39,34 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     with its pictures. The first choice is the stance the game has selected for that weapon, as
     before: "As now: Accurate" with the loadout you wear and a weapon of the kind you hold, "As
     the game has it" otherwise. A stance chosen is a setup of its own, as a spell is, with its
-    own luck. A weapon of another kind brings its own stances; a stance it does not have goes
-    back to the first choice. Best for has no Stance box: it tries every stance.
+    own luck (in Compare, A and B meet the same dice). A weapon of another kind brings its own
+    stances; a stance it does not have goes back to the first choice. Best for has no Stance
+    box: it tries every stance.
   - Compare, at the end of the Equipment heading: two setups, A and B. The A and B buttons in
     front of the loadout choose which one the loadout, the slots, the stance (in Fights) and
     the spell show and change; the first time, B is a copy of A. One press of Simulate runs
-    every fight with both, from the same moment of your character. Each column of the list
-    becomes three: under its name which setup is better and by how much ("A by 23%", "A ×4"
-    from twice as much up; for Healed, Items and Sim time which has more, "A +12%"), then the
-    number with A and with B. The better side is green and the worse red, grey where it could
-    be luck. Click a column's name for the fights where the choice matters most; the line above
-    the list counts the fights each setup wins in the column it is sorted by, and in Best for
-    says where each setup does best. Details shows the fight with both setups side by side,
-    each with its stance ("as the game has it" where both fought in the same one and only one
-    chose it). Fight is for the setup on the left. A and B last until the game is closed or
-    another character is opened.
+    every fight with both, from the same moment of your character and with the same dice. Each
+    column of the list becomes three: under its name which setup is better and by how much
+    ("A by 23%", "A ×4" from twice as much up; for Healed, Items and Sim time which has more,
+    "A +12%"), then the number with A and with B. The better side is green and the worse red,
+    grey where it could be luck: green and red where the difference is larger than the two 95%
+    ranges side by side would allow, less the share of the luck that A and B met alike. That
+    share is measured from the fights at the same kills, and only what is beyond its own
+    chance is taken off, so two setups that meet no luck alike are coloured by luck about as
+    often as two ranges side by side. The more alike the two fight, the more luck they share
+    (two helmets, one weapon in two stances); Warrior and Mage share almost none. Details
+    writes the lead with how far luck could move it, "A by 48% ± 47%": green and red exactly
+    when the lead is larger than its ±, with one more figure where the two would read the
+    same ("A by 64.4% ± 64.1%"). Judged as before, by the two own ranges side by side: counts
+    that did not come in every part of either fight (a death or two), a number one of them had
+    none of, fights that ended at different times (Go on until, or From bank when supplies ran
+    out), fights whose dice could not be kept in step, and scans made before this. Click a
+    column's name for the fights where the choice matters most; the line above the list counts
+    the fights each setup wins in the column it is sorted by, and in Best for says where each
+    setup does best. Details shows the fight with both setups side by side, each with its
+    stance ("as the game has it" where both fought in the same one and only one chose it).
+    Fight is for the setup on the left. A and B last until the game is closed or another
+    character is opened.
   - Find upgrades, the button over "Wear this setup first", opens a panel where you choose
     which items to try against the selected fight, one slot at a time, on top of the setup on
     the left: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop,
@@ -102,7 +115,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     food and healing per kill, and how many kills the food in your bank is enough for. When the
     same fight was simulated with other equipment or another stance, the difference is shown
     for every column of the list, green where it is better, red where it is worse, but only
-    when the two ranges do not overlap: otherwise it is grey and says "could be luck". The
+    when the two ranges do not overlap (for A and B of one compare, when the change is larger
+    than its ±, as in Compare): otherwise it is grey and says "could be luck". The
     other setup's stance is under its name when it tells the two apart: another stance, or the
     same one chosen on one side only. XP in a skill one setup does not train at all, like Magic
     with a sword, is a real 0: any XP in it is better. The columns in which both are the same
@@ -147,11 +161,12 @@ Good to know
     note says why it stopped and the rates cover the time fought.
   - Farming and Ranching are paused in the copy, so their items do not show up as supplies.
   - Fights are random, but the dice of each fight are set from the fight and the setup: the
-    same setup and the same character give the same numbers again. The copy is your character
-    as it is when you press Simulate, XP, slayer task and potions included; while you play
-    these move on, so a scan a minute later can differ a little, and more for the enemy of
-    your slayer task. The ranges say how far luck could have moved the numbers; longer
-    fights narrow them.
+    same setup and the same character give the same numbers again. In Compare, A and B get
+    the dice of the fight alone, so a setup's numbers there can differ a little from its
+    numbers alone. The copy is your character as it is when you press Simulate, XP, slayer
+    task and potions included; while you play these move on, so a scan a minute later can
+    differ a little, and more for the enemy of your slayer task. The ranges say how far luck
+    could have moved the numbers; longer fights narrow them.
   - An item whose requirements you do not meet cannot be equipped in the copy either; the
     result says so. It also says so when the copy wears something other than the slots show.
   - Up to four fights run side by side. If the game stutters during a scan, set "Workers" in

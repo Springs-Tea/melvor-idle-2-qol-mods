@@ -199,16 +199,43 @@ public partial class CombatSimMod
         if (!_state.Compare || _state.SameSetups)
         {
             SimOptions options = RunOptions();
+#if DEVTOOLS
+            DevSimulateOptions(options);   // raw= changes the setup on the left (CombatSimGear.cs)
+#endif
             return _state.ToSimulate().Select(t => new SimJob(t, options)).ToList();
         }
         SimSetup a = _state.A, b = _state.B;
         SimOptions withA = RunOptions(a), withB = RunOptions(b);
+#if DEVTOOLS
+        DevSimulateOptions(_state.ShowingB ? withB : withA);   // before the copies with the dice of each fight are made
+#endif
+        return CompareJobs(a, b, withA, withB);
+    }
+
+    /// <summary>
+    /// The dice both fights of an enemy have in Compare (issue #57): the key of the fight alone, without a setup and without
+    /// a stance. A and B are kept in step with it all fight (SimOptions.Dice, SimDice.InStep, as Find upgrades fights its
+    /// items), and so are the stances each tries in Best for: they meet the same rolls at the same kill for as long as they
+    /// act alike, and the luck they met alike lowers the bar A against B is judged by (SimRanges.Apart). As it names no
+    /// setup, swapping A and B changes nothing, and a setup comes out the same against any other. "compare" is no
+    /// setup's key: every one holds a ";" (SimState.GearKey).
+    /// </summary>
+    internal static string CompareDice(string fightKey) => SimResult.MakeKey("compare", fightKey);
+
+    /// <summary>
+    /// A's and B's fights, fight by fight, each with the dice of its fight (<see cref="CompareDice"/>) and its side, A or B
+    /// (SimOptions.Side). Every fight has options of its own for them, copies of A's and of B's.
+    /// </summary>
+    List<SimJob> CompareJobs(SimSetup a, SimSetup b, SimOptions withA, SimOptions withB)
+    {
         ILookup<string, SimTarget> ofB = _state.ToSimulate(b).ToLookup(t => t.FightKey);
         var jobs = new List<SimJob>();
         foreach (var fight in _state.ToSimulate(a).GroupBy(t => t.FightKey))
         {
-            jobs.AddRange(fight.Select(t => new SimJob(t, withA)));
-            jobs.AddRange(ofB[fight.Key].Select(t => new SimJob(t, withB)));
+            string dice = CompareDice(fight.Key);
+            SimOptions diceA = withA.WithDice(dice, "A"), diceB = withB.WithDice(dice, "B");
+            jobs.AddRange(fight.Select(t => new SimJob(t, diceA)));
+            jobs.AddRange(ofB[fight.Key].Select(t => new SimJob(t, diceB)));
         }
         return jobs;
     }
@@ -244,12 +271,23 @@ public partial class CombatSimMod
     // Development, lines of sim.request (DevWindowCommand); put back with the rest at the end of the request:
     //   compare=<loadout>|<slot=item id>|<spell>|<side>
     //                                              ticks Compare, with setup A as the left has it, and makes setup B as
-    //                                              the B button and the controls under it would: the setup on the left
-    //                                              with that loadout (part of its name; empty: A's), that item swapped in
-    //                                              (part of a slot's name = an item id; empty: none) and that spell (part
-    //                                              of its name; empty: as the loadout has it). Then A is on the left
-    //                                              again, or B with "b" as the fourth part (for a raw= scan of B's).
+    //                                              the B button and the controls under it would: a copy of A (also when
+    //                                              a B was made before), with that loadout (part of its name; empty: A's),
+    //                                              that item swapped in (part of a slot's name = an item id; empty: none)
+    //                                              and that spell (part of its name; empty: as the loadout has it). Then A
+    //                                              is on the left again, or B with "b" as the fourth part (for a raw= scan
+    //                                              of B's, or a stance= line that gives B another stance than A's).
     //   compare=off                                unticks Compare
+    //   compare=twin                               the twin (issue #57): every fight where the simulator is set to fight,
+    //                                              with the setup on the left as A and as B, B under another key
+    //                                              (SimEngine.DevTwinKey), the jobs and their dice made by Compare's own
+    //                                              CompareJobs. Run outside the window, as twice= is: nothing goes into
+    //                                              the list or History, and the Compare box, A and B stay as they are.
+    //                                              SimEngine.DevTwin logs every fight's two results side by side.
+    //   compare=check|<what>|<fights>              reads A and B back before a run: Compare ticked, B different from A
+    //                                              in exactly <what> (loadout, item, spell or stance; a stance chosen that
+    //                                              is the one the game has is no difference) and <fights> fights for each
+    //                                              setup. Otherwise one line, and the rest of the request is dropped.
     //   side=a, side=b                             a click on the A or the B button
     //   wear=on, wear=off                          a click on "Wear this setup first" when it is not so already: a setting
     //                                              of the mod, put back with the others, so that the words above Fight
@@ -259,12 +297,21 @@ public partial class CombatSimMod
     {
         Open();
         if (_window is not { IsAlive: true } || _view == null) { _ctx.Log("Dev: compare: the simulator could not be opened."); return; }
+        if (what.Equals("twin", StringComparison.OrdinalIgnoreCase)) { DevCompareTwin(); return; }
+        if (what.StartsWith("check", StringComparison.OrdinalIgnoreCase)) { DevCompareCheck(what); return; }
         if (what.Equals("off", StringComparison.OrdinalIgnoreCase)) _state.SetCompare(false);
         else
         {
             string[] parts = what.Split('|', StringSplitOptions.TrimEntries);
             _state.SetCompare(true);
-            if (!_state.ShowingB) _state.SwapSides();
+            // B starts as a copy of A, as the first tick of the box makes it, also after a B of the player's own.
+            if (_state.ShowingB)
+            {
+                _state.SwapSides();
+                BuildGear();
+            }
+            _state.Other = _state.OnLeft;
+            _state.SwapSides();
             BuildGear();
             if (parts[0] != "" && _state.Loadouts.FirstOrDefault(l => l.Name.Contains(parts[0], StringComparison.OrdinalIgnoreCase)) is { Id: not null } loadout)
             {
@@ -317,6 +364,70 @@ public partial class CombatSimMod
                                                  $"{_state.ToSimulate(s).Count} fights";
         return (_state.Compare ? $"on, {_state.LeftSide} on the left" : $"off, {_state.LeftSide} on the left") +
                (_state.Other.BaseKey == "" ? "; no second setup" : $"; {Setup("A", a)}; {Setup("B", b)}{(_state.SameSetups ? "; A AND B ARE THE SAME SETUP" : "")}");
+    }
+
+    // compare=check|<what>|<fights>: what B differs from A in, read from the two setups as Simulate would run them, and how
+    // many fights each has. The stance each fights in is its own: the one chosen for it, or the one the game has for its
+    // weapon, which the first choice of the Stance box names when it can tell (SimState.StanceNow, read by BuildGear for
+    // the setup on the left; for the other one with it on the left for a moment, as DescribeOther reads it), or else "as the
+    // game has it, not read". The stance is a difference of its own only between two setups with the stances of one weapon:
+    // a weapon of another kind brings its own. A request that is not what it means to be stops here.
+    void DevCompareCheck(string what)
+    {
+        string[] parts = what.Split('|', StringSplitOptions.TrimEntries);
+        string asked = parts.Length > 1 ? parts[1].ToLowerInvariant() : "";
+        int fights = parts.Length > 2 && int.TryParse(parts[2], out int n) ? n : -1;
+        SimSetup a = _state.A, b = _state.B;
+        string? leftNow = _state.StanceNow?.Id, otherNow = null;
+        if (_state.Other.BaseKey != "" && _state.ChosenOf(_state.Other) == null)
+        {
+            SimSetup left = _state.OnLeft;
+            _devGearFor = $"setup {(_state.ShowingB ? "A" : "B")}, read for compare=check; it is not on the left";
+            _state.PutOnLeft(_state.Other);
+            BuildGear();
+            otherNow = _state.StanceNow?.Id;
+            _devGearFor = null;
+            _state.PutOnLeft(left);
+            BuildGear();
+        }
+        string Stance(SimSetup s, bool onLeft) =>
+            _state.ChosenOf(s)?.Id ?? (onLeft ? leftNow : otherNow) ?? "as the game has it, not read";
+        string stanceA = Stance(a, !_state.ShowingB), stanceB = Stance(b, _state.ShowingB);
+        static string Changes(SimSetup s) => string.Join(" ", s.Overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => $"{o.Key}={o.Value}"));
+        var differ = new List<string>();
+        if (a.LoadoutId != b.LoadoutId) differ.Add("loadout");
+        if (Changes(a) != Changes(b)) differ.Add("item");
+        if (a.SpellId != b.SpellId) differ.Add("spell");
+        bool oneWeapon = a.Stances.Select(s => s.Id).SequenceEqual(b.Stances.Select(s => s.Id));
+        if (oneWeapon && stanceA != stanceB) differ.Add("stance");
+        int withA = _state.ToSimulate(a).Count, withB = _state.ToSimulate(b).Count;
+        bool ok = _state.Compare && differ is [var only] && only == asked && withA == fights && withB == fights;
+        _ctx.Log($"Dev: compare: check: Compare {(_state.Compare ? "ticked" : "NOT TICKED")}; A {_state.NameOf(a)} (loadout {a.LoadoutId}, changes {Changes(a).Or("none")}, " +
+                 $"spell {a.SpellId.Or("as the loadout has it")}, stance {stanceA}), {withA} fights; B {_state.NameOf(b)} (loadout {b.LoadoutId}, changes {Changes(b).Or("none")}, " +
+                 $"spell {b.SpellId.Or("as the loadout has it")}, stance {stanceB}), {withB} fights; {(oneWeapon ? "the stances of one weapon" : "the stances of other weapons")}; B differs from A in {(differ.Count == 0 ? "nothing" : string.Join(", ", differ))}, " +
+                 $"asked: {asked.Or("-")}, {fights} fights each: {(ok ? "AS ASKED" : "NOT AS ASKED; the rest of the request is dropped")}");
+        if (!ok) _devCommands.Clear();
+    }
+
+    // compare=twin: what Simulate never runs (SameSetups keeps it off), the same setup as A and as B. B is A under another
+    // key, as Find upgrades' "again" check is the setup as it is under another (UpgradeSearch.DevAgainKey), so that both
+    // have results of their own; the jobs and their dice are Compare's (CompareJobs). With the same dice, every fight must
+    // come out with the very same numbers, and every verdict "the same". No _run: the results go neither into the list nor
+    // into History (as twice=). SimEngine logs, once both fights of an enemy are over, their dice (DevPair) and whether every
+    // number is the same (DevTwin), and once the game's thread has taken in both, the verdicts between them (DevVerdicts).
+    void DevCompareTwin()
+    {
+        if (_game == null || _engine.Running) { _ctx.Log("Dev: compare: twin: no character, or a run is going on."); return; }
+        SimSetup a = _state.OnLeft;
+        SimOptions withA = RunOptions(a), withB = RunOptions(a);
+        withB.SetupKey += SimEngine.DevTwinKey;
+        withB.SetupLabel += ", twin";
+        List<SimJob> jobs = CompareJobs(a, a, withA, withB);
+        if (jobs.Count == 0) { _ctx.Log("Dev: compare: twin: no fight where the simulator is set to fight."); return; }
+        if (!_engine.Start(_game, jobs, _state.Workers, out string error)) { _ctx.Log("Dev: compare: twin: " + error); return; }
+        _ctx.Log($"Dev: compare: twin: {jobs.Count} fights, {withA.Hours:0.##} h each, {(withA.Sure > 0 ? $"or on until {SimRanges.Size(withA.Sure * 100)} sure" : "Go on until Time is up")}, " +
+                 $"{(_state.BestMode ? "Best for" : "Fights")}, A {_state.NameOf(a)} (key {withA.SetupKey}) " +
+                 $"and B the same setup under the key {withB.SetupKey}, {Math.Min(_state.Workers, jobs.Count)} at a time from one snapshot, outside the window.");
     }
 #endif
 }

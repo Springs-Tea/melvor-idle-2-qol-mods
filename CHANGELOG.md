@@ -4,6 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: Compare fights A and B with the same dice and takes the luck they met alike off the bar
+  for green and red, so a smaller difference can be coloured when two setups fight alike; Details writes the
+  lead with how far luck could move it ("A by 48% ± 47%").
 - **Combat Simulator**: at its largest size the window no longer comes down over the game's bottom bar after
   you swap an item (Undo changes); that size is now 110% instead of 115%. A weapon's Spell box no longer makes
   the window wider, and a spell with a long name shows whole in it.
