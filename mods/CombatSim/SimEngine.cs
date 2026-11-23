@@ -422,10 +422,10 @@ sealed class SimEngine
     void DevTwin(SimResult result)
     {
         // Every number a result keeps, each exactly: the time in ticks, what the columns, Details and the enemy's card show
-        // (the first death, when the food ran out, the hitpoints, the enemy's biggest hit, the auto-eat point, the stance
-        // read back, the card's setup code), the ranges (SimSpread, without the share of luck left, which only the fight of
-        // a pair that ended last keeps: B or A of a compare, an item of Find upgrades) and the note. Not the real time it
-        // took, nor the setup's name.
+        // (the first death, when the food ran out, the hitpoints, the enemy's biggest hit and the game's own, issue #67, the
+        // auto-eat point, the stance read back, the card's setup code), the ranges (SimSpread, without the share of luck left,
+        // which only the fight of a pair that ended last keeps: B or A of a compare, an item of Find upgrades) and the note.
+        // Not the real time it took, nor the setup's name.
         static string Exact(double? v) => v is { } x ? x.ToString("R") : "-";
         string xp = string.Join(" ", result.Xp.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key.Replace("MelvorBase:", "")}={x.Value:R}"));
         string ranges = result.Spread is not { } s ? "none"
@@ -433,7 +433,8 @@ sealed class SimEngine
               $"; sparse {string.Join(" ", s.Sparse ?? new())}; items {string.Join(" ", (s.Items ?? new()).Select(Exact))}; hits {s.Hits}";
         string line = $"{Math.Round(result.Hours * 3600 * TicksPerSecond):0} ticks ({SimText.Clock(result.Hours * 3600)}), kills {result.Kills}, deaths {result.Deaths}, " +
                       $"first death {Exact(result.FirstDeathSeconds)}, runs {result.DungeonRuns}, food {result.FoodEaten}, food gone {Exact(result.FoodGoneSeconds)} at {result.FoodGoneKills} kills, " +
-                      $"damage {result.DamageTaken}, healed {result.Healed}, lowest {result.LowestHp} of {result.MaxHp}, enemy's biggest hit {result.MaxEnemyHit?.ToString() ?? "-"}, " +
+                      $"damage {result.DamageTaken}, healed {result.Healed}, lowest {result.LowestHp} of {result.MaxHp}, enemy's biggest hit {result.MaxEnemyHit?.ToString() ?? "-"} " +
+                      $"(the game's {result.GameMaxHit?.ToString() ?? "-"}), " +
                       $"auto eat {Exact(result.AutoEatHp)}, stance {result.StanceId ?? "-"} '{result.Stance ?? "-"}'{(result.StanceChosen ? " chosen" : "")}" +
                       $"{(result.StanceMissing != null ? " missing " + result.StanceMissing : "")}, setup {result.Setup ?? "-"}, xp {xp}, gold {result.GoldPerHour * result.Hours:R}, " +
                       $"loot {string.Join(" ", result.Loot.Select(l => $"{l.Id.Replace("MelvorBase:", "")}={l.Quantity:R}"))}, used {string.Join(" ", result.Used.Select(u => $"{u.Id.Replace("MelvorBase:", "")}={u.Quantity:R}"))}, " +
@@ -747,6 +748,8 @@ sealed class SimEngine
 #if DEVTOOLS
         string devGear = DevGear(sim, combat, options, result, null);
         var devStance = DevStance(combat);
+        // For the moments at which the game's number of the enemy's biggest hit changed (issue #67).
+        if (card != null) card.DevClock = () => ticks;
 #endif
 
         long total = (long)(options.Hours * 3600 * TicksPerSecond);

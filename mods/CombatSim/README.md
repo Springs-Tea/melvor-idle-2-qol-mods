@@ -136,14 +136,18 @@ The **Details** of a line, from top to bottom:
   against one death an hour, or no food against two pieces, could be luck; no damage taken against steady
   damage all through the other fight is not. A skill a setup gains no XP in while it gains XP in others, like
   Magic with a sword, is a real 0: that setup does not train the skill, no longer fight would turn it round,
-  and any XP in it is better. A number for which neither is better (Healed, Items, Sim time) has no colour.
-  The columns in which the two setups are less than half a percent apart share one line at the end,
-  **The same: ...**, and a number one of them does not have (`-`) is left out. A scan made before the ranges
-  were counted is compared as before: half a percent apart or more is better or worse. A and B of one
-  compare are judged as in Compare, with the luck they met alike taken off the bar, and the small line says
-  how far luck could move the change, both written alike: **± 18%** under **+22%**, **could be luck, ± 4.7%**
-  under **+4.6%**, and with one more figure where the two would read the same, **± 64.1%** under **+64.4%**
-  ([The same dice](#the-same-dice)).
+  and any XP in it is better; its line says **not trained by one of the two**. Low HP, First death, Safe, Max
+  hit and Best drop have no range: where two setups differ in one of them it is grey, unless only one of the
+  two died, which goes as Deaths does (Low HP, First death, Safe), or the game's own numbers decide it (Safe,
+  Max hit). The line under it says which: **could be luck, no range**, **by the deaths** or **by the game's
+  own numbers** (see [How far to trust the numbers](#how-far-to-trust-the-numbers)). A number for which
+  neither is better (Healed, Items, Fought, Sim time) has no colour. The columns in which the two setups are
+  less than half a percent apart share one line at the end, **The same: ...**, and a number one of them does
+  not have (`-`) is left out. A scan made before the ranges were counted compares its rates as before: half a
+  percent apart or more is better or worse. A and B of one compare are judged as in Compare, with the luck
+  they met alike taken off the bar, and the small line says how far luck could move the change, both written
+  alike: **± 18%** under **+22%**, **could be luck, ± 4.7%** under **+4.6%**, and with one more figure where
+  the two would read the same, **± 64.1%** under **+64.4%** ([The same dice](#the-same-dice)).
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
@@ -344,20 +348,23 @@ the same dice (see [The same dice](#the-same-dice) below). The line above Simula
 is for the two together and about how long it takes. While A and B are still the same setup, it says **A and
 B are the same setup**: the list says what to do, and Simulate waits until you change one of them.
 
-![Compare in Fights: Warrior (A) against Hunter (B), the better side and both numbers under each column, the count above the list, Details side by side](../../docs/img/combat-simulator-compare-fights.png)
+![Compare in Fights: Warrior in Crush (A) against Warrior in Block (B), the better side and both numbers under each column, the count above the list, and Details with Lowest hitpoints "B, could be luck, no range"](../../docs/img/combat-simulator-compare-fights.png)
 
 The list has one line per fight, and every column you chose is three cells. The first, under the column's
 name, says which setup is better and by how much: **A by 23%** means A's number is 23% better than B's, so 23%
 more XP, or for food, food per kill and deaths, 23% less. From twice as much up it says how many times:
 **A ×4**. Then come the numbers with **A** and with **B**, the better one green and the worse red; where the
 difference could be luck, both are grey and so are the words before them. **the same** is less than half a
-percent apart. Low HP, Safe, First death, Net gold and Best drop say only which is better, and so does a
-number against 0. Neither is better for Healed, Items and Sim time: there the first cell says which setup has
-more, **A +12%**. A `-` means that setup has no result or no number for the fight. The three cells of a column
-move sideways together, and are in sight together. Put the pointer on a line for the stance each setup fought
-in, the 95% ranges of both and, where the same dice decide, each lead with its ±. Details names each setup's
-stance under its name, with *as the game has it* when both fought in the same stance but only one of them
-chose it.
+percent apart. Low HP, Safe, First death, Net gold and Best drop say only which one is ahead, and so does a
+number against 0. Low HP, First death, Safe, Max hit and Best drop have no range: where two setups differ in
+one of them it is grey, unless only one of the two died, which goes as Deaths does (Low HP, First death,
+Safe), or the game's own numbers decide it (Safe, Max hit). In Details the line under it says which, **A,
+could be luck, no range** or **A, by the deaths**. Neither is better for Healed, Items, Fought and Sim time:
+there the first cell says which setup has more, **A +12%**. A `-` means that setup has no result or no
+number for the fight. The three cells of a column move sideways together, and are in sight together. Put the
+pointer on a line for the stance each setup fought in, the 95% ranges of both and, where the same dice
+decide, each lead with its ±. Details names each setup's stance under its name, with *as the game has it*
+when both fought in the same stance but only one of them chose it.
 
 Click a column's name to put the fights where the choice matters most on top: those where one setup is
 clearly better, the furthest apart first, then those that could be luck, then those that are the same. Click
@@ -444,7 +451,7 @@ the line over the list says how many are done, the line under Simulate names the
 folded title counts the fights. **Stop**, where the button was, or Cancel on the left, stops it; the items
 tried so far stay.
 
-![Find upgrades for Black Slime: three leather boots against the Mithril Boots worn, what each changes in every column, and the Details of Leather Boots with "could be luck, ± 1.2%" under Experience](../../docs/img/combat-simulator-upgrades.png)
+![Find upgrades for Black Slime: three leather boots against the Mithril Boots worn; Lowest hitpoints "+17%" grey, "could be luck, no range", and the enemy's biggest hit "+9.1%" red "by the game's own numbers"](../../docs/img/combat-simulator-upgrades.png)
 
 - **The same moment, the same luck.** The setup as it is and every item are fought from the same moment of
   your character. Every item is fought with the same luck as the setup as it is, so a difference comes from
@@ -465,10 +472,14 @@ tried so far stay.
   Compare ([The same dice](#the-same-dice)), with the luck the item and the setup as it is met alike taken off
   the bar. Luck is shared kill by kill, so an item that changes how fast you kill shares less of it: a weapon
   of another speed, but also boots or a helmet that add damage. **no better** is less than half a percent
-  apart. For Healed, Items and Sim time neither is better: no colour, and "the same". Only words stay the
-  item's own, coloured: Safe or Risky, the name of the best drop, and a first death where one of the two never
-  dies ("none", or the time). Put the pointer on a column's name for its words, and on a line for the 95%
-  ranges of its numbers and, where the same dice decided, each change with its ± (see Details).
+  apart. For Healed, Items, Fought and Sim time neither is better: no colour, and "the same". Only words stay
+  the item's own: Safe or Risky, the name of the best drop, and a first death where one of the two never dies
+  ("none", or the time). Low HP, First death, Safe, Max hit and Best drop have no range: where two setups
+  differ in one of them it is grey, unless only one of the two died, which goes as Deaths does (Low HP, First
+  death, Safe), or the game's own numbers decide it (Safe, Max hit). In Details the line under it says which:
+  **could be luck, no range**, **by the deaths** or **by the game's own numbers**. Put the pointer on a
+  column's name for its words, and on a line for the 95% ranges of its numbers and, where the same dice
+  decided, each change with its ± (see Details).
 - **The order.** Click a column's name to sort by what the item adds there: the first click puts the clear
   gains on top, the largest first, then the gains that could be luck, then no better, then the losses that
   could be luck, then what makes it worse. **Item** sorts by name and **Comes from** puts what you have first.
@@ -634,9 +645,11 @@ Fight does what it does unticked. It can always be ticked and unticked.
   fights each setup wins.
 - **Is it really better, or was that luck?** "Compared with" is green or red only when the two ranges do not
   overlap, and grey with "could be luck" when they do; between A and B of one compare, and between an item of
-  Find upgrades and the setup as it is, only when the change is larger than its ±. Go on until ± 2% sure
-  narrows the ranges where it is close. Compare and Find upgrades fight with the same dice, which takes the
-  luck the two meet alike off the bar.
+  Find upgrades and the setup as it is, only when the change is larger than its ±. Low HP, First death, Safe,
+  Max hit and Best drop have no range: where two setups differ in one of them it is grey, unless only one of
+  the two died, which goes as Deaths does (Low HP, First death, Safe), or the game's own numbers decide it
+  (Safe, Max hit). Go on until ± 2% sure narrows the ranges where it is close. Compare and Find upgrades fight
+  with the same dice, which takes the luck the two meet alike off the bar.
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
   at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
   was. Columns > Idle puts Safe, the deaths, the first death and the enemy's biggest hit side by side for
@@ -684,6 +697,14 @@ holds the true number 95 times in 100.
 - **up to 3.69**: there were none. **0 deaths in an hour is not "never"**: up to 3.69 deaths an hour would
   fit what was seen. Simulate 12 hours without a death and it is up to 0.31.
 - A number that was 0 all fight and is not counted one at a time, like no damage taken, has no range.
+- Low HP, First death, Safe, Max hit and Best drop have no range: each is one moment of one fight, or hangs
+  on one. Where two setups differ in one of them it is grey, **could be luck, no range**, unless only one of
+  the two died, which goes as Deaths does (Low HP, First death, Safe), or the game's own numbers decide it
+  (Safe, Max hit): the enemy's biggest hit as the game gives it, against your auto-eat point. A bigger loss of
+  hitpoints seen in the fight, a biggest hit of the game's that rose after a prayer or a toolbelt item ran
+  out, and a scan made before this version leave it to luck. A number per kill against a fight that killed
+  nothing goes as Kills does, and one per run as Runs does. Fought has no colour: it says how long a fight
+  ran, not how good a setup is.
 - Put the pointer on a line of the list for the ranges of its numbers. In Details the range of each rate is
   on the small line under it.
 - A scan made before the ranges were counted has none. Simulate again for them.

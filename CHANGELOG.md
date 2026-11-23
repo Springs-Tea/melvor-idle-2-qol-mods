@@ -4,6 +4,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: Lowest hitpoints, First death, Safe, Max hit and Best drop have no range, so against
+  another setup or an item they are now grey where they differ ("could be luck, no range"), unless only one of
+  the two died or the game's own numbers decide it, and the line says which. A shortened best drop is whole in
+  its line's tooltip, and Fought is no longer coloured.
 - **Combat Simulator**: Find upgrades judges each item against your setup as Compare judges B against A, with the
   luck the two met alike taken off, so a small real gain from an item that fights like your setup can turn
   green; where the same dice decide a change, Details gives it with its ± ("+14%" over "± 9.1%"). Details' small

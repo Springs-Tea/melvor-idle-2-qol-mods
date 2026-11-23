@@ -15,7 +15,8 @@ namespace CombatSim;
 /// <item>Middle: every column of the list as three cells, in the list's own header buttons and rows: first which of the
 /// two setups is better and by how much ("A by 23%"), under the column's own name, then its number with A and with B.
 /// The better side is green and the worse red by the simulator's one rule (<see cref="Judge"/>: the ranges of issue #5,
-/// a real 0 included; for A and B, which meet the same dice, the bar lowered by the luck they met alike, issue #57), grey
+/// a real 0 included; for A and B, which meet the same dice, the bar lowered by the luck they met alike, issue #57; a
+/// number without a range only where the deaths, kills or runs, or the game's own numbers, decide it, issue #67), grey
 /// where it could be luck. The three cells of a column move sideways and come into sight
 /// together. The lines have the room of Fights and name no stance (SimViewColumns.EnemyPart). Above the list, how many
 /// fights each setup wins in the column the list is sorted by, and in Best for where each setup does best.</item>
@@ -256,19 +257,18 @@ sealed partial class SimView
     static (SimResult A, SimResult B, double VA, double VB)? Values(SimColumn c, (SimResult? A, SimResult? B) pair) =>
         Usable(pair.A) is { } a && Usable(pair.B) is { } b && c.Value(a) is { } va && c.Value(b) is { } vb ? (a, b, va, vb) : null;
 
-    // A against B by the simulator's one rule (Judge, SimRanges.Judge: the ranges, and a real 0). A number that is the
-    // worst there is (no food per kill when nothing was killed) is worse than any other, and the same as another such.
-    Verdict PairVerdict(SimColumn c, SimResult a, SimResult b, double va, double vb)
-    {
-        bool fa = double.IsFinite(va), fb = double.IsFinite(vb);
-        if (fa && fb) return Judge(c, a, b);
-        if (fa == fb) return Verdict.Same;
-        if (c.Better == Better.Neither) return Verdict.Differs;
-        return fa ? Verdict.Better : Verdict.Worse;
-    }
+    // A against B by the simulator's one rule (SimRanges.Judged, as Judge has it), with what decided it: the ranges, the same
+    // dice, a real 0; a number that is the worst there is (no food per kill when nothing was killed) by the kills or the runs
+    // of the two, the same as another such; a number without a range by what decides it, or could be luck (issue #67).
+    static (Verdict Verdict, Ground By) PairJudged(SimColumn c, SimResult a, SimResult b, double va, double vb) =>
+        SimRanges.Judged(a, b, c.Rate?.Invoke(), va, vb, c.Better, c.Unranged);
 
-    Verdict? PairVerdict(SimColumn c, (SimResult? A, SimResult? B) pair) =>
-        Values(c, pair) is { } v ? PairVerdict(c, v.A, v.B, v.VA, v.VB) : null;
+    static Verdict PairVerdict(SimColumn c, SimResult a, SimResult b, double va, double vb) => PairJudged(c, a, b, va, vb).Verdict;
+
+    (Verdict Verdict, Ground By)? PairJudged(SimColumn c, (SimResult? A, SimResult? B) pair) =>
+        Values(c, pair) is { } v ? PairJudged(c, v.A, v.B, v.VA, v.VB) : null;
+
+    Verdict? PairVerdict(SimColumn c, (SimResult? A, SimResult? B) pair) => PairJudged(c, pair)?.Verdict;
 
     // One side's colour, as "Compared with" colours a number (Tint): green where it is the better one, red where the worse,
     // grey where that could be luck; null where neither is (the same, or a number of which neither more nor less is
@@ -684,6 +684,9 @@ sealed partial class SimView
 
         // The numbers judged, by the names their lines show, for the foot.
         var judged = new List<(SimColumn Column, string Name)>();
+#if DEVTOOLS
+        _devRowNotes.Clear();
+#endif
         void Row(SimColumn c, string? name = null, Texture2D? icon = null)
         {
             _details.AddChild(PairRow(c, ra, rb, name, icon));
@@ -725,21 +728,30 @@ sealed partial class SimView
         string time = ra != null && rb != null && Math.Abs(ra.Hours - rb.Hours) < 1e-9 ? $"{Clock(ra.Hours * 3600)} of fighting simulated with each setup"
             : string.Join(", ", new[] { ("A", ra), ("B", rb) }.Where(s => s.Item2 != null).Select(s => $"{Clock(s.Item2!.Hours * 3600)} with {s.Item1}")) + " of fighting simulated";
         bool ranged = ra?.Spread != null && rb?.Spread != null;
-        // Both ways a number is judged (SimRanges.Judge), the second only where A and B met the same dice (issue #57); and
-        // the lines above that were judged without a range, by name (issue #63: Lowest hitpoints is coloured wherever the
-        // two differ, which the rule's sentence alone did not say). "Green beside red": a verdict colours the two sides as a
-        // pair (SideTint), one green and the other red, which a line's own colours never do: Deaths "none" green on both
-        // sides, a red Lowest hitpoints on both, a red supply used beside a dim one (DeathsAsDetails, UsedColumn), so the
-        // rule is true of every colour above it (review of turn 2). No "grey could be luck": a grey line says so itself
-        // (PairRow), as in Find upgrades' foot, and the small lines under the numbers are grey too.
-        string rule = "Green beside red only where the two 95% ranges do not overlap" +
-                      (ra != null && rb != null && SimRanges.SameDice(ra, rb) ? ", or with the same dice where the lead is larger than its ±." : ".") +
-                      (ra != null && rb != null
-                          ? NoRange(judged.Where(j => PairVerdict(j.Column, (ra, rb)) is Verdict.Better or Verdict.Worse && !JudgedByLuck(j.Column, ra, rb)).Select(j => j.Name),
-                              "green beside red")
-                          : "");
-        Label foot = Wrapped($"{time}. " + (ranged ? rule : "Made before the ranges were counted: simulate again for them.") +
-            (viewing ? "" : " Untick Compare for the loot of the setup on the left, item by item."), 250, GameStyle.TextDim, 11);
+        // Both ways a number is judged (SimRanges.Judged), the second only where A and B met the same dice (issue #57); and
+        // where a line above is green beside red by anything else (issue #67: the deaths, the kills, the runs, the game's own
+        // numbers, a real 0), that the line says what decided it, which it does under its numbers (PairRow, Decided), as Find
+        // upgrades' foot says it (ColourFoot). So the foot is true of every colour above it. "Green beside red": a verdict
+        // colours the two sides as a pair (SideTint), one green and the other red, which a line's own colours never do: Deaths
+        // "none" green on both sides, a red Lowest hitpoints on both, a red supply used beside a dim one (DeathsAsDetails,
+        // UsedColumn). No "grey could be luck": a grey line says so itself, and why where it has no range. A scan made before
+        // the ranges is judged without them, its rates apart better or worse as before them. With one setup's result alone
+        // nothing is judged: no rule, and no word of ranges where that result has them.
+        bool lineSays = ra != null && rb != null && judged.Any(j => PairJudged(j.Column, (ra, rb)) is { Verdict: Verdict.Better or Verdict.Worse } v
+                                                                    && Reason(v.By) != null);
+        string rule = ra != null && rb != null
+            ? ranged ? ColourFoot("Green beside red", "the lead", SimRanges.SameDice(ra, rb), lineSays)
+                : "Made before the ranges were counted, so judged without them: simulate again for them."
+            : (ra ?? rb)?.Spread == null ? "Made before the ranges were counted: simulate again for them." : "";
+        Label foot = Wrapped($"{time}." + (rule != "" ? " " + rule : "") + (viewing ? "" : " Untick Compare for the loot of the setup on the left, item by item."),
+            250, GameStyle.TextDim, 11);
+#if DEVTOOLS
+        _devFoot = foot;
+        _devFootLines = ra != null && rb != null
+            ? judged.Select(j => (j.Name, PairJudged(j.Column, (ra, rb)) ?? (Verdict.Differs, Ground.None)))
+                .Select(j => (j.Name, j.Item2.Verdict, j.Item2.By, _devRowNotes.GetValueOrDefault(j.Name))).ToList()
+            : new();
+#endif
         foot.HorizontalAlignment = HorizontalAlignment.Center;
         _details.AddChild(new Control { CustomMinimumSize = new Vector2(0, _s.Px(4)), MouseFilter = Control.MouseFilterEnum.Ignore });
         _details.AddChild(foot);
@@ -764,7 +776,9 @@ sealed partial class SimView
     // One number of the fight with both setups, in the look of a Details line (Stat), coloured as the list's cells; under
     // it, as one setup's Details has its range under its number, which is better and by how much (in the words of the
     // list's first cell) and each setup's 95% range. Where the same dice decide (issue #57), the lead with its own ± in
-    // their place: "A by 48% ± 47%" (SameDiceLead).
+    // their place: "A by 48% ± 47%" (SameDiceLead). A number without a range that could be luck says why, "A, could be
+    // luck, no range", and a line green beside red by anything but the ranges or the same dice says what decided it, "A, by
+    // the deaths" (issue #67, Decided).
     Control PairRow(SimColumn c, SimResult? a, SimResult? b, string? name = null, Texture2D? icon = null, bool judged = true)
     {
         var pair = (A: a, B: b);
@@ -775,11 +789,15 @@ sealed partial class SimView
         if (judged && SameDiceLead(c, pair) is { } same) notes.Add(same);
         else
         {
-            if (judged && verdict is not (null or Verdict.Same)) notes.Add(verdict == Verdict.Luck ? lead + ", could be luck" : lead);
+            if (judged && verdict is { } v and not Verdict.Same)
+                notes.Add(Decided(v, PairJudged(c, pair)?.By ?? Ground.None) is { } why ? $"{lead}, {why}" : lead);
             string? Range(SimResult? r) => r != null && RangeOf(c, r) is { } range ? SimRanges.Text(range, c.Format ?? Fmt) : null;
             string? rangeA = Range(a), rangeB = Range(b);
             if (rangeA != null || rangeB != null) notes.Add($"A {rangeA ?? "-"}, B {rangeB ?? "-"}");
         }
+#if DEVTOOLS
+        if (judged) _devRowNotes[name ?? c.Name] = string.Join(Dot, notes);
+#endif
 
         var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         panel.AddThemeStyleboxOverride("panel", _s.StatLine());
@@ -830,10 +848,13 @@ sealed partial class SimView
 
     // Development, in the picker field of sim.request:
     //   pairs   logs, a moment later, what compare mode shows: the line above the list and its tooltip, the line above
-    //           Simulate, the sort, every line of the list with each column's first cell (and what it went by) and two
-    //           numbers with their colours, the widest words of the first cells against their room, the words above
-    //           Fight, the Details as shown, and the Setup column: the heading's height against its words' with the
-    //           Compare box, and the widths the A and B buttons and the loadout's drop-down ask for beside each other.
+    //           Simulate, the sort, every line of the list with each column's first cell (and what it went by: for a
+    //           number without a range or the worst there is, what decided it, issue #67) and two numbers with their
+    //           colours, the widest words of the first cells against their room, the words above Fight, the Details as
+    //           shown with the sentence of its foot that covers each green or red line and what each line says of its
+    //           verdict, the tooltips of the column names with what each says of ranges, and the Setup column: the
+    //           heading's height against its words' with the Compare box, and the widths the A and B buttons and the
+    //           loadout's drop-down ask for beside each other.
     bool DevPairs(string request)
     {
         if (request != "pairs") return false;
@@ -865,7 +886,11 @@ sealed partial class SimView
                 var cellA = ColumnOf(c.Key + WithA)!;
                 var cellB = ColumnOf(c.Key + WithB)!;
                 var (lead, leadTint, verdict) = Lead(c, pair);
-                string why = Values(c, pair) is { } v ? $"{v.VA:0.####} vs {v.VB:0.####}, apart {Apart(c, pair):0.####}, sorts as {Matters(c, pair):0.####}" : "no two numbers";
+                // A number without a range, or the worst there is: what decided it (issue #67, DevNoRange).
+                string why = Values(c, pair) is { } v
+                    ? $"{v.VA:0.####} vs {v.VB:0.####}, apart {Apart(c, pair):0.####}, sorts as {Matters(c, pair):0.####}" +
+                      (DevNoRange(c, v.A, v.B, v.VA, v.VB) is { } unranged ? "; " + unranged : "")
+                    : "no two numbers";
                 cells.Add($"{c.Key}: '{lead}' ({DevTint(leadTint)}, {verdict?.ToString() ?? "-"}; {why}), A {cellA.Text(line)} ({DevTint(cellA.Tint(line))}), B {cellB.Text(line)} ({DevTint(cellB.Tint(line))})");
             }
             DevChunks(head + " line", cells);
@@ -897,6 +922,8 @@ sealed partial class SimView
             if (words.Count > 0) said.Add(string.Join(" ~ ", words));
         }
         DevChunks(head + " details", said);
+        DevLogFoot(head);
+        DevLogNoRangeTips(head);
         // A number of Details wider than its cell would make the column wider.
         var wideNumbers = _details.FindChildren("*", "Label", true, false).OfType<Label>()
             .Where(l => l.CustomMinimumSize.X > 0 && l.GetMinimumSize().X > l.CustomMinimumSize.X + 0.5f).Select(l => $"'{l.Text}' {l.GetMinimumSize().X:0} in {l.CustomMinimumSize.X:0}").ToList();

@@ -1390,28 +1390,47 @@ sealed partial class SimView
         level.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(level);
 
-        line.AddChild(RowCells(result));
+        line.AddChild(RowCells(result, row));
         return row;
     }
 
     // A name on a line of the list is cut short with "..." where the line has no room for all of it, the house way inside
     // the list (as the column names over it, SimViewColumns.FillHeader), and the line's tooltip then starts with the whole
     // name, unless it does already (issue #59: a name of the game's data can be wider than a line at the smallest sizes).
-    // Measured again whenever the name's width changes; the line is in the list's scroll, so nothing else moves for it.
-    static void ShortWithTip(Label name, Control line)
+    // The same for words in a cell of the line that can be longer than the cell (a drop's name, issue #67's check): after
+    // the name, each such cell cut short, whole after its column's name ("Most valuable drop: Amulet of Ranged"), in the
+    // order they stand. Measured again whenever a label's width changes; the line is in the list's scroll, so nothing else
+    // moves for it.
+    static void ShortWithTip(Label label, Control line, string? column = null)
     {
-        name.ClipText = true;
-        name.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
-        string whole = name.Text, tip = line.TooltipText;
+        label.ClipText = true;
+        label.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        // The line's own tooltip and every label of it that can be cut short, kept with the line.
+        ShortOn on = s_shortOn.GetValue(line, l => new ShortOn(l.TooltipText));
+        on.Labels.Add((label, label.Text, column == null ? label.Text : $"{column}: {label.Text}"));
         void Fit()
         {
-            if (!GodotObject.IsInstanceValid(name) || !GodotObject.IsInstanceValid(line) || name.Size.X <= 0) return;
-            string wanted = !Shortened(name, whole) || tip.StartsWith(whole, StringComparison.Ordinal) ? tip : tip == "" ? whole : $"{whole}\n{tip}";
+            if (!GodotObject.IsInstanceValid(line)) return;
+            var first = on.Labels.Where(x => GodotObject.IsInstanceValid(x.Label) && x.Label.Size.X > 0 && Shortened(x.Label, x.Whole)
+                                             && !on.Tip.StartsWith(x.Said, StringComparison.Ordinal))
+                .Select(x => x.Said).Distinct().ToList();
+            string wanted = string.Join("\n", first.Append(on.Tip).Where(s => s != ""));
             if (line.TooltipText != wanted) line.TooltipText = wanted;
         }
-        name.Resized += Fit;
-        name.ThemeChanged += Fit;
+        label.Resized += Fit;
+        label.ThemeChanged += Fit;
     }
+
+    // A line's tooltip as it was made, and its labels that can be cut short: each with its whole words and what the tooltip
+    // says of them.
+    sealed class ShortOn
+    {
+        public readonly string Tip;
+        public readonly List<(Label Label, string Whole, string Said)> Labels = new();
+        public ShortOn(string tip) => Tip = tip;
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, ShortOn> s_shortOn = new();
 
     // Whether a label that trims (TrimEllipsis) shows these words shortened. Godot shortens them as soon as they are wider
     // than the room inside the label at all; the room is taken here in whole pixels, the lesser, so that words within a

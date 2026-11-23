@@ -203,7 +203,9 @@ sealed partial class SimView
     //   hover=<part of an enemy's name>   moves the pointer onto that line (or "first"; "sure" for the Go on until box),
     //                                     so its tooltip comes up in the picture; 1.2 s later the tooltip that is up is
     //                                     logged
-    //   ranges                            logs the tooltip of the first lines and every line of the details as shown
+    //   ranges                            logs the tooltip of the first lines and every line of the details as shown, the
+    //                                     verdicts of "Compared with" with what each line says of its verdict, and the
+    //                                     tooltips of the column names with what each says of ranges
     bool DevRanges(string request)
     {
         if (request.StartsWith("hover=", StringComparison.Ordinal))
@@ -249,6 +251,7 @@ sealed partial class SimView
         DevLog?.Invoke($"Dev: ranges: Each fight lasts {DevRoom(_duration)}");
         DevLog?.Invoke($"Dev: ranges: Go on until {DevRoom(_sure)}");
         DevCompared();
+        DevLogNoRangeTips("Dev: ranges:");
         return true;
     }
 
@@ -301,9 +304,12 @@ sealed partial class SimView
             {
                 if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
                 string why = DevRuleOf(column, r, other, mine, theirs, column.Percent);
-                string drawn = lines.TryGetValue(NameOf(column), out var line)
-                    ? line.Text == null ? "in The same" : $"shows '{line.Text}'" + (line.Note != null ? $" over '{line.Note}'" : "") : "not shown";
-                said.Add($"{NameOf(column)} {column.Text(r)} vs {column.Text(other)} {Judge(column, r, other)}, {drawn} ({why})");
+                bool listed = lines.TryGetValue(NameOf(column), out var line);
+                string drawn = listed ? line.Text == null ? "in The same" : $"shows '{line.Text}'" + (line.Note != null ? $" over '{line.Note}'" : "") : "not shown";
+                // What its small line must say of its verdict (issue #67): what decided it, or why it could be luck.
+                var (verdict, by) = Judged(column, r, other);
+                string says = listed && line.Text != null ? DevSaid(verdict, by, line.Note) : "";
+                said.Add($"{NameOf(column)} {column.Text(r)} vs {column.Text(other)} {verdict}, {drawn} ({why}){(says != "" ? "; " + says : "")}");
             }
             DevLog?.Invoke($"Dev: ranges: compared with {other.SetupLabel}: {string.Join("; ", said)}");
         }
@@ -314,26 +320,136 @@ sealed partial class SimView
     // and BOTH READ where SimRanges.Percent alone would write the change, a share of theirs when it is in percent, and its ±
     // alike, which SimRanges.Percents tells apart; otherwise the step of the rule that left them to their own ranges
     // (SimRanges.DevWhy) and the two ranges, the counts behind a quantity one of them had none of, or a real 0
-    // (SimRanges.Basis).
+    // (SimRanges.Basis). For a number without a range of its own, a number without a rate, the worst there is or a real 0,
+    // then what decided it (issue #67, DevNoRange).
     string DevRuleOf(SimColumn column, SimResult r, SimResult other, double mine, double theirs, bool percent)
     {
-        string why = "no rate";
-        if (column.Rate?.Invoke() is { } rate && SimRanges.Apart(r, other, rate) is { } luck)
+        string why = column.Rate?.Invoke() is { } rate && double.IsFinite(mine) && double.IsFinite(theirs)
+            ? DevRateRule(rate, r, other, mine, theirs, percent) : "no rate";
+        return DevNoRange(column, r, other, mine, theirs) is { } unranged ? (why == "no rate" ? unranged : $"{why}; {unranged}") : why;
+    }
+
+    // Development: what a rate's verdict between two results went by (DevRuleOf).
+    static string DevRateRule(SimRate rate, SimResult r, SimResult other, double mine, double theirs, bool percent)
+    {
+        if (SimRanges.Apart(r, other, rate) is { } luck)
         {
-            why = $"RULE SAME DICE: |d| {Fmt(Math.Abs(luck.Difference))} against a bar of {Fmt(luck.Reach)}, {SimRanges.DevBar(luck, Fmt)}";
+            string why = $"RULE SAME DICE: |d| {Fmt(Math.Abs(luck.Difference))} against a bar of {Fmt(luck.Reach)}, {SimRanges.DevBar(luck, Fmt)}";
             // A change and a ± that SimRanges.Percent alone would write alike, which SimRanges.Percents tells apart.
             string alike = percent && theirs > 0 ? SimRanges.Percent(Math.Abs(mine / theirs - 1)) : "";
             if (alike != "" && alike == SimRanges.Percent(luck.Reach / theirs)) why += $"; BOTH READ '{alike}' BY PERCENT ALONE";
+            return why;
         }
-        else if (column.Rate?.Invoke() is { } asBefore)
+        var (a, b, realZero) = SimRanges.Basis(r, other, rate);
+        bool behind = a != null && b != null && (a != SimRanges.Of(r, rate) || b != SimRanges.Of(other, rate));
+        string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
+        return $"RULE AS BEFORE ({SimRanges.DevWhy(r, other, rate).Or("-")}): " +
+               (realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}");
+    }
+
+    // Development (issue #67): for a number judged without a range of its own (a number without a rate, the worst there is
+    // on one side, a real 0, a rate a fight was too short to have a range for) both numbers and what decided it, in the
+    // words of the rule's step (SimRanges.Judged): NO RANGE: ONE MOMENT, BY THE DEATHS, BY THE KILLS or BY THE RUNS with that
+    // line's verdict and what it went by, THE GAME'S NUMBERS with the biggest hits and auto-eat points read from the two
+    // results, REAL 0, or A FIGHT TOO SHORT FOR ONE; then the verdict of the rule before this issue and the one the window
+    // shows, BEFORE <verdict>, AFTER <verdict>. SURE WITHOUT A RANGE where such a number is green or red by none of these: a
+    // fault, which must never appear. Null for a rate judged by its ranges, by the same dice or as a scan made before the
+    // ranges, whose verdict this issue left as it was.
+    static string? DevNoRange(SimColumn column, SimResult r, SimResult other, double mine, double theirs)
+    {
+        SimRate? rate = column.Rate?.Invoke();
+        var (after, by) = SimRanges.Judged(r, other, rate, mine, theirs, column.Better, column.Unranged);
+        bool finite = double.IsFinite(mine) && double.IsFinite(theirs);
+        if (rate != null && finite && by is not (Ground.RealZero or Ground.Short)) return null;
+        static string N(double v) => double.IsFinite(v) ? v.ToString("0.####") : v > 0 ? "infinity" : "-infinity";
+        static string Up(Verdict v) => v.ToString().ToUpperInvariant();
+        static string Hit(SimResult x) => $"{x.MaxEnemyHit?.ToString() ?? "-"} (the game's {x.GameMaxHit?.ToString() ?? "-"})";
+        // The line with a range that decided it: its two numbers, its verdict by the one rule and what that went by.
+        static string Line(string what, SimRate line, SimResult a, SimResult b, double va, double vb, Better better) =>
+            $"{what} {N(va)} against {N(vb)} an hour {Up(SimRanges.Judge(a, b, line, va, vb, better))} ({DevRateRule(line, a, b, va, vb, false)})";
+        string said = by switch
         {
-            var (a, b, realZero) = SimRanges.Basis(r, other, asBefore);
-            bool behind = a != null && b != null && (a != SimRanges.Of(r, asBefore) || b != SimRanges.Of(other, asBefore));
-            string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
-            why = $"RULE AS BEFORE ({SimRanges.DevWhy(r, other, asBefore).Or("-")}): " +
-                  (realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}");
+            Ground.Moment => "NO RANGE: ONE MOMENT",
+            Ground.Deaths => "NO RANGE: BY THE DEATHS, " +
+                             Line("deaths", SimRate.PerHour(SimRanges.Deaths), r, other, r.DeathsPerHour, other.DeathsPerHour, Better.Less),
+            Ground.Kills => "NO RANGE: BY THE KILLS, " +
+                            Line("kills", SimRate.PerHour(SimRanges.Kills), r, other, r.KillsPerHour, other.KillsPerHour, Better.More),
+            Ground.Runs => "NO RANGE: BY THE RUNS, " +
+                           Line("runs", SimRate.PerHour(SimRanges.Runs), r, other, r.PerHour(r.DungeonRuns), other.PerHour(other.DungeonRuns), Better.More),
+            Ground.Game => $"NO RANGE: THE GAME'S NUMBERS, the enemy's biggest hit {Hit(r)} against {Hit(other)}, " +
+                           $"auto eat at {r.AutoEatHp?.ToString("0.#") ?? "-"} against {other.AutoEatHp?.ToString("0.#") ?? "-"} HP" +
+                           $" (game-safe {SimRanges.GameSafe(r)?.ToString() ?? "-"} against {SimRanges.GameSafe(other)?.ToString() ?? "-"})",
+            Ground.RealZero => "NO RANGE: REAL 0",
+            Ground.Short => "NO RANGE: A FIGHT TOO SHORT FOR ONE",
+            _ => "no range, nothing to decide: the same, or neither way better",
+        };
+        bool sure = by is Ground.Deaths or Ground.Kills or Ground.Runs or Ground.Game or Ground.RealZero or Ground.Short;
+        return $"{N(mine)} against {N(theirs)}: {said}; BEFORE {Up(SimRanges.DevBefore(r, other, rate, mine, theirs, column.Better))}, AFTER {Up(after)}" +
+               (after is Verdict.Better or Verdict.Worse && !sure ? "; SURE WITHOUT A RANGE" : "");
+    }
+
+    // Development (issue #67): the foot of Details on show (Compare's, or an item's of Find upgrades) as it is drawn, read
+    // from its label, and for every green or red line above it the part of those words that covers it: the two ranges, the
+    // same dice, a scan judged without ranges, or "or where a line says what decided it" together with the words its line
+    // says (Decided). NOT COVERED BY THE FOOT where no part does: a fault. Every grey line above it with what its line says
+    // of why it could be luck, NOT SAID ON ITS LINE where it does not (DevSaid): a fault too.
+    Label? _devFoot;
+    List<(string Name, Verdict Verdict, Ground By, string? Note)> _devFootLines = new();
+    // The small line of each Details line judged, by the name it shows, as the code wrote it (PairRow, FillUpgradeDetails).
+    readonly Dictionary<string, string> _devRowNotes = new();
+
+    void DevLogFoot(string head)
+    {
+        if (_devFoot is not { } foot || !GodotObject.IsInstanceValid(foot) || foot.IsQueuedForDeletion() || !foot.IsInsideTree())
+        {
+            DevLog?.Invoke($"{head} foot: none on show");
+            return;
         }
-        return why;
+        string words = foot.Text;
+        DevLog?.Invoke($"{head} foot as drawn: '{words}'");
+        string? Part(string part) => words.Contains(part, StringComparison.Ordinal) ? part : null;
+        var said = new List<string>();
+        foreach (var (name, verdict, by, note) in _devFootLines.Where(l => l.Verdict is Verdict.Better or Verdict.Worse or Verdict.Luck))
+        {
+            string line = DevSaid(verdict, by, note);
+            if (verdict == Verdict.Luck)
+            {
+                said.Add($"{name} grey by {by}: {line}");
+                continue;
+            }
+            bool byLine = Reason(by) != null && !line.StartsWith("NOT SAID", StringComparison.Ordinal);
+            string? part = Part("judged without them")
+                ?? (by == Ground.Ranges ? Part("95% ranges do not overlap")
+                    : by == Ground.SameDice ? Part("with the same dice where")
+                    : byLine ? Part(LineSays) : null);
+            said.Add($"{name} {verdict.ToString().ToUpperInvariant()} by {by}: " + (part != null ? $"covered by '{part}'" : "NOT COVERED BY THE FOOT") +
+                     (line != "" ? "; " + line : ""));
+        }
+        DevChunks(head + " foot covers", said.Count > 0 ? said : new List<string> { "no green, red or grey line above it" });
+    }
+
+    // Development (issue #67): whether a line's small line says what its verdict needs it to say (Decided): what decided a
+    // green or red one that the ranges or the same dice did not, or why a grey one could be luck. "its line says '...'" where
+    // it does, NOT SAID ON ITS LINE (a fault) where it does not, "" where nothing needs saying.
+    static string DevSaid(Verdict verdict, Ground by, string? note) => Decided(verdict, by) is not { } words ? ""
+        : note != null && DevPlain(note).Contains(words, StringComparison.Ordinal) ? $"its line says '{words}'" : $"NOT SAID ON ITS LINE: '{words}'";
+
+    // Development (issue #67): the tooltip of every column's name on show, read from its button, with what it says of
+    // ranges: a column whose number is judged without a range must have its clause (SimColumn.NoRangeTip), ITS CLAUSE OF NO
+    // RANGE IS MISSING otherwise; every other ("Comes from", a rate, a number neither way better) must say nothing of it, A
+    // CLAUSE OF NO RANGE WHERE IT DOES NOT BELONG otherwise. Both are faults.
+    void DevLogNoRangeTips(string head)
+    {
+        var tips = _headers.Where(h => GodotObject.IsInstanceValid(h) && !h.IsQueuedForDeletion() && h.HasMeta("column"))
+            .Select(h => (Header: h, Column: ColumnOf(h.GetMeta("column").AsString()))).Where(x => x.Column != null)
+            .Select(x =>
+            {
+                bool wants = x.Column!.NoRangeTip != "", says = x.Header.TooltipText.Contains("No range:", StringComparison.Ordinal);
+                string verdict = wants ? says ? "its clause of no range" : "ITS CLAUSE OF NO RANGE IS MISSING"
+                    : says ? "A CLAUSE OF NO RANGE WHERE IT DOES NOT BELONG" : "nothing of ranges";
+                return $"'{x.Header.Text}': {x.Header.TooltipText.Replace("\n", " / ")} ({verdict})";
+            }).ToList();
+        DevChunks(head + " tooltips of the names", tips.Count > 0 ? tips : new List<string> { "none on show" });
     }
 #endif
 }

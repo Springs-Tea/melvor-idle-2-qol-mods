@@ -27,26 +27,49 @@ enum Better { More, Less, Neither }
 /// <param name="Trim">Words that can be longer than the column: cut with "...".</param>
 /// <param name="Dash">When the column shows "-" other than for a fight that could not be simulated.</param>
 /// <param name="Rate">The rate the column shows, for its 95% range (issue #5, <see cref="SimRanges"/>); null for a
-/// number that has none: the lowest HP, a hit, a first death, a drop, a time.</param>
+/// number that has none: the lowest HP, a hit, a first death, a drop, a time (<see cref="Unranged"/>).</param>
 /// <param name="Format">How the column writes a number, for the ends of a range; <see cref="SimView.Fmt"/> when null.</param>
 /// <param name="Way">The last line of <see cref="About"/> in place of the one <see cref="Better"/> gives: for a column of
 /// compare mode that says which setup is better, of which "more" is not "better" (SimViewCompare.cs).</param>
+/// <param name="Unranged">For a number of the list without a rate that is judged against another fight's, what it is (issue
+/// #67): what can decide a difference of it (SimRanges.Judged). Null for every other column: a rate, a number neither way
+/// better, and what is never judged ("Comes from" of Find upgrades, a supply used in Compare's Details). The rule takes a
+/// number without a rate that says nothing as one moment of one fight, which nothing decides.</param>
 sealed record SimColumn(string Key, string Group, string Title, string Name, string Tip, float Width,
     Func<SimResult, double?> Value, Func<SimResult, string> Text, Func<SimResult, Color> Tint, Better Better,
     bool Percent = true, bool Trim = false, string Dash = "", Func<SimRate>? Rate = null, Func<double, string>? Format = null,
-    string? Way = null)
+    string? Way = null, Unranged? Unranged = null)
 {
+    /// <summary>
+    /// For a number without a range (issue #67): how it is coloured against another fight, a line of <see cref="About"/>,
+    /// the same in Fights, Compare and Find upgrades. Only a column that says what its number is (<see cref="Unranged"/>)
+    /// has one: "" for every other. Worked out as the column is made: a cell of compare mode or of Find upgrades made from
+    /// it keeps it.
+    /// </summary>
+    public string NoRangeTip { get; init; } = Rate != null || Better == Better.Neither ? "" : Unranged switch
+    {
+        CombatSim.Unranged.Death => "No range: grey where two fights differ, unless only one of them died",
+        CombatSim.Unranged.Hit => "No range: grey where two fights differ, unless both are known to be the game's own number",
+        CombatSim.Unranged.Safe => "No range: grey where two fights differ, unless the game's own numbers decide it or only one of them died",
+        CombatSim.Unranged.Moment => "No range: grey where two fights differ",
+        _ => "",
+    };
+
     /// <summary>
     /// The tooltip of the column's name over the list: its whole name first when the title is short for it (and the
     /// tip does not start with it), then <see cref="About"/>.
     /// </summary>
     public string Help => Title == Name || Tip.StartsWith(Name, StringComparison.OrdinalIgnoreCase) ? About : Name + "\n" + About;
 
-    /// <summary>What the number is, when it shows "-", and which way is better: the tooltip of its tick in the picker.</summary>
+    /// <summary>
+    /// What the number is, when it shows "-", how it is coloured without a range, and which way is better: the tooltip of its
+    /// tick in the picker.
+    /// </summary>
     public string About => string.Join("\n", new[]
     {
         Tip,
         Dash == "" ? "" : "Shows - " + Dash,
+        NoRangeTip,
         Way ?? Better switch
         {
             Better.More => "More is better",
@@ -115,11 +138,11 @@ static class SimColumns
     // "-" for no number, dim; the number in the column's format and colour otherwise.
     static SimColumn Number(string key, string group, string title, string name, string tip, float width,
         Func<SimResult, double?> value, Better better, Func<double, string>? format = null, Func<SimResult, double, Color>? tint = null,
-        bool percent = true, string dash = "", Func<SimRate>? rate = null) =>
+        bool percent = true, string dash = "", Func<SimRate>? rate = null, Unranged? unranged = null) =>
         new(key, group, title, name, tip, width, value,
             r => value(r) is { } v && double.IsFinite(v) ? (format ?? SimView.Fmt)(v) : "-",
             r => value(r) is { } v && double.IsFinite(v) ? tint?.Invoke(r, v) ?? GameStyle.TextWhite : GameStyle.TextDim,
-            better, percent, Dash: dash, Rate: rate, Format: format);
+            better, percent, Dash: dash, Rate: rate, Format: format, Unranged: unranged);
 
     // The rates of the columns, by what they count (SimRanges) and what per.
     static Func<SimRate> EachHour(string of) => () => SimRate.PerHour(of);
@@ -163,11 +186,11 @@ static class SimColumns
                 // Never dying is the best there is: it sorts above the latest first death.
                 r => r.Deaths > 0 ? r.FirstDeathSeconds : double.MaxValue,
                 r => r.Deaths > 0 ? SimText.Clock(r.FirstDeathSeconds) : "none",
-                r => r.Deaths > 0 ? SimView.Bad : GameStyle.TextDim, Better.More, Percent: false),
+                r => r.Deaths > 0 ? SimView.Bad : GameStyle.TextDim, Better.More, Percent: false, Unranged: Unranged.Death),
             new("lowHp", Defence, "Low HP", "Lowest hitpoints", "The lowest your hitpoints got, as a share of the maximum", 62,
                 r => r.LowestHpFraction, r => r.LowestHpFraction.ToString("P0"),
                 r => r.Deaths > 0 || r.LowestHpFraction < 0.15 ? SimView.Bad : r.LowestHpFraction < 0.35 ? GameStyle.TextGold : GameStyle.TextWhite,
-                Better.More, Percent: false),
+                Better.More, Percent: false, Unranged: Unranged.Death),
             // The words and colours of the enemy's card in the combat areas menu (EnemyCards.Show).
             new("safe", Defence, "Safe", "Safe or risky",
                 "Safe: you did not die, and no hit of this enemy reaches the point where auto eat steps in, as on the " +
@@ -175,10 +198,10 @@ static class SimColumns
                 r => r.Safe is { } safe ? safe ? 1 : 0 : null,
                 r => r.Safe is { } safe ? safe ? "Safe" : "Risky" : "-",
                 r => r.Safe is { } safe ? safe ? GameStyle.Good : GameStyle.Bad : GameStyle.TextDim, Better.More, Percent: false,
-                Dash: "for a dungeon, and in an earlier scan made before the enemy cards"),
+                Dash: "for a dungeon, and in an earlier scan made before the enemy cards", Unranged: Unranged.Safe),
             Number("maxHit", Defence, "Max hit", "Enemy's biggest hit",
                 "The most the enemy's attacks can deal, as the game says, or a bigger loss of hitpoints seen in the fight", 58,
-                r => r.MaxEnemyHit, Better.Less, dash: "for a dungeon, and in an earlier scan made before the enemy cards"),
+                r => r.MaxEnemyHit, Better.Less, dash: "for a dungeon, and in an earlier scan made before the enemy cards", unranged: Unranged.Hit),
             Number("damageTaken", Defence, "Dmg taken", "Damage taken", "Hitpoints you lose per hour", 66,
                 r => r.PerHour(r.DamageTaken), Better.Less, rate: EachHour(SimRanges.Damage)),
             Number("damagePerKill", Defence, "Dmg/kill", "Damage taken per kill", "Hitpoints you lose for each kill", 62,
@@ -228,7 +251,7 @@ static class SimColumns
                 percent: false, rate: EachHour(SimRanges.NetGold)),
             new("bestDrop", Economy, "Best drop", "Most valuable drop", "Most valuable drop: the item that sells for the most of all that dropped", 110,
                 r => BestDrop(r)?.SellsFor ?? 0, r => BestDrop(r)?.Name ?? "none", r => BestDrop(r) != null ? GameStyle.TextPaper : GameStyle.TextDim,
-                Better.More, Percent: false, Trim: true),
+                Better.More, Percent: false, Trim: true, Unranged: Unranged.Moment),
             Number("items", Economy, "Items", "Kinds of items dropped",
                 "Kinds of items dropped in the whole simulated time: the bank slots they need. Not per hour", 52,
                 r => r.Loot.Count(l => !l.IsCurrency), Better.Neither),
@@ -261,9 +284,11 @@ static class SimColumns
                 rate: EachRun(SimRanges.Gold)),
 
             // ---- Time
+            // How long a fight was simulated says how it was run (the time asked, Go on until, supplies From bank, a fight that
+            // had to stop), not how good a setup is: neither way better, so never coloured (issue #67).
             Number("fought", Time, "Fought", "Time simulated",
                 "The game time this fight was simulated for: less than asked when it had to stop", 62,
-                r => r.Hours * 3600, Better.More, SimText.Clock),
+                r => r.Hours * 3600, Better.Neither, SimText.Clock),
             Number("simTime", Time, "Sim time", "Time it took to simulate", "Real seconds this fight took to simulate", 62,
                 r => r.RealMilliseconds / 1000, Better.Neither, s => $"{s:0.0}s", (_, _) => GameStyle.TextGrey),
         });
