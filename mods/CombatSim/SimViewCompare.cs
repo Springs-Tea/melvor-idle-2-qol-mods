@@ -15,7 +15,8 @@ namespace CombatSim;
 /// <item>Middle: every column of the list as three cells, in the list's own header buttons and rows: first which of the
 /// two setups is better and by how much ("A by 23%"), under the column's own name, then its number with A and with B.
 /// The better side is green and the worse red by the simulator's one rule (<see cref="Judge"/>: the ranges of issue #5,
-/// a real 0 included), grey where it could be luck. The three cells of a column move sideways and come into sight
+/// a real 0 included; for A and B, which meet the same dice, the bar lowered by the luck they met alike, issue #57), grey
+/// where it could be luck. The three cells of a column move sideways and come into sight
 /// together. The lines have the room of Fights and name no stance (SimViewColumns.EnemyPart). Above the list, how many
 /// fights each setup wins in the column the list is sorted by, and in Best for where each setup does best.</item>
 /// <item>Right: the selected fight with both setups, a Details line per number (the look of <see cref="Stat"/>), and
@@ -30,8 +31,11 @@ sealed partial class SimView
     const int PairCellCount = 3;
     // What tells B from A, in the words of the tab on show: Best for has no Stance box, and tries every stance (issue #51).
     string WhatChanges => _state.BestMode ? "its loadout, an item or its spell" : "its loadout, an item, its stance or its spell";
+    // What the same dice do (issue #57), in no more words than the verdicts beside them bear out: luck both meet alike
+    // cannot put one ahead, so the bar for green and red is lowered by it, the more the more alike the two fight.
     string CompareTip => "Compare two setups, A and B. Simulate runs every fight with both, from the same moment of your\n" +
-                         "character, and the list shows each fight with which one is better, A's number and B's.\n" +
+                         "character and with the same dice: the more alike the two fight, the smaller the difference\n" +
+                         "that can be told from luck. The list shows each fight with which one is better, A's number and B's.\n" +
                          $"The first time, B starts as a copy of A: press B, then change {WhatChanges}.";
     string SideTip => (_state.BestMode ? "The loadout, the slots and the spell below" : "The loadout, the slots, the stance and the spell below") +
                       " show and change the setup whose button is down.\nFight is for that setup too.";
@@ -279,8 +283,9 @@ sealed partial class SimView
 
     // "A by 23%": the setup that is ahead and by how much; "A ×4" from twice as much up; "A +12%" for a number neither
     // way better, which A has more of; the letter alone where there is no percent (Low HP, Safe, a number against 0);
-    // "the same". White where one is ahead, grey where that could be luck, dim for the same.
-    (string Text, Color Tint, Verdict? Verdict) Lead(SimColumn c, (SimResult? A, SimResult? B) pair)
+    // "the same". White where one is ahead, grey where that could be luck, dim for the same. The percent as written
+    // beside its ± where one is given (SameDiceLead).
+    (string Text, Color Tint, Verdict? Verdict) Lead(SimColumn c, (SimResult? A, SimResult? B) pair, string? percent = null)
     {
         if (Values(c, pair) is not { } v) return ("-", GameStyle.TextDim, null);
         Verdict verdict = PairVerdict(c, v.A, v.B, v.VA, v.VB);
@@ -288,8 +293,10 @@ sealed partial class SimView
         bool aAhead = verdict == Verdict.Better || (verdict != Verdict.Worse && Ahead(c.Better, v.VA, v.VB));
         string side = aAhead ? "A" : "B", text = side;
         if (Share(c, v.VA, v.VB) is { } share)
-            text = share >= 1 ? $"{side} ×{Times(1 + share)}"
-                : c.Better == Better.Neither ? $"{side} +{SimRanges.Percent(share)}" : $"{side} by {SimRanges.Percent(share)}";
+        {
+            percent ??= SimRanges.Percent(share);
+            text = share >= 1 ? $"{side} ×{Times(1 + share)}" : c.Better == Better.Neither ? $"{side} +{percent}" : $"{side} by {percent}";
+        }
         return (text, verdict == Verdict.Luck ? GameStyle.TextGrey : GameStyle.TextWhite, verdict);
     }
 
@@ -308,6 +315,32 @@ sealed partial class SimView
         double high = Math.Max(va, vb), low = Math.Min(va, vb);
         if (low <= 0) return null;
         return c.Better == Better.Less ? 1 - low / high : high / low - 1;
+    }
+
+    // A and B of one compare, judged by the same dice (issue #57, SimRanges.Apart): the lead and how far luck could move
+    // it, "A by 48% ± 47%", on the base of its percent (Share), so that a side is green or red exactly when its lead is
+    // larger than its ±, and with one more figure where the two would read alike ("A by 64.4% ± 64.1%",
+    // SimRanges.Percents). "A ×4 ± 1.5" for a lead in times, "A by 1,234 ± 2,000" in the column's own format where there
+    // is no percent (Net gold). Null where the two are not judged by the same dice, and where they are the same.
+    string? SameDiceLead(SimColumn c, (SimResult? A, SimResult? B) pair)
+    {
+        if (Values(c, pair) is not { } v || c.Rate?.Invoke() is not { } rate || SimRanges.Apart(v.A, v.B, rate) is not { } luck) return null;
+        string? percent = null, reach = null;
+        if (Share(c, v.VA, v.VB) is { } share)
+        {
+            double of = luck.Reach / (c.Better == Better.Less ? Math.Max(v.VA, v.VB) : Math.Min(v.VA, v.VB));
+            if (share >= 1) reach = of.ToString(of < 0.095 ? "0.##" : of < 9.95 ? "0.#" : "0");
+            else (percent, reach) = SimRanges.Percents(share, of);
+        }
+        var (lead, _, verdict) = Lead(c, pair, percent);
+        if (verdict is null or Verdict.Same || !double.IsFinite(v.VA) || !double.IsFinite(v.VB)) return null;
+        if (reach == null)
+        {
+            Func<double, string> format = c.Format ?? Fmt;
+            lead = $"{lead} by {format(Math.Abs(v.VA - v.VB))}";
+            reach = format(luck.Reach);
+        }
+        return $"{lead} ± {reach}{(verdict == Verdict.Luck ? ", could be luck" : "")}";
     }
 
     // How far apart the two are, as Share has it, or the plain difference where there is no percent; infinity against
@@ -388,7 +421,7 @@ sealed partial class SimView
     }
 
     // The tooltip of a line: each setup's stance (the one it fought in, and whether it was asked for, issue #51), the 95%
-    // ranges of each, then the notes of the runs.
+    // ranges of each, where the same dice decide each lead with its ± (issue #57), then the notes of the runs.
     string PairTip(SimResult line)
     {
         var (a, b) = _state.Pair(line);
@@ -401,6 +434,13 @@ sealed partial class SimView
         }
         foreach (var (side, r) in new[] { ("A", a), ("B", b) })
             if (r != null) lines.AddRange(RangeLines(r, "95% ranges with " + side));
+        // Without ", could be luck": the grey of the line says it, and the ± shows it.
+        var leads = BaseShown().Select(c => SameDiceLead(c, (a, b)) is { } same ? $"{TitleOf(c)} {same.Replace(", could be luck", "")}" : null).OfType<string>().ToList();
+        if (leads.Count > 0)
+        {
+            lines.Add("The lead ± luck, with the same dice");
+            lines.AddRange(leads.Chunk(3).Select(three => string.Join("  ·  ", three)));
+        }
         foreach (var (side, r) in new[] { ("A", a), ("B", b) })
             if (r is { Note.Length: > 0 }) lines.Add($"{side}: {r.Note}");
         return string.Join("\n", lines);
@@ -438,7 +478,7 @@ sealed partial class SimView
         if (lines.Count > 0 || _state.Running || _state.Catalog.Count == 0) return;
         _empty.Text = _state.SameSetups
             ? $"A and B are the same setup.\n\nPress B on the left, change {WhatChanges}, then press Simulate."
-            : "Nothing simulated with these two setups yet.\n\nPress Simulate: every fight is run with A and with B, from the same moment of your character.";
+            : "Nothing simulated with these two setups yet.\n\nPress Simulate: every fight is run with A and with B, from the same moment of your character and with the same dice.";
     }
 
     // "XP: A is better in 7 of 12 fights, B in 4, the same in 1", by the name over the column; "" when no fight has a
@@ -618,8 +658,10 @@ sealed partial class SimView
         string time = ra != null && rb != null && Math.Abs(ra.Hours - rb.Hours) < 1e-9 ? $"{Clock(ra.Hours * 3600)} of fighting simulated with each setup"
             : string.Join(", ", new[] { ("A", ra), ("B", rb) }.Where(s => s.Item2 != null).Select(s => $"{Clock(s.Item2!.Hours * 3600)} with {s.Item1}")) + " of fighting simulated";
         bool ranged = ra?.Spread != null && rb?.Spread != null;
-        Label foot = Wrapped($"{time}. " + (ranged ? "Green and red only where the two 95% ranges do not overlap; grey could be luck."
-                : "Made before the ranges were counted: simulate again for them.") +
+        // Both ways a number is judged (SimRanges.Judge), the second only where A and B met the same dice (issue #57).
+        string rule = "Green and red only where the two 95% ranges do not overlap" +
+                      (ra != null && rb != null && SimRanges.SameDice(ra, rb) ? ", or with the same dice where the lead is larger than its ±" : "");
+        Label foot = Wrapped($"{time}. " + (ranged ? rule + "; grey could be luck." : "Made before the ranges were counted: simulate again for them.") +
             (viewing ? "" : " Untick Compare for the loot of the setup on the left, item by item."), 250, GameStyle.TextDim, 11);
         foot.HorizontalAlignment = HorizontalAlignment.Center;
         _details.AddChild(new Control { CustomMinimumSize = new Vector2(0, _s.Px(4)), MouseFilter = Control.MouseFilterEnum.Ignore });
@@ -644,7 +686,8 @@ sealed partial class SimView
     // "      A by 5%  ·  A ± 6.1%, B ± 7.2%"
     // One number of the fight with both setups, in the look of a Details line (Stat), coloured as the list's cells; under
     // it, as one setup's Details has its range under its number, which is better and by how much (in the words of the
-    // list's first cell) and each setup's 95% range.
+    // list's first cell) and each setup's 95% range. Where the same dice decide (issue #57), the lead with its own ± in
+    // their place: "A by 48% ± 47%" (SameDiceLead).
     Control PairRow(SimColumn c, SimResult? a, SimResult? b, string? name = null, Texture2D? icon = null, bool judged = true)
     {
         var pair = (A: a, B: b);
@@ -652,10 +695,14 @@ sealed partial class SimView
         Color tintA = (judged ? SideTint(c, pair, false) : null) ?? Own(a), tintB = (judged ? SideTint(c, pair, true) : null) ?? Own(b);
         var (lead, _, verdict) = Lead(c, pair);
         var notes = new List<string>();
-        if (judged && verdict is not (null or Verdict.Same)) notes.Add(verdict == Verdict.Luck ? lead + ", could be luck" : lead);
-        string? Range(SimResult? r) => r != null && RangeOf(c, r) is { } range ? SimRanges.Text(range, c.Format ?? Fmt) : null;
-        string? rangeA = Range(a), rangeB = Range(b);
-        if (rangeA != null || rangeB != null) notes.Add($"A {rangeA ?? "-"}, B {rangeB ?? "-"}");
+        if (judged && SameDiceLead(c, pair) is { } same) notes.Add(same);
+        else
+        {
+            if (judged && verdict is not (null or Verdict.Same)) notes.Add(verdict == Verdict.Luck ? lead + ", could be luck" : lead);
+            string? Range(SimResult? r) => r != null && RangeOf(c, r) is { } range ? SimRanges.Text(range, c.Format ?? Fmt) : null;
+            string? rangeA = Range(a), rangeB = Range(b);
+            if (rangeA != null || rangeB != null) notes.Add($"A {rangeA ?? "-"}, B {rangeB ?? "-"}");
+        }
 
         var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         panel.AddThemeStyleboxOverride("panel", _s.StatLine());

@@ -666,14 +666,11 @@ public partial class CombatSimMod : IMod, ISimLookup
         if (_game == null) return;
         // First back to the current results: the XP column of an earlier scan may be of another skill (RunOptions).
         _state.Viewing = null;
-        // The setup on the left; in compare mode A and B, fight by fight (SimCompare.cs). B's options, when there are two.
+        // The setup on the left; in compare mode A and B, fight by fight (SimCompare.cs). B's options, when there are two:
+        // those of another setup, as every fight of a compare has options of its own (its dice).
         List<SimJob> jobs = RunJobs();
         SimOptions options = jobs.FirstOrDefault()?.Options ?? RunOptions();
-        SimOptions? b = jobs.Select(j => j.Options).FirstOrDefault(o => o != options);
-#if DEVTOOLS
-        // raw= changes the setup on the left (CombatSimGear.cs).
-        DevSimulateOptions(b != null && _state.ShowingB ? b : options);
-#endif
+        SimOptions? b = jobs.Select(j => j.Options).FirstOrDefault(o => o.SetupKey != options.SetupKey);
         _state.Message = "";
         if (!_engine.Start(_game, jobs, _state.Workers, out string error)) { _state.Message = error; _ctx.Log(error); }
         else
@@ -772,6 +769,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         bool running = _engine.Running && _run != null;
         while (_engine.Finished.TryDequeue(out SimResult? result))
         {
+#if DEVTOOLS
+            _engine.DevTakenIn(result);   // the verdict lines of a compare, also of the twin, which has no _run
+#endif
             if (_run == null) continue;   // left over from a run that was dropped (another character was opened)
             _state.Results[result.Key] = result;
             changed = true;
@@ -972,6 +972,7 @@ public partial class CombatSimMod : IMod, ISimLookup
             if (command == "wait=finished" && (_state.Running || _engine.Running)) return;
             // size=log: once the window has been drawn twice since it was last built (SizeProbe.cs).
             if (DevSizeWaits(command, now)) return;
+            if (command == "wait=selected" && (DevSelectWaiting(now) || _devCommands.Count == 0)) return;
             _devCommands.Dequeue();
             if (command == "wait=progress" && (!_state.Running || _state.Done == _state.Total))
             {
@@ -979,7 +980,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 _devCommands.Clear();
                 return;
             }
-            if (command is "wait=progress" or "wait=finished") continue;
+            if (command is "wait=progress" or "wait=finished" or "wait=selected") continue;
             if (command == "simulate") { DevSimulate(); continue; }
             if (DevWindowCommand(command)) return;
             bool prepare = command.StartsWith("setup=", StringComparison.Ordinal);
@@ -1081,13 +1082,16 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   minimise, close, button   a click on the fold button, on the X, on the round button on the right edge
     //   wait=progress, wait=finished   the next lines wait for the first finished fight, or for the end
     //   cancel, select=first, sort=<column>, scale=min|max|<size such as 1.05>
+    //   wait=selected   after select=first: the next lines wait until the first line is the selected one, two frames
+    //                 were drawn since and the frame drawn last shows it so (DevSelectWaiting), 5 s at most; otherwise
+    //                 one line, and the rest is dropped
     //   shot=<name>   shot-<name>.png and crop-<name>.png once drawn, the window's state in shot-<name>.txt
     //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
     //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
     //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
     //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
     //                 game's own equipment screen (CombatSimGear.DevGearCommand)
-    //   compare=<loadout>|<slot=item id>|<spell>, compare=off, side=a|b, wear=on|off   compare mode (SimCompare.cs)
+    //   compare=<loadout>|<slot=item id>|<spell>, compare=off, compare=twin, side=a|b, wear=on|off   compare mode (SimCompare.cs)
     //   upgrades=<enemy>, upgrades=slot=|from=|search=|cannot|clear|go|panel, upgrades=stop|back|line=<item>|hover=<item>|log
     //                 Find upgrades and its panel (SimUpgrades.cs)
     //   stance=<part of a stance's name>, stance=#2, stance=game, stance=log, stance=view#2, stance=shot   the Stance box
@@ -1138,6 +1142,69 @@ public partial class CombatSimMod : IMod, ISimLookup
                 break;
         }
         return true;
+    }
+
+    // wait=selected: true while the click of select=first has not landed yet (the first line of the list is not the selected
+    // one) or the frame that shows it is not drawn: a picture is the frame drawn last, so two must have been drawn since.
+    // Then the frame drawn last is read back (DevSelectedDrawn): the first line must be drawn in another look than the second.
+    // After 5 s, or when it is not, one line and the rest of the request dropped, rather than a picture of no selection.
+    long _devSelectUntil = -1, _devSelectedFrame = -1;
+
+    bool DevSelectWaiting(long now)
+    {
+        if (_devSelectUntil < 0) (_devSelectUntil, _devSelectedFrame) = (now + 5000, -1);
+        bool selected = _state.Selected != null && _view?.DevFirstRow is { ButtonPressed: true };
+        if (selected && _devSelectedFrame < 0) _devSelectedFrame = Engine.GetFramesDrawn();
+        bool drawn = selected && Engine.GetFramesDrawn() >= _devSelectedFrame + 2;
+        if (!drawn && now < _devSelectUntil) return true;
+        _devSelectUntil = -1;
+        string seen = "";
+        if (drawn && DevSelectedDrawn(out seen))
+        {
+            _ctx.Log($"Dev: wait=selected: the first line, {_state.Selected}, is the selected one, and drawn so: {seen}.");
+            return false;
+        }
+        _ctx.Log(drawn ? $"Dev: wait=selected: the first line, {_state.Selected}, is the selected one, but NOT DRAWN SO: {seen}; the rest of the request is dropped."
+            : $"Dev: wait=selected: the first line was not selected within 5 s (selected: {_state.Selected ?? "none"}); the rest of the request is dropped.");
+        _devCommands.Clear();
+        return false;
+    }
+
+    // The outline of the first line and of the second, two pixels wide, in the frame drawn last: the mean colour of each.
+    // The selected line has the game's selected look, so its outline differs from the second's (at least 0.1 in red, green
+    // and blue added). With one line, there is nothing to tell it by: said so, and taken as drawn.
+    bool DevSelectedDrawn(out string seen)
+    {
+        if (_view?.DevFirstRow is not { } first) { seen = "no first line"; return false; }
+        Button? second = first.GetParent()?.GetChildren().OfType<Button>().Where(b => !b.IsQueuedForDeletion()).Skip(1).FirstOrDefault();
+        if (second == null) { seen = "one line only, nothing to tell it by"; return true; }
+        try
+        {
+            using Image image = _ctx.Tree.Root.GetTexture().GetImage();
+            Transform2D screen = _ctx.Tree.Root.GetFinalTransform();
+            Color? Outline(Control row)
+            {
+                Rect2 frame = screen * row.GetGlobalRect();
+                Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(new Rect2I(0, 0, image.GetWidth(), image.GetHeight()));
+                if (part.Size.X < 8 || part.Size.Y < 8) return null;
+                float r = 0, g = 0, b = 0;
+                int n = 0;
+                for (int y = part.Position.Y; y < part.End.Y; y++)
+                    for (int x = part.Position.X; x < part.End.X; x++)
+                    {
+                        bool edge = x < part.Position.X + 2 || x >= part.End.X - 2 || y < part.Position.Y + 2 || y >= part.End.Y - 2;
+                        if (!edge) continue;
+                        Color c = image.GetPixel(x, y);
+                        (r, g, b, n) = (r + c.R, g + c.G, b + c.B, n + 1);
+                    }
+                return new Color(r / n, g / n, b / n);
+            }
+            if (Outline(first) is not { } one || Outline(second) is not { } two) { seen = "a line is off the picture"; return false; }
+            float apart = Math.Abs(one.R - two.R) + Math.Abs(one.G - two.G) + Math.Abs(one.B - two.B);
+            seen = $"its outline {one.R:0.00}/{one.G:0.00}/{one.B:0.00} against the second line's {two.R:0.00}/{two.G:0.00}/{two.B:0.00}, {apart:0.00} apart";
+            return apart >= 0.1f;
+        }
+        catch (Exception e) { seen = "the frame could not be read: " + e.Message; return false; }
     }
 
     void DevSure(string size)

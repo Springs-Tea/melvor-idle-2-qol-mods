@@ -67,14 +67,14 @@ static class SimDice
     /// <summary>The first eight bytes of the key's SHA-256.</summary>
     public static ulong SeedOf(string key) => BinaryPrimitives.ReadUInt64LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    // ---- dice kept in step (Find upgrades, issue #4) -------------------------------------------------------
+    // ---- dice kept in step (Find upgrades, issue #4; Compare, issue #57) -----------------------------------
 
     static int s_stepOff;
 
     /// <summary>
-    /// The copy's dice kept in step with this key from now on (<see cref="InStep"/>), for a fight whose dice are another
-    /// fight's (SimOptions.Dice). Null when they cannot be: then one line in the log, and the fights have the same dice at
-    /// their start only.
+    /// The copy's dice kept in step with this key from now on (<see cref="InStep"/>), for a fight whose dice come from
+    /// another key than its own (SimOptions.Dice: Find upgrades' setup as it is, Compare's fight). Null when they cannot
+    /// be: then one line in the log, and the fights have the same dice at their start only.
     /// </summary>
     public static InStep? Keep(Game sim, string key, Action<string> log)
     {
@@ -87,12 +87,12 @@ static class SimDice
         }
     }
 
-    // Once a game session: the fights are still right, but an item's numbers again carry luck of their own.
+    // Once a game session: the fights are still right, but an item's numbers, and A's and B's, again carry luck of their own.
     static void StepOff(Action<string> log, Exception e)
     {
         if (Interlocked.Exchange(ref s_stepOff, 1) == 0)
-            log($"Find upgrades could not keep the dice of its fights in step (the game was updated?): {e.Message}. " +
-                "Its items now share the dice of the setup as it is only at the start of each fight, so a small difference may be luck.");
+            log($"Find upgrades and Compare could not keep the dice of their fights in step (the game was updated?): {e.Message}. " +
+                "The fights they compare now share the same dice only at their start, so a small difference may be luck.");
     }
 
     // Its own methods, never inlined: a game update that removed these fails when they are called, inside the try.
@@ -115,6 +115,8 @@ static class SimDice
     /// whatever the item, and what differs comes from the item. The state is the SHA-256 of the key and that moment: its
     /// 32 bytes are the four numbers of the game's dice (Xoshiro256StarStarRandom.State). One hash a tick costs about
     /// 0.4 µs (measured outside the game): about 22 ms in a quarter of an hour of fighting, beside a copy's second or two.
+    /// Compare (issue #57) keeps A's and B's fights of an enemy in step the same way, from the key of that fight
+    /// (CombatSimMod.CompareDice), so that luck the two setups meet alike cannot put one of them ahead.
     /// </summary>
     public sealed class InStep
     {
@@ -193,7 +195,7 @@ static class SimDice
     public sealed class DevCheck
     {
         readonly Action<string> _log;
-        // The fight (its result's key) and the key of its dice: another fight's in a search for upgrades.
+        // The fight (its result's key) and the key of its dice: another fight's in a search for upgrades, the fight's in Compare.
         readonly string _name, _key, _before, _start;
         readonly Game _sim;
         readonly CombatEntity? _combat;
@@ -300,7 +302,7 @@ static class SimDice
 
         /// <summary>
         /// Two lines in the log, once the fight is over: the dice and which moved, and whether they were kept in step
-        /// (<paramref name="step"/>, Find upgrades); the character before and after.
+        /// (<paramref name="step"/>, Find upgrades and Compare); the character before and after.
         /// </summary>
         public void After(InStep? step)
         {

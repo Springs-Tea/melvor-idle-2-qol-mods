@@ -44,6 +44,12 @@ sealed class SimParts
     // The sizes a rate may be held to, smallest first: the chosen one and the larger ones the box offers.
     readonly double[] _sizes;
     readonly List<SimRate> _watch;
+    // A fight of a compare: its parts are kept when it ends (Kept), for the luck it shared with the other setup's fight,
+    // and its totals are noted at its kills (Killed), every _markStep-th, between MostMarks / 2 and MostMarks of them.
+    readonly bool _keep;
+    readonly List<Mark> _marks = new();
+    int _markStep = 1;
+    const int MostMarks = 64;
     readonly Action<string> _log;
     readonly Dictionary<string, List<double>> _of = new();
     Dictionary<string, double> _before = new();
@@ -73,6 +79,7 @@ sealed class SimParts
         _sizes = options.SureSizes.Where(size => size > _sure).Prepend(_sure).Order().ToArray();
         _mostHours = options.MostHours;
         _watch = options.Watch;
+        _keep = options.Side != null;
         _log = log;
         // A whole number of looks, so a part ends exactly where the fight is looked at.
         _ticks = (int)Math.Max(checkEvery, Math.Round(asked / (double)Count / checkEvery) * checkEvery);
@@ -90,6 +97,27 @@ sealed class SimParts
         Close(ticks, intoLast: false);
         return _sure > 0 && ticks >= _asked && Sure();
     }
+
+    /// <summary>
+    /// Called after a tick in which the fight killed (SimEngine.Fight), with the kills so far: a fight of a compare notes
+    /// its totals at every <see cref="_markStep"/>-th kill, so that its parts can be cut at the same kills as the other
+    /// setup's (<see cref="Apart"/>). When there are <see cref="MostMarks"/>, every second one goes and the step doubles,
+    /// the same way for every fight: two fights always have their marks at the same kills, as far as both got. Nothing
+    /// for a fight of one setup.
+    /// </summary>
+    public void Killed(long ticks, int kills)
+    {
+        if (!_keep || kills % _markStep != 0) return;
+        _marks.Add(new Mark(kills, ticks, Counted(Totals())));
+        if (_marks.Count < MostMarks) return;
+        _marks.RemoveAll(m => m.Kills % (2 * _markStep) != 0);
+        _markStep *= 2;
+    }
+
+    // The totals of the quantities, without the single items, which no rate of a difference needs.
+    static Dictionary<string, double> Counted(Dictionary<string, double> totals) =>
+        totals.Where(t => !t.Key.StartsWith(ItemKey, StringComparison.Ordinal) && !t.Key.StartsWith(UsedKey, StringComparison.Ordinal))
+            .ToDictionary(t => t.Key, t => t.Value);
 
     /// <summary>
     /// The fight is over at this tick: how sure its rates are, for its result. What is left after the last part
@@ -119,11 +147,153 @@ sealed class SimParts
         }
         spread.Items = _result.Loot.Select(a => ItemKey + a.Id).Concat(_result.Used.Select(a => UsedKey + a.Id))
             .Select(key => Get(key) is { } parts ? SimRanges.Figures(SimRanges.HalfWidth(parts, durations)) : null).ToList();
+        if (_keep)
+            Kept = new Record(ticks, durations, kills, runs, Quantities().Select(q => (Quantity: q, Parts: PartsOf(q, durations)))
+                .Where(p => p.Parts != null).ToDictionary(p => p.Quantity, p => p.Parts!), _marks.ToList(), Counted(_before));
 #if DEVTOOLS
         DevLog(ticks, spread, durations);
 #endif
         return spread;
     }
+
+    /// <summary>
+    /// What a fight of a compare was when it ended (issue #57): its ticks; its parts of game time, as its own ranges have
+    /// them (each part's hours, kills and runs, a dungeon's, and how much of every quantity each part had); its totals at
+    /// the kills it noted (<see cref="Killed"/>) and at its end. Plain numbers, nothing of the copy: SimEngine keeps them
+    /// until the other setup's fight is over too.
+    /// </summary>
+    public sealed record Record(long Ticks, double[] Durations, double[]? Kills, double[]? Runs, IReadOnlyDictionary<string, double[]> Of,
+        IReadOnlyList<Mark> Marks, IReadOnlyDictionary<string, double> End);
+
+    /// <summary>The totals of a fight of a compare after the tick in which it made its kills-th kill.</summary>
+    public sealed record Mark(int Kills, long Ticks, IReadOnlyDictionary<string, double> Totals);
+
+    /// <summary>The parts of a fight of a compare (SimOptions.Side) once <see cref="Finish"/> has run; null otherwise.</summary>
+    public Record? Kept { get; private set; }
+
+    /// <summary>
+    /// How much of the luck of two fights of a compare is left in the difference of their rates (issue #57), for every
+    /// quantity per hour, per kill and per run, in the order of <see cref="SimSpread.Half"/>, to two figures: the half of
+    /// the even 95% range of the difference, over the root of the sum of the squares of the two fights' own halves, all
+    /// three from the same parts (SimRanges.HalfWidth). About 1 when the two met no luck alike, 0 when they met all of it
+    /// alike: the twin. With the number of parts it was measured from, which says how far chance alone moves it
+    /// (SimRanges.Noise).
+    /// <para>
+    /// The dice are kept in step per kill (SimDice.InStep: the kills, the deaths and the ticks since the last kill), so the
+    /// two fights meet the same rolls at the same kill, not at the same moment: once one setup kills faster, a part of game
+    /// time holds other kills with each. So the parts close at the same kill for both: at every kill both noted, 10 to 63
+    /// of them (each part holds whole fights with enemies, so even a part of one kill stands nearly on its own; the more
+    /// parts, the less chance moves the share, and t and the factor k / (k − 1) cancel in it), and what is left of each
+    /// fight after the last of them, a part of its own unless both are shorter than half a part, as <see cref="Finish"/>
+    /// does. With fewer kills in common than <see cref="Count"/>, the parts of game time, when both fights have them at the
+    /// same ticks.
+    /// </para>
+    /// Null when the fights lasted other times: Go on until stops each when its own ranges are small enough, From bank
+    /// when its supplies run out.
+    /// </summary>
+    public static (Dictionary<string, double?[]> Left, int Parts)? Apart(Record mine, Record theirs)
+    {
+        if (mine.Ticks != theirs.Ticks) return null;
+        if (ByKills(mine, theirs) is { } byKills) return (LuckLeft(byKills.Mine, byKills.Theirs), byKills.Mine.Hours.Length);
+        if (!mine.Durations.SequenceEqual(theirs.Durations)) return null;
+        return (LuckLeft(new Cut(mine.Durations, mine.Kills, mine.Runs, mine.Of), new Cut(theirs.Durations, theirs.Kills, theirs.Runs, theirs.Of)),
+                mine.Durations.Length);
+    }
+
+    // One fight cut into parts: each part's hours, kills and runs (null where there is nothing to count by), and how much of
+    // every quantity it had.
+    sealed record Cut(double[] Hours, double[]? Kills, double[]? Runs, IReadOnlyDictionary<string, double[]> Of);
+
+    // The two fights cut at every kill both noted (Apart); null with fewer than Count of them.
+    static (Cut Mine, Cut Theirs)? ByKills(Record mine, Record theirs)
+    {
+        // Both lists go up by kills, every one at a multiple of its own step, and the steps are powers of two: the kills in
+        // common are the multiples of the larger step, evenly spaced, as far as both got.
+        var theirKills = theirs.Marks.Select(m => m.Kills).ToHashSet();
+        List<int> ends = mine.Marks.Select(m => m.Kills).Where(theirKills.Contains).ToList();
+        if (ends.Count < Count) return null;
+        Mark[] Points(Record r)
+        {
+            var at = r.Marks.ToDictionary(m => m.Kills);
+            return ends.Select(k => at[k]).ToArray();
+        }
+        Mark[] pointsA = Points(mine), pointsB = Points(theirs);
+        // What is left after the last kill both noted: a part of its own when either is half a part or longer.
+        bool Long(Record r, Mark[] points) => r.Ticks - points[^1].Ticks >= points[^1].Ticks / (2.0 * ends.Count);
+        bool tail = Long(mine, pointsA) || Long(theirs, pointsB);
+        return (CutAt(mine, pointsA, tail), CutAt(theirs, pointsB, tail));
+    }
+
+    // A fight's parts between its totals at these kills: from the start to the first, ..., and on to its end, which is a part
+    // of its own after the last (tail) or else ends the last part instead of it.
+    static Cut CutAt(Record r, Mark[] points, bool tail)
+    {
+        var at = new List<(long Ticks, IReadOnlyDictionary<string, double> Totals)> { (0, new Dictionary<string, double>()) };
+        at.AddRange((tail ? points : points[..^1]).Select(m => (m.Ticks, m.Totals)));
+        at.Add((Math.Max(r.Ticks, at[^1].Ticks), r.End));
+        int n = at.Count - 1;
+        double[] Parts(Func<long, IReadOnlyDictionary<string, double>, double> total)
+        {
+            var parts = new double[n];
+            for (int i = 0; i < n; i++) parts[i] = total(at[i + 1].Ticks, at[i + 1].Totals) - total(at[i].Ticks, at[i].Totals);
+            return parts;
+        }
+        var of = new Dictionary<string, double[]>();
+        foreach (string quantity in r.End.Keys.Concat(new[] { SimRanges.Gold, SimRanges.NetGold, SimRanges.Xp, SimRanges.Seconds }).Distinct())
+            of[quantity] = Parts((ticks, totals) => TotalOf(quantity, ticks, totals));
+        double[] hours = Parts((ticks, _) => ticks / (3600.0 * SimEngine.TicksPerSecond));
+        return new Cut(hours, of.GetValueOrDefault(SimRanges.Kills), r.Runs != null ? of.GetValueOrDefault(SimRanges.Runs) : null, of);
+    }
+
+    // A total at a kill or at the end, also of those worked out from the counted ones, as TotalNow has them.
+    static double TotalOf(string quantity, long ticks, IReadOnlyDictionary<string, double> totals) => quantity switch
+    {
+        SimRanges.Seconds => ticks / (double)SimEngine.TicksPerSecond,
+        SimRanges.Gold => totals.GetValueOrDefault(SimRanges.Coins) + totals.GetValueOrDefault(SimRanges.Loot),
+        SimRanges.NetGold => totals.GetValueOrDefault(SimRanges.Coins) + totals.GetValueOrDefault(SimRanges.Loot) - totals.GetValueOrDefault(SimRanges.Cost),
+        SimRanges.Xp => totals.Where(t => SimRanges.IsXp(t.Key)).Sum(t => t.Value),
+        _ => totals.GetValueOrDefault(quantity),
+    };
+
+    // The share of luck left (Apart) of every quantity of two fights cut into the same number of parts.
+    static Dictionary<string, double?[]> LuckLeft(Cut mine, Cut theirs)
+    {
+        var none = new double[mine.Hours.Length];
+        var left = new Dictionary<string, double?[]>();
+        foreach (string quantity in mine.Of.Keys.Union(theirs.Of.Keys))
+        {
+            double[] a = mine.Of.GetValueOrDefault(quantity) ?? none, b = theirs.Of.GetValueOrDefault(quantity) ?? none;
+            if (a.All(v => v == 0) && b.All(v => v == 0)) continue;
+            double? Share(Per per, double[]? xa, double[]? xb)
+            {
+                if (!SimRanges.Shown(quantity, per) || xa == null || xb == null) return null;
+                if (SimRanges.HalfWidth(a, xa, b, xb) is not { } apart || SimRanges.HalfWidth(a, xa) is not { } ha || SimRanges.HalfWidth(b, xb) is not { } hb) return null;
+                double own = Math.Sqrt(ha * ha + hb * hb);
+                return own > 0 ? SimRanges.Figures(apart / own, 2) : null;
+            }
+            double?[] share = { Share(Per.Hour, mine.Hours, theirs.Hours), Share(Per.Kill, mine.Kills, theirs.Kills), Share(Per.Run, mine.Runs, theirs.Runs) };
+            int kept = share.Length;
+            while (kept > 0 && share[kept - 1] == null) kept--;
+            if (kept > 0) left[quantity] = share[..kept];
+        }
+        return left;
+    }
+
+#if DEVTOOLS
+    /// <summary>Development: how <see cref="Apart"/> cut two fights, for SimEngine's line about their dice.</summary>
+    public static string DevCut(Record mine, Record theirs)
+    {
+        if (mine.Ticks != theirs.Ticks) return $"NOT CUT: they lasted {mine.Ticks:N0} and {theirs.Ticks:N0} ticks";
+        var theirKills = theirs.Marks.Select(m => m.Kills).ToHashSet();
+        int common = mine.Marks.Count(m => theirKills.Contains(m.Kills));
+        string marks = $"{mine.Marks.Count} and {theirs.Marks.Count} kills noted, {common} of them by both, the last at kill {mine.Marks.LastOrDefault(m => theirKills.Contains(m.Kills))?.Kills ?? 0}";
+        if (ByKills(mine, theirs) is { } cut)
+            return $"BY KILLS: {cut.Mine.Hours.Length} parts closing at the same kill ({marks}; each one's kills by part {string.Join(" ", cut.Mine.Kills ?? Array.Empty<double>())} / " +
+                   $"{string.Join(" ", cut.Theirs.Kills ?? Array.Empty<double>())})";
+        return mine.Durations.SequenceEqual(theirs.Durations) ? $"BY GAME TIME: {mine.Durations.Length} parts, as too few kills were in common ({marks})"
+            : $"NOT CUT: too few kills in common ({marks}) and parts of game time at other ticks";
+    }
+#endif
 
     // The quantities counted, and those worked out from them; not the single items.
     IEnumerable<string> Quantities() =>

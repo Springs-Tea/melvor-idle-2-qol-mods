@@ -34,12 +34,33 @@ readonly record struct SimRange(double Value, double Low, double High, bool Even
     public bool Overlaps(SimRange other) => Low <= other.High && other.Low <= High;
 }
 
+/// <summary>
+/// A rate of two fights of a compare (issue #57), A's less B's: their <see cref="Difference"/>; the halves of the two own
+/// ranges; the <see cref="Share"/> of their luck that is left in the difference, measured from <see cref="Parts"/> parts
+/// (SimParts.Apart); and how far luck could have put them apart, <see cref="Reach"/>. Apart is better or worse only beyond
+/// it (SimRanges.Apart).
+/// </summary>
+readonly record struct SimLuck(double Difference, double HalfA, double HalfB, double Share, int Parts)
+{
+    /// <summary>
+    /// How much of their luck is taken as left: the share raised by how far chance alone could have lowered it
+    /// (<see cref="SimRanges.Noise"/>), never more than all of it. 1 where the share was measured from too few parts.
+    /// </summary>
+    public double Left => Share * SimRanges.Noise(Parts) is var left && left < 1 ? left : 1;
+
+    /// <summary>The two own halves added, as two ranges laid side by side ask, times the luck left: never more than that bar.</summary>
+    public double Reach => (HalfA + HalfB) * Left;
+}
+
 /// <summary>One number of a setup against the same number of another (<see cref="SimRanges.Judge"/>).</summary>
 enum Verdict
 {
     /// <summary>Under half a percent apart.</summary>
     Same,
-    /// <summary>The two ranges overlap: a longer fight, or other dice, could turn it round.</summary>
+    /// <summary>
+    /// The two ranges overlap, or for two fights of a compare the difference is within the reach of luck
+    /// (<see cref="SimLuck"/>): a longer fight, or other dice, could turn it round.
+    /// </summary>
     Luck,
     Better,
     Worse,
@@ -69,6 +90,36 @@ sealed class SimSpread
     /// <summary>How many times the character lost hitpoints: the count behind the damage taken (SimRanges.Judge).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Hits;
+    /// <summary>
+    /// Compare (issue #57): how much of the luck of this fight and of each of the other setup's fights of the same enemy,
+    /// which were fought with the same dice, is left in the difference of their rates (SimEngine.Pair). Kept with the fight
+    /// of the two that ended last. Null in a scan of one setup and in scans made before.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<SimApart>? Apart;
+}
+
+/// <summary>
+/// Two fights of a compare (issue #57): how much of their luck is left in the difference of their rates
+/// (SimParts.Apart), which lowers the bar for "better" by the luck they met alike (SimRanges.Apart).
+/// </summary>
+sealed class SimApart
+{
+    /// <summary>
+    /// The other fight: its stance in Best for (its SimTarget.StanceId; null in Fights, where a stance is part of the setup),
+    /// and its RealMilliseconds, which tells it from any other result of the same enemy, as the list tells its lines apart
+    /// (SimView.LineKey). Its enemy is this fight's and its setup the other one, so neither is written again.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Stance;
+    public double Ms;
+    /// <summary>How many parts the shares were measured from (SimParts.Apart): the fewer, the more chance moves them (SimRanges.Noise).</summary>
+    public int Parts;
+    /// <summary>
+    /// Quantity -> the share of the luck left per hour, per kill and per run, in the order of <see cref="SimSpread.Half"/>, to
+    /// two figures: 0 when the two met all of it alike, about 1 when they met none of it alike; null where it could not be told.
+    /// </summary>
+    public Dictionary<string, double?[]> Left = new();
 }
 
 /// <summary>
@@ -89,6 +140,15 @@ sealed class SimSpread
 /// quantity that was 0 all fight (no damage taken) has the range 0 to 0 and shows none; against another setup it is
 /// judged by the count behind it, unless it is a skill's XP the setup does not train at all, a real 0
 /// (<see cref="Basis"/>).
+/// </para>
+/// <para>
+/// Two fights of a compare (issue #57) were fought with the same dice, kept in step. Luck they met alike cannot put one
+/// ahead of the other, so A against B is judged as strictly as two ranges side by side, less the luck they shared: apart
+/// when their difference is more than the two own halves added, times the share of their luck that is left in the
+/// difference (<see cref="Apart(SimResult, SimResult, SimRate)"/>, SimParts.Apart). That share is measured from the two
+/// fights and could come out low by chance alone, so it is first raised by its own noise (<see cref="Noise"/>): two
+/// fights that met nothing alike are coloured by luck as often as by two ranges side by side, and the rule never greys
+/// what that rule colours. Each one's own range stays as it is.
 /// </para>
 /// </summary>
 static class SimRanges
@@ -163,13 +223,58 @@ static class SimRanges
     }
 
     /// <summary>
-    /// Three figures, for the history file: the display writes at most two (± 7.9%), and the halves themselves are
-    /// far less sure than that (with ten parts, about a quarter either way).
+    /// Half the 95% range of Σa / Σxa − Σb / Σxb, for two fights cut into parts at the same kills or the same ticks (issue
+    /// #57, SimParts.Apart). The same method: each part's term is its share of the one rate, (aᵢ − Rₐ·xaᵢ) / Σxa, less its
+    /// share of the other, and the range is t · √(k · Σ(termᵢ)² / (k − 1)). Where the two met the same luck in a part, the
+    /// two shares move together and cancel; where they did not, both count, and two fights with nothing in common come out
+    /// at about the root of the sum of the squares of their own halves. With nothing of b, exactly <see cref="HalfWidth(IReadOnlyList{double}, IReadOnlyList{double})"/>
+    /// of a; never more than the two own halves added. Null with fewer than two parts, parts that do not pair, or nothing
+    /// to divide by.
     /// </summary>
-    public static double? Figures(double? value)
+    public static double? HalfWidth(IReadOnlyList<double> a, IReadOnlyList<double> xa, IReadOnlyList<double> b, IReadOnlyList<double> xb)
+    {
+        int k = a.Count;
+        if (k < 2 || xa.Count != k || b.Count != k || xb.Count != k) return null;
+        double sumXa = 0, sumA = 0, sumXb = 0, sumB = 0;
+        for (int i = 0; i < k; i++) { sumXa += xa[i]; sumA += a[i]; sumXb += xb[i]; sumB += b[i]; }
+        if (sumXa <= 0 || sumXb <= 0) return null;
+        double ra = sumA / sumXa, rb = sumB / sumXb, squares = 0;
+        for (int i = 0; i < k; i++)
+        {
+            double term = (a[i] - ra * xa[i]) / sumXa - (b[i] - rb * xb[i]) / sumXb;
+            squares += term * term;
+        }
+        return T(k - 1) * Math.Sqrt(squares / (k - 1) * k);
+    }
+
+    /// <summary>
+    /// Three figures, for the history file: the display writes at most two (± 7.9%), and the halves themselves are
+    /// far less sure than that (with ten parts, about a quarter either way). The share of luck left of a compare keeps
+    /// two (SimParts.Apart): it only scales a half, and is less sure still.
+    /// </summary>
+    public static double? Figures(double? value, int figures = 3)
     {
         if (value is not { } v || !double.IsFinite(v) || v < 0) return null;
-        return v == 0 ? 0 : Math.Round(v, Math.Clamp(2 - (int)Math.Floor(Math.Log10(v)), 0, 15));
+        return v == 0 ? 0 : Math.Round(v, Math.Clamp(figures - 1 - (int)Math.Floor(Math.Log10(v)), 0, 15));
+    }
+
+    /// <summary>
+    /// How far chance alone can lower a share of luck left (SimParts.Apart) measured from <paramref name="parts"/> parts,
+    /// as the factor that takes its low point back to 1. Two fights that met no luck alike have a share of about 1, but
+    /// measured: over k parts its square spreads by 1/√k (half of it is Beta((k − 1)/2, (k − 1)/2) for two fights of equal
+    /// spread, and spreads less for two of unequal spread), and in that model it comes out below 1 − 1.96/√k in one such
+    /// pair in forty. Measured on two models of the parts, with 10 to 64 of them, gold keeps to that. Kills, XP and kill
+    /// time come out low more often where a part holds few kills: in about one pair in fifteen with parts of one kill
+    /// (fights of fewer than 64 kills), one in twenty-five with parts of two (fewer than 128) and one in thirty with parts
+    /// of four. Both fights end at the same tick inside a kill not yet finished, and that last part reads as luck met
+    /// alike. Times this factor, their share lowers the bar in few pairs and by little, so they are coloured by luck about
+    /// as often as by two ranges side by side, within that rule's own noise; a share that the luck they met alike took far
+    /// below 1 still lowers the bar by most of that. Infinity, nothing lowered, below 4 parts.
+    /// </summary>
+    public static double Noise(int parts)
+    {
+        double low = parts > 0 ? 1 - Z975 / Math.Sqrt(parts) : 0;
+        return low > 0 ? 1 / Math.Sqrt(low) : double.PositiveInfinity;
     }
 
     /// <summary>
@@ -313,10 +418,17 @@ static class SimRanges
     /// worse only when the ranges do not overlap, otherwise it could be luck. A result without ranges (a scan made
     /// before them, a number that has none) keeps the rule of before: apart is better or worse.
     /// </summary>
-    public static Verdict Judge(double mine, double theirs, SimRange? myRange, SimRange? theirRange, Better better)
+    public static Verdict Judge(double mine, double theirs, SimRange? myRange, SimRange? theirRange, Better better) =>
+        Judge(mine, theirs, myRange is { } a && theirRange is { } b && a.Overlaps(b), better);
+
+    /// <summary>The same rule for two fights of a compare: it could be luck while the difference is within the reach of luck.</summary>
+    public static Verdict Judge(double mine, double theirs, SimLuck luck, Better better) =>
+        Judge(mine, theirs, Math.Abs(luck.Difference) <= luck.Reach, better);
+
+    static Verdict Judge(double mine, double theirs, bool luck, Better better)
     {
         if (theirs == 0 ? mine == 0 : Math.Abs(mine / theirs - 1) < SameShare) return Verdict.Same;
-        if (myRange is { } a && theirRange is { } b && a.Overlaps(b)) return Verdict.Luck;
+        if (luck) return Verdict.Luck;
         bool more = mine > theirs;
         return better switch
         {
@@ -328,13 +440,128 @@ static class SimRanges
 
     /// <summary>
     /// <see cref="Judge(double, double, SimRange?, SimRange?, Better)"/> for one rate of two results, as "Compared with"
-    /// and two setups side by side use it, by the ranges <see cref="Basis"/> gives.
+    /// and two setups side by side use it: for two fights of a compare by the reach of luck between them
+    /// (<see cref="Apart(SimResult, SimResult, SimRate)"/>), otherwise by the ranges <see cref="Basis"/> gives.
     /// </summary>
     public static Verdict Judge(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better)
     {
-        var (a, b, _) = rate == null ? (null, null, false) : Basis(mine, theirs, rate);
+        if (rate == null) return Judge(myValue, theirValue, null, null, better);
+        if (Apart(mine, theirs, rate) is { } luck) return Judge(myValue, theirValue, luck, better);
+        var (a, b, _) = Basis(mine, theirs, rate);
         return Judge(myValue, theirValue, a, b, better);
     }
+
+    // Worked out once for each pair of results and rate, on the game's thread, as Of does for one result.
+    static readonly ConditionalWeakTable<SimResult, Dictionary<(SimResult Theirs, SimRate Rate), SimLuck?>> s_apart = new();
+
+    /// <summary>
+    /// A rate of two fights of a compare (issue #57), mine less theirs, and the reach of luck between them
+    /// (<see cref="SimLuck.Reach"/>): the two own halves added, the bar of two ranges side by side, times the share of their
+    /// luck that is left in their difference (<see cref="SimApart.Left"/>) raised by its own noise (<see cref="Noise"/>),
+    /// never more than 1. The luck they met alike lowers the bar; with nothing met alike it is lowered so seldom and by so
+    /// little that luck is coloured as often as by the bar of before. Null where the two are judged by their own ranges as
+    /// before (<see cref="Basis"/>): two results that were not fought with the same dice (a scan of one setup, Find
+    /// upgrades, a scan made before), fights that lasted other times (Go on until, From bank) or whose dice could not be
+    /// kept in step to the end, and the rates that Basis does not judge by their own ranges either: a count that some part
+    /// of either had none of, too rare for the parts alone (Garwood's range), and a quantity one of them had none of,
+    /// judged by the counts behind it or as a real 0.
+    /// </summary>
+    public static SimLuck? Apart(SimResult mine, SimResult theirs, SimRate rate)
+    {
+        if (mine.Failed || theirs.Failed || (mine.Spread?.Apart == null && theirs.Spread?.Apart == null)) return null;
+        Dictionary<(SimResult, SimRate), SimLuck?> known = s_apart.GetOrCreateValue(mine);
+        if (known.TryGetValue((theirs, rate), out SimLuck? luck)) return luck;
+        return known[(theirs, rate)] = Reach(mine, theirs, rate);
+    }
+
+    // The rule of Apart, step by step: the first step that fails leaves the two to their own ranges. A development build
+    // notes here which step that was (DevWhy), so that its lines say what decided and cannot drift from the rule.
+    static SimLuck? Reach(SimResult mine, SimResult theirs, SimRate rate)
+    {
+#if DEVTOOLS
+        s_devWhy = "";
+#endif
+        if ((Shared(mine, theirs, rate) ?? Shared(theirs, mine, rate)) is not { } shared)
+        {
+#if DEVTOOLS
+            s_devWhy = SameDice(mine, theirs) ? "NO SHARE OF LUCK FOR THIS NUMBER" : "NOT FOUGHT WITH THE SAME DICE, or not paired";
+#endif
+            return null;
+        }
+        if (Of(mine, rate) is not { } a || Of(theirs, rate) is not { } b)
+        {
+#if DEVTOOLS
+            s_devWhy = "no range";
+#endif
+            return null;
+        }
+        if (IsNone(a) || IsNone(b))
+        {
+#if DEVTOOLS
+            s_devWhy = "one of them had none of it";
+#endif
+            return null;
+        }
+        if (IsCount(rate.Of) && (Sparse(mine, rate.Of) || Sparse(theirs, rate.Of)))
+        {
+#if DEVTOOLS
+            s_devWhy = "a count that some part had none of";
+#endif
+            return null;
+        }
+        // The halves the two own ranges were made of (Range): where those overlap, |a - b| <= ha + hb.
+        if (Stored(mine.Spread!, rate) is not { } ha || Stored(theirs.Spread!, rate) is not { } hb)
+        {
+#if DEVTOOLS
+            s_devWhy = "no half of its own";
+#endif
+            return null;
+        }
+        return new SimLuck(a.Value - b.Value, ha, hb, shared.Share, shared.Parts);
+    }
+
+    // The share of luck left of r's rate against other's and the parts it was measured from, as r keeps them when it ended
+    // after other; null when it keeps none, also quietly in a history file that was damaged or edited by hand, as Of has it.
+    static (double Share, int Parts)? Shared(SimResult r, SimResult other, SimRate rate) =>
+        Entry(r, other) is { Left: { } kept } entry && kept.TryGetValue(rate.Of, out double?[]? shares) && shares != null
+            && shares.Length > (int)rate.Per && shares[(int)rate.Per] is { } share && double.IsFinite(share) && share >= 0
+            ? (share, entry.Parts) : null;
+
+    // The entry r keeps of other when r ended after it (SimEngine.Pair): a fight of the other setup against the same enemy,
+    // told from the rest by its stance and its real time; null when r keeps none.
+    static SimApart? Entry(SimResult r, SimResult other) =>
+        r.Spread?.Apart is { } list && r.SetupKey != other.SetupKey && r.Target.FightKey == other.Target.FightKey
+            ? list.FirstOrDefault(x => x != null && x.Ms == other.RealMilliseconds && x.Stance == other.Target.StanceId) : null;
+
+    /// <summary>Whether two results were fought with the same dice as A and B of one compare, and paired (SimEngine.Pair).</summary>
+    public static bool SameDice(SimResult a, SimResult b) =>
+        !a.Failed && !b.Failed && (Entry(a, b) ?? Entry(b, a)) != null;
+
+    static bool Sparse(SimResult r, string quantity) => r.Spread?.Sparse?.Contains(quantity) == true;
+
+#if DEVTOOLS
+    // Development: the step of Reach that left two results to their own ranges, as its last call on this thread noted it.
+    [ThreadStatic] static string? s_devWhy;
+
+    /// <summary>
+    /// Development: why <see cref="Apart(SimResult, SimResult, SimRate)"/> leaves two results to their own ranges, in the
+    /// words of the step of the rule that did (Reach), for the engine's and the window's verdict lines; "" where it does not.
+    /// </summary>
+    public static string DevWhy(SimResult mine, SimResult theirs, SimRate rate)
+    {
+        Reach(mine, theirs, rate);
+        return s_devWhy ?? "";
+    }
+
+    /// <summary>
+    /// Development: the numbers behind a bar of the same dice (SimLuck), for the engine's and the window's verdict lines:
+    /// the two own halves, the luck left, the share and the parts it was measured from, its noise, and by how much the
+    /// shared dice lowered the bar.
+    /// </summary>
+    public static string DevBar(SimLuck luck, Func<double, string> format) =>
+        $"the own halves {format(luck.HalfA)} + {format(luck.HalfB)} = {format(luck.HalfA + luck.HalfB)} times {luck.Left:0.###} of their luck left " +
+        $"(share {luck.Share:0.###} from {luck.Parts} parts, raised {Noise(luck.Parts):0.###} times for its noise): the shared dice LOWERED THE BAR BY {(1 - luck.Left) * 100:0}%";
+#endif
 
     /// <summary>
     /// The ranges two results' rate is judged by. Most often each one's own. A quantity that was 0 all fight and is no
@@ -422,6 +649,27 @@ static class SimRanges
             >= 0.0095 => percent.ToString("0.##"),
             _ => "<0.01",
         } + "%";
+    }
+
+    // Percent with more figures than it writes, all of them shown: "64.4%" or "64.0%" for "64%", "4.62%" for "4.6%".
+    static string Percent(double share, int more)
+    {
+        double percent = share * 100;
+        int figures = percent switch { >= 9.95 => 0, >= 0.095 => 1, _ => 2 };
+        return percent.ToString("F" + (figures + more)) + "%";
+    }
+
+    /// <summary>
+    /// A lead and its ± (issue #57), both by <see cref="Percent(double)"/>, so that the larger never reads as the same as
+    /// the smaller: where the two come out alike but are not the same number ("A by 64% ± 64%" for a lead of 64.4% over a
+    /// ± of 64.1%), both get one more figure, and two where one is not enough. For Details and "Compared with" alike.
+    /// </summary>
+    internal static (string Lead, string Reach) Percents(double lead, double reach)
+    {
+        string a = Percent(lead), b = Percent(reach);
+        for (int more = 1; more <= 2 && a == b && lead != reach && double.IsFinite(lead) && double.IsFinite(reach); more++)
+            (a, b) = (Percent(lead, more), Percent(reach, more));
+        return (a, b);
     }
 
     /// <summary>A size as the "Go on until" box offers it: "± 2%".</summary>

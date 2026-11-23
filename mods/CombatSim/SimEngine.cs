@@ -132,15 +132,25 @@ sealed class SimEngine
         var waiting = new ConcurrentQueue<SimJob>(jobs);
         workers = Math.Clamp(workers, 1, Math.Max(1, jobs.Count));
         Volatile.Write(ref _shownLogged, 0);
+        lock (_paired) _paired.Clear();
 #if DEVTOOLS
         _musicScan = new MusicScan(_log);
         _devTwins.Clear();
+        _devTakenIn.Clear();
+        _devVerdictsWaiting.Clear();
+        while (_devVerdictsDue.TryDequeue(out _)) { }
         _devReal = new WeakReference<Game>(real);
         // Two scans of the same setup start from the same snapshot only when nothing changed in between.
         _log($"Dev: snapshot {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(save), 0, 8)}, {save.Length:N0} bytes");
         Volatile.Write(ref _devGearLogged, 0);
         Volatile.Write(ref _devStanceLogged, 0);
         Volatile.Write(ref _devStanceMissingLogged, 0);
+        Volatile.Write(ref _devKept, 0);
+        Volatile.Write(ref _devSwitchedOff, 0);
+        Volatile.Write(ref _devSetOnce, 0);
+        Volatile.Write(ref _devNotKept, 0);
+        Volatile.Write(ref _devSameDice, 0);
+        Volatile.Write(ref _devOtherDice, 0);
 #endif
         Task.Run(() =>
         {
@@ -168,6 +178,11 @@ sealed class SimEngine
             catch (Exception e) { _log("The simulation stopped: " + e); }
             finally
             {
+#if DEVTOOLS
+                DevRunDice(cancel.IsCancellationRequested);
+#endif
+                // The parts of the fights of a compare are not needed once every pair is made.
+                lock (_paired) _paired.Clear();
 #if DEVTOOLS
                 _musicScan.Finish();
                 long before = GC.GetTotalMemory(false);
@@ -259,6 +274,9 @@ sealed class SimEngine
         var result = new SimResult { Target = target, SetupKey = options.SetupKey, SetupLabel = options.SetupLabel };
         var clock = Stopwatch.StartNew();
         Game? sim = null;
+        // The dice kept in step, and the fight's parts, which a fight of a compare keeps for the range of its difference.
+        SimDice.InStep? step = null;
+        SimParts? parts = null;
         try
         {
             // A Game cannot take a save twice, so every fight gets a copy of its own (about a second).
@@ -268,14 +286,15 @@ sealed class SimEngine
 #endif
             sim.LoadForSave();
             using (var stream = new MemoryStream(save)) LoadState(stream, sim);
-            // The fight's own dice, or another fight's kept in step (Find upgrades: the setup as it is).
+            // The fight's own dice, or another key's kept in step (Find upgrades: the setup as it is; Compare: the fight's,
+            // the same for A and B).
             string diceKey = options.Dice ?? result.Key;
             SimDice.Set(sim, diceKey, _log);
-            SimDice.InStep? step = options.Dice != null ? SimDice.Keep(sim, diceKey, _log) : null;
+            step = options.Dice != null ? SimDice.Keep(sim, diceKey, _log) : null;
 #if DEVTOOLS
             SimDice.DevCheck? dice = SimDice.DevBefore(sim, _devReal != null && _devReal.TryGetTarget(out Game? real) ? real : null, diceKey, _log, result.Key);
 #endif
-            Fight(sim, target, options, result, step, cancel);
+            parts = Fight(sim, target, options, result, step, cancel);
 #if DEVTOOLS
             dice?.After(step);
 #endif
@@ -302,39 +321,241 @@ sealed class SimEngine
             result.RealMilliseconds = clock.Elapsed.TotalMilliseconds;
         }
 #if DEVTOOLS
+        // Counted once the fight is over: dice in step that switched off on the way did not keep it in step.
+        if (step is { Off: false }) Interlocked.Increment(ref _devKept);
+        else if (step != null) Interlocked.Increment(ref _devSwitchedOff);
+        else if (options.Dice != null) Interlocked.Increment(ref _devNotKept);
+        else Interlocked.Increment(ref _devSetOnce);
+#endif
+        if (options.Side != null && !cancel.IsCancellationRequested) Pair(result, options, parts?.Kept, step);
+#if DEVTOOLS
         if (!cancel.IsCancellationRequested) DevTwin(result);
 #endif
         return result;
     }
 
+    // Compare (issue #57): the fights of this run with the dice of one enemy, by that key, until the run is over. Each with
+    // its side and its parts (plain numbers, nothing of the copy) when its dice stayed in step to its end.
+    readonly Dictionary<string, List<Paired>> _paired = new();
+
+    sealed record Paired(SimResult Result, string Side, string Dice, SimParts.Record? Parts)
+    {
+#if DEVTOOLS
+        // Development: whether its dice were kept in step, switched off on the way, and for how many ticks they were set.
+        public bool DevInStep { get; init; }
+        public bool DevOff { get; init; }
+        public long DevSet { get; init; }
+#endif
+    }
+
+    int _pairLogged;
+
+    // A fight of a compare is over: it is paired with every fight of the other setup with the same dice that ended before
+    // it, and keeps how much of their luck is left in the difference of their rates (SimSpread.Apart, SimParts.Apart) when
+    // both stayed in step to their end. The list is made whole before it is put on the result, which is not in Finished
+    // yet: the game's thread reads it only after that. Of the earlier result only what never changes is read. Whatever goes
+    // wrong here costs the pair its share of luck (A and B are then judged by their own ranges) and one line in the log,
+    // never the fight.
+    void Pair(SimResult result, SimOptions options, SimParts.Record? parts, SimDice.InStep? step)
+    {
+        try
+        {
+            string dice = options.Dice ?? result.Key;
+            var mine = new Paired(result, options.Side!, dice, step is { Off: false } ? parts : null)
+            {
+#if DEVTOOLS
+                DevInStep = step != null, DevOff = step?.Off == true, DevSet = step?.Count ?? 0,
+#endif
+            };
+            List<Paired> before;
+            lock (_paired)
+            {
+                if (!_paired.TryGetValue(dice, out List<Paired>? list)) _paired[dice] = list = new();
+                before = list.Where(p => p.Side != mine.Side).ToList();
+                list.Add(mine);
+            }
+            List<SimApart>? apart = null;
+            foreach (Paired other in before)
+            {
+                var left = !result.Failed && !other.Result.Failed && mine.Parts != null && other.Parts != null
+                    ? SimParts.Apart(mine.Parts, other.Parts) : null;
+                if (left is { } l)
+                    (apart ??= new()).Add(new SimApart { Stance = other.Result.Target.StanceId, Ms = other.Result.RealMilliseconds, Parts = l.Parts, Left = l.Left });
+#if DEVTOOLS
+                DevPair(mine, other, left, options.Watch);
+#endif
+            }
+            if (apart != null && result.Spread != null) result.Spread.Apart = apart;
+        }
+        catch (Exception e)
+        {
+            if (Interlocked.Exchange(ref _pairLogged, 1) == 0)
+                _log("The luck that A and B shared could not be worked out: " + e.Message +
+                     ". Their fights are judged by their own ranges, as two setups side by side.");
+        }
+    }
+
 #if DEVTOOLS
     // Development: every result in one line, and a fight that was asked for twice in one run side by side (the
-    // "twice=" request of CombatSimMod), to see that the same setup gives the same numbers.
-    readonly ConcurrentDictionary<string, string> _devTwins = new();
+    // "twice=" request of CombatSimMod), to see that the same setup gives the same numbers; so is A's fight beside
+    // B's in the twin of Compare (compare=twin), where B is A under another key.
+    readonly ConcurrentDictionary<string, (string Line, bool Twin)> _devTwins = new();
     // The game that is played, to tell that a copy's dice are its own.
     WeakReference<Game>? _devReal;
 
+    /// <summary>Development: what B's setup key ends in when B is A under another key (compare=twin, SimCompare.cs).</summary>
+    public const string DevTwinKey = "|twin";
+
     void DevTwin(SimResult result)
     {
-        string xp = string.Join(" ", result.Xp.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key.Replace("MelvorBase:", "")}={x.Value:0.##}"));
-        string line = $"{SimText.Clock(result.Hours * 3600)}, kills {result.Kills}, deaths {result.Deaths}, runs {result.DungeonRuns}, food {result.FoodEaten}, " +
-                      $"damage {result.DamageTaken}, healed {result.Healed}, lowest {result.LowestHp}, xp {xp}, gold {result.GoldPerHour * result.Hours:0.##}, " +
-                      $"loot {string.Join(" ", result.Loot.Select(l => $"{l.Id.Replace("MelvorBase:", "")}={l.Quantity:0.##}"))}, used {string.Join(" ", result.Used.Select(u => $"{u.Id.Replace("MelvorBase:", "")}={u.Quantity:0.##}"))}" +
-                      (result.Failed ? ", failed: " + result.Note : "");
+        // Every number a result keeps, each exactly: the time in ticks, what the columns, Details and the enemy's card show
+        // (the first death, when the food ran out, the hitpoints, the enemy's biggest hit, the auto-eat point, the stance
+        // read back, the card's setup code), the ranges (SimSpread, without the share of luck left, which only the fight
+        // of a compare that ended last keeps) and the note. Not the real time it took, nor the setup's name.
+        static string Exact(double? v) => v is { } x ? x.ToString("R") : "-";
+        string xp = string.Join(" ", result.Xp.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{x.Key.Replace("MelvorBase:", "")}={x.Value:R}"));
+        string ranges = result.Spread is not { } s ? "none"
+            : string.Join(" ", (s.Half ?? new()).OrderBy(h => h.Key, StringComparer.Ordinal).Select(h => $"{h.Key}={string.Join("/", h.Value.Select(Exact))}")) +
+              $"; sparse {string.Join(" ", s.Sparse ?? new())}; items {string.Join(" ", (s.Items ?? new()).Select(Exact))}; hits {s.Hits}";
+        string line = $"{Math.Round(result.Hours * 3600 * TicksPerSecond):0} ticks ({SimText.Clock(result.Hours * 3600)}), kills {result.Kills}, deaths {result.Deaths}, " +
+                      $"first death {Exact(result.FirstDeathSeconds)}, runs {result.DungeonRuns}, food {result.FoodEaten}, food gone {Exact(result.FoodGoneSeconds)} at {result.FoodGoneKills} kills, " +
+                      $"damage {result.DamageTaken}, healed {result.Healed}, lowest {result.LowestHp} of {result.MaxHp}, enemy's biggest hit {result.MaxEnemyHit?.ToString() ?? "-"}, " +
+                      $"auto eat {Exact(result.AutoEatHp)}, stance {result.StanceId ?? "-"} '{result.Stance ?? "-"}'{(result.StanceChosen ? " chosen" : "")}" +
+                      $"{(result.StanceMissing != null ? " missing " + result.StanceMissing : "")}, setup {result.Setup ?? "-"}, xp {xp}, gold {result.GoldPerHour * result.Hours:R}, " +
+                      $"loot {string.Join(" ", result.Loot.Select(l => $"{l.Id.Replace("MelvorBase:", "")}={l.Quantity:R}"))}, used {string.Join(" ", result.Used.Select(u => $"{u.Id.Replace("MelvorBase:", "")}={u.Quantity:R}"))}, " +
+                      $"runes {Exact(result.RunesUsed)}, ammo {Exact(result.AmmoUsed)}, prayer points {Exact(result.PrayerPointsUsed)}; ranges {ranges}; " +
+                      (result.Failed ? "failed: " : "note: ") + result.Note.Or("none");
         _log($"Dev: result {result.Key}: {line}");
-        if (_devTwins.TryAdd(result.Key, line)) return;
-        string first = _devTwins[result.Key];
-        _log(first == line
+        // B of the twin is put beside A's result, whose key it has without the ending.
+        bool twin = result.SetupKey.EndsWith(DevTwinKey, StringComparison.Ordinal);
+        string key = twin ? SimResult.MakeKey(result.SetupKey[..^DevTwinKey.Length], result.Target.Key) : result.Key;
+        if (_devTwins.TryAdd(key, (line, twin))) return;
+        var first = _devTwins[key];
+        string name = $"{result.Target.Name} {result.Target.StanceName}".TrimEnd();
+        if (twin || first.Twin)
+        {
+            string a = twin ? first.Line : line, b = twin ? line : first.Line;
+            _log(a == b
+                ? $"Dev: twin: {name}: A and the same setup as B, with the dice of Compare: THE SAME NUMBERS, every number of the result line exactly."
+                : $"Dev: twin: {name}: A and the same setup as B, with the dice of Compare: DIFFERENT.\n  A: {a}\n  B: {b}");
+            return;
+        }
+        _log(first.Line == line
             ? $"Dev: the same fight twice, {result.Target.Name} {result.Target.StanceName}: the same numbers both times."
-            : $"Dev: the same fight twice, {result.Target.Name} {result.Target.StanceName}: DIFFERENT.\n  first:  {first}\n  second: {line}");
+            : $"Dev: the same fight twice, {result.Target.Name} {result.Target.StanceName}: DIFFERENT.\n  first:  {first.Line}\n  second: {line}");
+    }
+
+    // Development: how the dice of the fights of a run were set (RunOne), counted as the fights end; and the pairs of a
+    // compare by the dice they really had (DevPair).
+    int _devKept, _devSwitchedOff, _devSetOnce, _devNotKept, _devSameDice, _devOtherDice;
+
+    // At the end of every run, one line: UNCHANGED when every fight had its dice set once from its own key, as a run of one
+    // setup always had them; CHANGED when any was kept in step from another key (Compare, Find upgrades), or should have been.
+    // Before it, a line for every fight of a compare whose other setup had no fight with its dice.
+    void DevRunDice(bool cancelled)
+    {
+        if (!cancelled)
+            lock (_paired)
+                foreach (List<Paired> fight in _paired.Values.Where(list => list.Select(p => p.Side).Distinct().Count() == 1))
+                {
+                    Interlocked.Increment(ref _devOtherDice);
+                    _log($"Dev: compare dice: {fight[0].Result.Target.Name} [{fight[0].Result.Target.FightKey}]: {fight.Count} of {fight[0].Side}'s fights with the dice of " +
+                         $"{fight[0].Dice} and NO FIGHT OF THE OTHER SETUP: OTHER DICE");
+                }
+        int kept = Volatile.Read(ref _devKept), off = Volatile.Read(ref _devSwitchedOff), once = Volatile.Read(ref _devSetOnce), notKept = Volatile.Read(ref _devNotKept);
+        int same = Volatile.Read(ref _devSameDice), other = Volatile.Read(ref _devOtherDice);
+        _log($"Dev: dice in this run: {kept} {(kept == 1 ? "fight" : "fights")} kept in step to their end, {once} with their dice set once from their own key" +
+             (off > 0 ? $", {off} whose dice in step SWITCHED OFF on the way" : "") +
+             (notKept > 0 ? $", {notKept} with the dice of another key set once only, as they COULD NOT BE KEPT IN STEP" : "") +
+             $" (of {kept + off + once + notKept} fights){(same + other > 0 ? $"; pairs of a compare: {same} with the same dice, {other} with other dice" : "")}" +
+             $": {(kept + off + notKept == 0 ? "UNCHANGED" : "CHANGED")}");
+    }
+
+    // Development: a pair of fights of a compare, once both are over (Pair), on the thread of the one that ended last: the
+    // dice each really had (the key they were set from, its seed, SimDice.SeedOf, and whether they stayed in step to the end
+    // of the fight), SAME DICE only when both had the same key and both stayed in step, and how their parts were cut for the
+    // share of luck left (SimParts.Apart, DevCut). Only what never changes once a fight is over is read here; the verdicts
+    // wait for the game's thread (DevTakenIn).
+    void DevPair(Paired mine, Paired other, (Dictionary<string, double?[]> Left, int Parts)? left, List<SimRate> watch)
+    {
+        Paired a = mine.Side == "A" ? mine : other, b = mine.Side == "A" ? other : mine;
+        static string Dice(Paired p) => $"{p.Side} {p.Result.Key} from {p.Dice} (seed {SimDice.SeedOf(p.Dice):x16}), " +
+            (!p.DevInStep ? "NOT KEPT IN STEP" : p.DevOff ? $"kept in step until it SWITCHED OFF after {p.DevSet:N0} ticks" : $"kept in step to the end, {p.DevSet:N0} ticks") +
+            (p.Result.Failed ? ", FAILED" : "");
+        bool same = a.Dice == b.Dice && a.DevInStep && !a.DevOff && b.DevInStep && !b.DevOff && !a.Result.Failed && !b.Result.Failed;
+        if (same) Interlocked.Increment(ref _devSameDice); else Interlocked.Increment(ref _devOtherDice);
+        string cut = a.Parts != null && b.Parts != null ? SimParts.DevCut(a.Parts, b.Parts)
+            : $"NOT CUT: the parts of A {(a.Parts == null ? "were not kept" : "were kept")}, of B {(b.Parts == null ? "were not kept" : "were kept")}";
+        _log($"Dev: compare dice: {DevPairName(a.Result, b.Result)}: {Dice(a)}; {Dice(b)}: {(same ? "SAME DICE" : "OTHER DICE")}; " +
+             (left is { } l ? $"the share of luck left worked out for {l.Left.Count} quantities from {l.Parts} parts (raised {SimRanges.Noise(l.Parts):0.###} " +
+                              $"times for its noise, SimRanges.Noise), kept with {mine.Side}'s result; "
+                 : "NO SHARE OF LUCK, so they are judged by their own ranges; ") + cut);
+        if (!a.Result.Failed && !b.Result.Failed) _devVerdictsDue.Enqueue((a.Result, b.Result, watch));
+    }
+
+    static string DevPairName(SimResult a, SimResult b) => $"{a.Target.Name} [{a.Target.FightKey}]" +
+        (a.Target.StanceName + b.Target.StanceName != "" ? $" ({a.Target.StanceName.Or("-")} / {b.Target.StanceName.Or("-")})" : "");
+
+    // Development: the pairs of a compare whose verdict lines are due (DevPair), and the results the game's thread has taken
+    // in from Finished. A pair's lines are written once both of its results are taken in: by then neither fight's thread
+    // writes to them, and the ranges are read on the game's thread, where the window reads them.
+    readonly ConcurrentQueue<(SimResult A, SimResult B, List<SimRate> Watch)> _devVerdictsDue = new();
+    readonly List<(SimResult A, SimResult B, List<SimRate> Watch)> _devVerdictsWaiting = new();
+    readonly HashSet<SimResult> _devTakenIn = new();
+
+    /// <summary>Development: the mod took in this result from <see cref="Finished"/>, on the game's thread (CombatSimMod.Pump).</summary>
+    public void DevTakenIn(SimResult result)
+    {
+        _devTakenIn.Add(result);
+        while (_devVerdictsDue.TryDequeue(out var due)) _devVerdictsWaiting.Add(due);
+        var ready = _devVerdictsWaiting.Where(p => _devTakenIn.Contains(p.A) && _devTakenIn.Contains(p.B)).ToList();
+        _devVerdictsWaiting.RemoveAll(ready.Contains);
+        foreach (var (a, b, watch) in ready) DevVerdicts(a, b, watch);
+    }
+
+    // Development: a line for every number of a pair of a compare that the list's columns (SimOptions.Watch) and Details
+    // judge: each one's number and own range, the verdict by the two own ranges side by side (BEFORE issue #57) and the one
+    // the window shows (AFTER), and which rule decided. RULE SAME DICE: the difference against the bar, the two own halves
+    // added times the share of their luck left raised by its noise (SimRanges.Apart, SimLuck), and by how much the shared
+    // dice lowered the bar; RULE AS BEFORE: why (SimRanges.DevWhy), and the two ranges. Better.Neither: SAME, LUCK or APART,
+    // whichever way is better.
+    void DevVerdicts(SimResult a, SimResult b, List<SimRate> watch)
+    {
+        string name = DevPairName(a, b);
+        static string F(double v) => v.ToString("0.###");
+        static string Word(Verdict v) => v switch { Verdict.Same => "SAME", Verdict.Luck => "LUCK", _ => "APART" };
+        var details = new[]
+        {
+            SimRate.PerHour(SimRanges.Kills), SimRate.PerHour(SimRanges.Xp), SimRate.PerHour(SimRanges.Gold), SimRate.PerHour(SimRanges.Deaths),
+            SimRate.PerHour(SimRanges.Damage), SimRate.PerHour(SimRanges.Healed), SimRate.PerKill(SimRanges.Food),
+        };
+        var rates = watch.Concat(details)
+            .Concat(a.Xp.Keys.Union(b.Xp.Keys).Order(StringComparer.Ordinal).Select(id => SimRate.PerHour(SimRanges.XpOf(id)))).Distinct();
+        foreach (SimRate rate in rates)
+        {
+            if (SimRanges.Of(a, rate) is not { } ra || SimRanges.Of(b, rate) is not { } rb) continue;
+            var (oa, ob, _) = SimRanges.Basis(a, b, rate);
+            Verdict before = SimRanges.Judge(ra.Value, rb.Value, oa, ob, Better.Neither);
+            Verdict after = SimRanges.Judge(a, b, rate, ra.Value, rb.Value, Better.Neither);
+            double d = Math.Abs(ra.Value - rb.Value);
+            string how;
+            if (SimRanges.Apart(a, b, rate) is { } luck)
+                how = $"RULE SAME DICE: |d| {F(d)} against a bar of {F(luck.Reach)}, {SimRanges.DevBar(luck, F)}";
+            else
+                how = $"RULE AS BEFORE ({SimRanges.DevWhy(a, b, rate)}): " +
+                      (oa is { } x && ob is { } y ? $"|d| {F(d)}, the two ranges {F(x.Low)} to {F(x.High)} and {F(y.Low)} to {F(y.High)}" : "no two ranges");
+            _log($"Dev: verdict: {name}: {$"{rate.Of} per {rate.Per}".ToLowerInvariant()}: A {F(ra.Value)} {SimRanges.Text(ra, F) ?? "(no range)"}, " +
+                 $"B {F(rb.Value)} {SimRanges.Text(rb, F) ?? "(no range)"}: BEFORE {Word(before)}, AFTER {Word(after)}; {how}");
+        }
     }
 #endif
 
-    void Fight(Game sim, SimTarget target, SimOptions options, SimResult result, SimDice.InStep? step, CancellationToken cancel)
+    // The fight; its parts, for the luck A and B of a compare shared (SimParts.Kept), or null when it never got that far.
+    SimParts? Fight(Game sim, SimTarget target, SimOptions options, SimResult result, SimDice.InStep? step, CancellationToken cancel)
     {
         if (!sim.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? ce) || ce is not CombatEntity combat ||
             !sim.Entities.TryGetObjectById("MelvorBase:Bank", out GameEntity? be) || be is not BankEntity bank)
-        { result.Failed = true; result.Note = "The copy has no combat or bank."; return; }
+        { result.Failed = true; result.Note = "The copy has no combat or bank."; return null; }
 
         // Development: a build with MUSIC_BASELINE leaves the handler on, to measure what it did (MusicScan).
 #if !(DEVTOOLS && MUSIC_BASELINE)
@@ -343,7 +564,7 @@ sealed class SimEngine
         BaseCombatArea? area = combat.Areas.ActiveAreas.Keys.FirstOrDefault(a => a.Id == target.AreaId);
         Enemy? enemy = target.EnemyId == null ? null : (area as CombatArea)?.Enemies.FirstOrDefault(x => x.Id == target.EnemyId);
         if (area == null || (target.EnemyId != null && enemy == null) || (target.EnemyId == null && area is not Dungeon))
-        { result.Failed = true; result.Note = "This fight does not exist in the copy."; return; }
+        { result.Failed = true; result.Note = "This fight does not exist in the copy."; return null; }
 
         // Start from a clean slate: nothing running, the chosen equipment on, full health.
         sim.ActionManager.TryStopActive(true);
@@ -480,7 +701,7 @@ sealed class SimEngine
             return sim.ActionManager.HasActiveAction;
         }
 
-        if (!Begin()) { result.Failed = true; result.Note = "The fight could not be started (requirements not met?)."; return; }
+        if (!Begin()) { result.Failed = true; result.Note = "The fight could not be started (requirements not met?)."; return null; }
         if (notes.Count > 0) result.Note = string.Join(" ", notes);
 #if DEVTOOLS
         string devGear = DevGear(sim, combat, options, result, null);
@@ -493,10 +714,14 @@ sealed class SimEngine
         long limit = options.Sure > 0 && options.UnlimitedSupplies ? Math.Max(total, (long)(options.MostHours * 3600 * TicksPerSecond)) : total;
         var parts = new SimParts(sim, combat, result, options, total, CheckEvery, xpBefore, loot, used, () => ammoUsed, _log);
         int deathsSeen = 0, restarts = 0;
+        // A fight of a compare notes its totals at its kills (SimParts.Killed), to be cut at the same kills as the other's.
+        bool marking = options.Side != null;
+        int marked = 0;
         for (; ticks < limit; ticks++)
         {
             step?.Roll(result.Kills, result.Deaths, ticks - stepFrom);
             sim.PropagateTick();
+            if (marking && result.Kills != marked) parts.Killed(ticks, marked = result.Kills);
             if (ticks % CheckEvery != 0) continue;
 #if DEVTOOLS
             if (ticks == CheckEvery) DevGear(sim, combat, options, result, devGear);
@@ -560,6 +785,7 @@ sealed class SimEngine
         {
             if (Interlocked.Exchange(ref _rangesLogged, 1) == 0) _log("The ranges of a fight could not be worked out: " + e.Message);
         }
+        return parts;
     }
 
     int _rangesLogged;

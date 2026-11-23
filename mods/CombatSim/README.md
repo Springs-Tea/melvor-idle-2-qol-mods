@@ -133,7 +133,11 @@ The **Details** of a line, from top to bottom:
   and any XP in it is better. A number for which neither is better (Healed, Items, Sim time) has no colour.
   The columns in which the two setups are less than half a percent apart share one line at the end,
   **The same: ...**, and a number one of them does not have (`-`) is left out. A scan made before the ranges
-  were counted is compared as before: half a percent apart or more is better or worse.
+  were counted is compared as before: half a percent apart or more is better or worse. A and B of one
+  compare are judged as in Compare, with the luck they met alike taken off the bar, and the small line says
+  how far luck could move the change, both written alike: **± 18%** under **+22%**, **could be luck, ± 4.7%**
+  under **+4.6%**, and with one more figure where the two would read the same, **± 64.1%** under **+64.4%**
+  ([The same dice](#the-same-dice)).
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
@@ -300,8 +304,9 @@ selected for that weapon, as before: it says which, **As now: Accurate**, when t
 wear with a weapon of the kind you hold, and **As the game has it** otherwise (another loadout keeps a stance
 of its own). Choosing a stance makes it a setup of its own, as a spell does: "With: Loadout 1, Defensive
 stance" above the list, and Details compares it with the other stances you simulated. Choosing the stance you
-are in already is a setup of its own too, with its own luck: Details then says which of the two was chosen and
-which was as the game has it. Swap in a weapon of another kind, a bow for a sword, and the box offers the
+are in already is a setup of its own too, with its own luck (in [Compare](#comparing-two-setups) the two meet
+the same dice and come out the same): Details then says which of the two was chosen and which was as the game
+has it. Swap in a weapon of another kind, a bow for a sword, and the box offers the
 bow's stances; a stance the new weapon does not have goes back to the first choice. A weapon with a single
 stance has no box, and neither has Best for, which tries every stance.
 
@@ -328,25 +333,25 @@ slot to swap an item in, or choose another spell, or in Fights another stance. E
 stance, of its own weapon; Best for tries every stance of both. Press A to see A again. Put the pointer on A
 or B for the whole name of its setup.
 
-One press of **Simulate** runs every fight with A and with B, from the same moment of your character. The line
-above Simulate says how many fights that is for the two together and about how long it takes. While A and B
-are still the same setup, it says **A and B are the same setup**: the list says what to do, and Simulate
-waits until you change one of them.
+One press of **Simulate** runs every fight with A and with B, from the same moment of your character and with
+the same dice (see [The same dice](#the-same-dice) below). The line above Simulate says how many fights that
+is for the two together and about how long it takes. While A and B are still the same setup, it says **A and
+B are the same setup**: the list says what to do, and Simulate waits until you change one of them.
 
-![Compare in Fights: Warrior (A) against Mage (B), the better side and both numbers under each column, the count above the list, Details side by side](../../docs/img/combat-simulator-compare-fights.png)
+![Compare in Fights: Warrior (A) against Hunter (B), the better side and both numbers under each column, the count above the list, Details side by side](../../docs/img/combat-simulator-compare-fights.png)
 
 The list has one line per fight, and every column you chose is three cells. The first, under the column's
 name, says which setup is better and by how much: **A by 23%** means A's number is 23% better than B's, so 23%
 more XP, or for food, food per kill and deaths, 23% less. From twice as much up it says how many times:
-**A ×4**. Then come the numbers with **A** and with **B**, the better one green and the worse red, by the rule
-"Compared with" goes by: where the two 95% ranges overlap, both are grey and so are the words before them,
-because it could be luck. **the same** is less than half a percent apart. Low HP, Safe, First death, Net gold
-and Best drop say only which is better, and so does a number against 0. Neither is better for Healed, Items
-and Sim time: there the first cell says which setup has more, **A +12%**. A `-` means that setup has no result
-or no number for the fight. The three cells of a column move sideways together, and are in sight together.
-Put the pointer on a line for the stance each setup fought in and the 95% ranges of both. Details names each
-setup's stance under its name, with *as the game has it* when both fought in the same stance but only one of
-them chose it.
+**A ×4**. Then come the numbers with **A** and with **B**, the better one green and the worse red; where the
+difference could be luck, both are grey and so are the words before them. **the same** is less than half a
+percent apart. Low HP, Safe, First death, Net gold and Best drop say only which is better, and so does a
+number against 0. Neither is better for Healed, Items and Sim time: there the first cell says which setup has
+more, **A +12%**. A `-` means that setup has no result or no number for the fight. The three cells of a column
+move sideways together, and are in sight together. Put the pointer on a line for the stance each setup fought
+in, the 95% ranges of both and, where the same dice decide, each lead with its ±. Details names each setup's
+stance under its name, with *as the game has it* when both fought in the same stance but only one of them
+chose it.
 
 Click a column's name to put the fights where the choice matters most on top: those where one setup is
 clearly better, the furthest apart first, then those that could be luck, then those that are the same. Click
@@ -364,8 +369,15 @@ name keeps the room it has in Fights; the pointer on a line, and Details, name t
 **Details** shows the selected fight with both setups side by side: kills, combat XP and gold per hour, the
 XP of each skill, deaths, the lowest hitpoints, damage taken, healing, food per kill, and what each setup
 used. Under a number, which is better and by how much, in the words of the list, and the 95% range of each
-setup. For the loot item by item, untick Compare: the list then shows the setup on the left alone, and its
-numbers are still there.
+setup; where the same dice decide, the lead with how far luck could move it instead, **A by 48% ± 47%**. For
+the loot item by item, untick Compare: the list then shows the setup on the left alone, with its numbers from
+the compare, which move a little when you simulate it alone.
+
+<p>
+  <img src="../../docs/img/combat-simulator-same-dice.png" alt="Details of Warrior against Hunter: A by 63% ± 36% under a green and a red number" width="274">
+  &nbsp;
+  <img src="../../docs/img/combat-simulator-same-dice-luck.png" alt="Details of Crush against Block: A by 22% ± 32%, could be luck, under two grey numbers" width="274">
+</p>
 
 **Fight** is for the setup on the left: its stance, and with **Wear this setup first** ticked, its
 equipment. The text above Fight starts with *Fight is for setup A, the one on the left.* To fight with B,
@@ -374,6 +386,26 @@ the button would be.
 
 A and B are kept until you close the game or open another character; Compare starts unticked then. A scan of
 two setups goes into History as **A against B: ...**, with both setups named.
+
+### The same dice
+
+A and B are fought with the same dice, kept in step all fight the way
+[Find upgrades](#what-to-get-next-find-upgrades) does it: the first, second, third enemy meets the same rolls
+with A and with B. Luck they meet alike cannot put one ahead of the other, so it is taken off the bar. A
+number is green or red when the difference is larger than the two 95% ranges laid side by side would allow,
+less the share of the luck that A and B met alike. That share is measured from the two fights at the same
+kills, and could itself come out a little low by chance, so only what is beyond that chance is taken off: two
+setups that meet no luck alike are coloured by luck about as often as two ranges side by side. Details
+writes the bar as the lead and its ±, **A by 48% ± 47%**: green and red exactly when the lead is larger than
+its ±. Where the two would read the same, both get one more figure: **A by 64.4% ± 64.1%**. The more alike
+the two fight, the more luck they share: two helmets, or one weapon in two stances, share much of it;
+Warrior and Mage, who attack at other speeds, share almost none. Each one's own range is still in the
+line's tooltip.
+
+Judged as before, by the two own ranges side by side: a count that did not come in every part of either
+fight, like a death or two; a number one of them had none of; fights that ended at different times (Go on
+until, or From bank when the supplies ran out); fights whose dice could not be kept in step; and scans made
+before this.
 
 ## What to get next: "Find upgrades"
 
@@ -585,8 +617,9 @@ Fight does what it does unticked. It can always be ticked and unticked.
   Simulate. The fights where the choice matters most are on top, and the line above the list counts the
   fights each setup wins.
 - **Is it really better, or was that luck?** "Compared with" is green or red only when the two ranges do not
-  overlap, and grey with "could be luck" when they do. Go on until ± 2% sure narrows the ranges where it is
-  close.
+  overlap, and grey with "could be luck" when they do; between A and B of one compare, only when the change is
+  larger than its ±. Go on until ± 2% sure narrows the ranges where it is close. Compare fights both setups
+  with the same dice, which takes the luck they meet alike off the bar.
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
   at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
   was. Columns > Idle puts Safe, the deaths, the first death and the enemy's biggest hit side by side for
@@ -651,13 +684,15 @@ Look at Loot in Details for what the gold is made of, and simulate such an enemy
 
 The dice of each fight are set from the fight and the setup. Press Simulate again with nothing changed and you
 get the very same numbers. [Find upgrades](#what-to-get-next-find-upgrades) gives every item it tries the dice
-of the setup as it is instead, so that each is fought with the same luck.
+of the setup as it is instead, so that each is fought with the same luck, and [Compare](#the-same-dice) gives
+A and B the dice of the fight alone: a setup's numbers there can differ a little from its numbers alone.
 
 Your character counts as part of "nothing changed": the copy is your character at the moment you press
 Simulate. Its XP decides when a level comes during the simulated time, its slayer task when that task ends,
 and its potions how long they last. While you fight or train, these move on, so a scan a minute later can
 come out a little different: a few XP or a kill, and more for the enemy of your slayer task. The ranges are
-about luck and do not cover such changes. To compare two setups, simulate them one right after the other.
+about luck and do not cover such changes. To compare two setups, use [Compare](#comparing-two-setups): it runs
+both from the same moment.
 
 ### Go on until
 
