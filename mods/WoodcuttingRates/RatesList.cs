@@ -29,23 +29,15 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     /// <summary>
     /// The columns, left to right: the issue's (#71), with Mining Rates' names and widths where they mean the same.
     /// Mastery XP is not a column: Woodcutting in this game keeps no mastery XP per action by the game's names (its
-    /// Mastery Guild, WoodcuttingEntity.MasteryGuild, counts ranks, points and tasks). The time of a log, the logs and the
-    /// gold rest on the rules that are settled (TreeRates.LogsRule, HitsRule): the Logs column's tip quotes the game's
-    /// words for them once they are what they rest on; while they are not, those columns are "-" and the note under the
-    /// list says why, once (the review of turn 1). A tip's line is never longer than Fishing Rates' longest (82
-    /// characters): Godot's tooltip does not wrap.
+    /// Mastery Guild, WoodcuttingEntity.MasteryGuild, counts ranks, points and tasks). The time of a log, the logs, the XP
+    /// and the gold rest on the rules that are settled (TreeRates.LogsRule, HitsRule, XpRule): the Logs and XP columns'
+    /// tips say what backs them, what was measured and the game's words they rest on; while a rule is not settled, what
+    /// rests on it is "-" and the note under the list says why, once (the review of turn 1). A tip's line is never longer
+    /// than Fishing Rates' longest (82 characters): Godot's tooltip does not wrap.
     /// </summary>
     public static List<RateColumn> For()
     {
-        // The game's own words, quoted whole, when they are what a rule rests on (Mining Rates' Ore column).
         var logs = new List<string> { "The tree's logs per hour" };
-        void Rule<T>(Settled<T>? rule, string what)
-        {
-            if (rule == null) return;
-            bool quoted = rule.Source == RuleSource.GameWords && rule.Quote.Length > 0;
-            logs.Add($"{what}: {Words.How(rule.Source)}{(quoted ? ", in the game's words:" : "")}");
-            if (quoted) logs.AddRange(rule.Quote.Split('\n').Select(line => $"\"{line}\""));
-        }
         // What the logs come with, in the card's own words: the heading of the list that holds them.
         if (TreeRates.LogsRule is { } with)
         {
@@ -53,17 +45,52 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
             logs.Add($"With {each}, " + (with.Source == RuleSource.GameWords && with.Quote.Length > 0
                 ? $"as the tree's card lists them under \"{with.Quote}\"" : "by a rule measured in the game"));
         }
-        if (TreeRates.LogsRule?.Reading != LogsWith.EveryHit) Rule(TreeRates.HitsRule, "The hits a cut takes");
+        if (TreeRates.LogsRule?.Reading != LogsWith.EveryHit) logs.AddRange(HitsTip());
         return
         [
             new("time", "Time", "Seconds for one log: an hour over the logs of an hour", 58,
                 t => t.HasTime ? t.SecondsPerLog : null, Words.Seconds, Better.Less),
             new("logs", "Logs", string.Join("\n", logs), 66, t => t.HasTime ? t.LogsPerHour : null, Words.Number, Better.More),
-            new("xp", "XP", "Woodcutting XP per hour: the XP of a hit, on every hit", 66,
-                t => t.HasTime ? t.XpPerHour : null, Words.Number, Better.More),
+            new("xp", "XP", string.Join("\n", XpTip()), 66, t => t.HasTime ? t.XpPerHour : null, Words.Number, Better.More),
             new("gold", "Gold", "What the logs and the other items of an hour sell for", 66,
                 t => t.HasTime ? t.GoldPerHour : null, Words.Number, Better.More),
         ];
+    }
+
+    // How much a hit takes, so the hits a cut takes: what backs it, what was measured, and the card's words quoted whole
+    // for the parts no watch has seen (Mining Rates' Ore column quotes the game's words its rule rests on).
+    static IEnumerable<string> HitsTip()
+    {
+        if (TreeRates.HitsRule is not { } rule) yield break;
+        bool quoted = rule.Quote.Length > 0;
+        if (rule.Source == RuleSource.GameWords)
+            yield return $"The hits a cut takes: {Words.How(rule.Source)}{(quoted ? ", in the game's words:" : "")}";
+        else
+        {
+            yield return $"The hits a cut takes: {Words.How(rule.Source)}";
+            if (rule.Seen.Length > 0) yield return "Measured: " + rule.Seen;
+            if (quoted)
+                yield return "A weak spot and an instant cut by the card's words" +
+                    (rule.Reading.WeakSpotRounding == Rounding.None ? ", a weak spot not rounded:" : ":");
+        }
+        if (quoted)
+            foreach (string line in rule.Quote.Split('\n'))
+                yield return $"\"{line}\"";
+    }
+
+    // What the XP comes with: what was measured, and the words of the card's XP tag it was held against.
+    static IEnumerable<string> XpTip()
+    {
+        if (TreeRates.XpRule is not { } xp)
+        {
+            yield return "Woodcutting XP per hour";
+            yield break;
+        }
+        string each = xp.Reading == XpWith.Cut ? "cut" : "hit";
+        yield return $"Woodcutting XP per hour: the XP of a {each}, on every {each}";
+        if (xp.Reading == XpWith.Cut && TreeRates.HitsRule != null) yield return "The cuts of an hour by the hits a cut takes, as Logs counts them";
+        if (xp.Source == RuleSource.Measured && xp.Seen.Length > 0) yield return "Measured: " + xp.Seen;
+        if (xp.Quote.Length > 0) yield return $"The card's XP tag says \"{xp.Quote}\": an action is a {each}";
     }
 }
 

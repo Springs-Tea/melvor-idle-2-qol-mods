@@ -46,9 +46,11 @@ category, and:
 | **XP** | Woodcutting XP per hour. |
 | **Gold** | What the logs and the other items of an hour sell for. |
 
-- **Time, Logs and Gold show `-`.** The logs come with a cut, as a tree's card lists them under "Full Cut".
-  But the window does not know how much a hit takes from a tree, so it does not count the hits a cut takes,
-  nor the cuts of an hour, and it shows `-` rather than a guess. A note under the list says so.
+- **The hour rests on the cuts of an hour.** The logs come with a cut, as a tree's card lists them under "Full
+  Cut", and so does the XP: a hit that does not cut gives none. The window works out how many hits a cut
+  takes from the tree's hit points and your chances: a hit takes 1 hit point and a double hit 2, as measured
+  in the game, and a weak spot and an instant cut take what the game's words for them say. See
+  [What is counted](#what-is-counted).
 - **The best number of each column is gold.**
 - **Click a column's name to sort by it.** The first click puts the best trees on top, the next turns the
   order around. "Tree" goes back to the order of the page. The name the list is sorted by is gold, with the
@@ -82,15 +84,16 @@ Put the pointer on a line for the hour at that tree, as far as it is counted:
 | **Locked: ...** | What the tree is missing, in the game's own words. Only on a locked tree. |
 | **You hid this tree on the Woodcutting page.** | Only on a tree you hid yourself. |
 | **The tree the Woodcutting page shows.** | Only on the line with the lit outline. |
-| **One hit every 2.5s: 1,440 hits an hour.** | The game's time of a hit at that tree, with your bonuses. |
-| **Woodcutting XP: 14,400 an hour, 10 a hit.** | Per hour, and for one hit. |
-| **Hit points: 30, with your bonuses.** | The tree's hit points, as its card shows them. |
-| **Your chances that change the hits a cut takes, not counted:**, and a line per chance | Your chances of double damage, of a weak spot and of an instant cut at that tree, by the names the Woodcutting page gives them, when you have any. |
-| **Logs: Oak Logs, 1 a cut.** | The tree's logs, and how many a cut brings with your bonuses. |
+| **One hit every 1s: 3,600 hits an hour.** | The game's time of a hit at that tree, with your bonuses. |
+| **Woodcutting XP: 21,637 an hour, 40.6 a cut.** | Per hour, and for one cut: the XP the tree's card shows. |
+| **Hit points: 8, with your bonuses. A hit takes 1, a double hit 2.** | The tree's hit points, as its card shows them, and what a hit takes from them. |
+| **A cut every 6.76 hits on average, worked out by a rule measured in the game: 533 an hour.** | The hits a cut takes, from the tree's hit points and your chances, and the cuts of an hour. |
+| **Counted in the hits a cut takes:**, and a line per chance | Your chances of double damage, of a weak spot and of an instant cut at that tree, by the names the Woodcutting page gives them, when you have any. The weak spot's line says what one takes: `a weak spot taking 3.8: 3 + 10% of 8, not rounded`. |
+| **Logs: Maple Logs, 1 a cut: 586 an hour.** | The tree's logs, how many a cut brings with your bonuses, and how many an hour brings. |
 | **Every hit, a chance of:**, and a line per item | Each item a hit can bring, as the tree's card lists them under "Per Hit": its chance per hit, how many it brings when it is more than one, and how many an hour brings. |
-| **Every cut, a chance of:**, and a line per item | Each item a cut can bring, with its chance per cut. Not per hour, as the cuts of an hour are not counted. |
-| **The doubling chance (5%) is counted in the items.** | Only when you have one. |
-| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, once the cuts of an hour are counted. |
+| **Every cut, a chance of:**, and a line per item | Each item a cut can bring, with its chance per cut and how many an hour brings. |
+| **The doubling chance (10%) is counted in the logs and items.** | Only when you have one. |
+| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for. |
 | **Overgrowth on this tree now, its bonuses in the numbers above:**, and a line per effect | The overgrowth on the tree, by the game's names, with the stacks each has left. |
 | **Click to show this tree on the Woodcutting page. Woodcutting is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Woodcutting page has no room for this tree's card beside this window: drag the window aside.** | Instead of the line above, on two lines, when no scroll of the page's list shows the tree's whole card clear of the window. |
@@ -107,13 +110,16 @@ level, equipment, potions and every other bonus, so the list moves with them.
 | --- | --- |
 | A hit takes the tree's time of a hit. | The game's value for the tree. |
 | The hits of an hour are an hour over the time of a hit. | The mod's. |
-| Every hit gives the tree's XP. | The mod's reading of the XP tag's words, "The Skill XP gained per action.", taking a hit as the action. |
+| A hit takes 1 hit point from the tree, and a double hit 2. | Measured in the game: counted on 597 hits of a Maple Tree, 484 of them taking 1 and the 113 double hits 2. |
+| A weak spot takes 3 hit points and 10% of the tree's hit points, not rounded, instead of the hit's 1; a weak spot that is also a double hit takes twice that. | The game's own words, read as they say: "Your chance to hit a weak point, dealing 3 damage + 10% of the Tree's Max HP". No weak spot has been seen in the game yet, so whether the game rounds it is not known. |
+| An instant cut cuts the tree with that hit. | The game's own words: "Your chance to instantly reduce a Tree's HP to 0 per hit". |
+| The hits a cut takes come from the tree's hit points and these chances; the cuts of an hour are the hits of an hour over them. | The mod's, from the rules above. On the Maple Tree, 6.76 hits a cut were measured, and this rule gives 6.755. |
+| A cut gives the tree's XP, and a hit that does not cut gives none. | Measured in the game: XP on 88 of 88 cuts and on none of 509 other hits. The XP tag's words, "The Skill XP gained per action.", fit it with a cut as the action. |
+| The logs come with a cut, as many as the game's quantity for the tree. | The game's own words: a tree's card lists the logs under "Full Cut". |
 | The items of a hit come at their chance on every hit, and the items of a cut at theirs on every cut. | The game's chances, and the game's own words: a tree's card lists the one under "Per Hit" and the other under "Full Cut". |
-| The doubling chance doubles the items. | The mod's reading of the game's words for it, "Your chance to double the output". |
+| The doubling chance doubles the logs and the items. | The mod's reading of the game's words for it, "Your chance to double the output". |
 | The overgrowth on a tree now is in its numbers. | The mod's reading: the game keeps a tree's numbers with its overgrowth. Overgrowth a cut may put on later is not counted. |
-| How much a hit takes from a tree, and so the hits a cut takes. | Not counted: the window does not know it. Time, Logs and Gold show `-`. |
-| The logs come with a cut, as many as the game's quantity for the tree. | The game's own words: a tree's card lists the logs under "Full Cut". The logs of an hour still need the cuts of an hour, so the hits a cut takes. |
-| Gold is what the logs and the items sell for. | The game's sell prices; shown only when everything of the hour that sells is counted. |
+| Gold is what the logs and the items sell for. | The game's sell prices. |
 | Chances count as their long-run average. | The mod's. |
 
 ## Questions it answers
@@ -129,6 +135,8 @@ level, equipment, potions and every other bonus, so the list moves with them.
 ## Good to know
 
 - It is an estimate, not a promise: chances average out over many hits, not over ten.
+- How much a hit takes and when the XP comes were measured on one character's cutting. A weak spot and an
+  instant cut did not come there, so for them the window follows the game's words.
 - Woodcutting has no mastery XP in this game (its Mastery Guild counts ranks, points and tasks), so there is
   no column for it.
 - The overgrowth on a tree now is in its numbers; what a cut may put on later is not counted.
@@ -140,7 +148,7 @@ level, equipment, potions and every other bonus, so the list moves with them.
 | You see | What it means |
 | --- | --- |
 | No round button on the Woodcutting page | It comes a moment after the page opens. If it never comes, look for `[WoodcuttingRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
-| `-` in a line | Time, Logs and Gold: see above. Everywhere: the game gives no time of a hit for that tree yet. |
+| `-` in a line | The game gives no time of a hit for that tree yet. |
 | A line without a picture | The game has no picture for that tree yet, only its grey stand-in, and the window shows none rather than the stand-in. |
 | "Chance of double damage" instead of the game's name | The window has not read the name from the Woodcutting page's lists of a tree's bonuses yet: it does once one of them has been shown. |
 | A line's tooltip says the page has no room for the card beside this window | The window lies over the tree's card, and the page's list cannot scroll the card above or below it. Drag the window aside, off the trees' cards. |

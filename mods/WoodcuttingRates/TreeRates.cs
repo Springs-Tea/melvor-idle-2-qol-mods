@@ -44,16 +44,28 @@ enum HitItemsWith
     HitPoint,
 }
 
-/// <summary>Which way a weak spot's share of the tree's hit points is made a whole number of hit points.</summary>
-enum Rounding { Down, Nearest, Up }
+/// <summary>What the Woodcutting XP comes with (<see cref="TreeRates.XpRule"/>).</summary>
+enum XpWith
+{
+    /// <summary>Every hit gives the XP of the tree's XP tag.</summary>
+    EveryHit,
+    /// <summary>A cut gives it, and a hit that does not cut gives none.</summary>
+    Cut,
+}
+
+/// <summary>
+/// Which way a weak spot's share of the tree's hit points is made a whole number of hit points, or
+/// <see cref="None"/>: not made one, the share taken as the card's words say it ("3 damage + 10% of the Tree's Max HP").
+/// </summary>
+enum Rounding { Down, Nearest, Up, None }
 
 /// <summary>
 /// How much a hit takes from a tree, a reading of the parts of the game's rule that its numbers leave open (the brief
 /// of issue #71: an ordinary hit's damage is no value of the game's, and how a weak spot's damage is made from the
 /// game's two numbers for it is kept in its code): an ordinary hit takes <paramref name="Damage"/> hit points; a weak
 /// spot takes the game's base (WoodcuttingActionComponent.BaseWeakSpotDamage) and its share of the tree's hit points
-/// (MaxHitpointsWeakSpotDamage), rounded the given way, instead of the hit's damage or on top of it; a double hit takes
-/// twice what it would; an instant cut cuts the tree with that hit.
+/// (MaxHitpointsWeakSpotDamage), rounded the given way or not at all, instead of the hit's damage or on top of it; a
+/// double hit takes twice what it would; an instant cut cuts the tree with that hit.
 /// </summary>
 sealed record HitRule(int Damage, Rounding WeakSpotRounding, bool WeakSpotAdded);
 
@@ -69,8 +81,11 @@ enum RuleSource
     Measured,
 }
 
-/// <summary>A part of the game's rule, settled: the reading, what backs it, and the game's words that state it ("" for none).</summary>
-sealed record Settled<T>(T Reading, RuleSource Source, string Quote);
+/// <summary>
+/// A part of the game's rule, settled: the reading, what backs it, the game's words that state it or that the reading
+/// is held against ("" for none, one quote a line), and for a measured part what was counted ("" for none).
+/// </summary>
+sealed record Settled<T>(T Reading, RuleSource Source, string Quote, string Seen = "");
 
 /// <summary>
 /// What one hour at a tree gives, worked out from the game's own numbers for that tree: the stats the game keeps for
@@ -78,14 +93,13 @@ sealed record Settled<T>(T Reading, RuleSource Source, string Quote);
 /// Whatever changes those (level, equipment, potions, the Mastery Guild, the overgrowth on the tree now) changes the hour
 /// too. Built the way Mining Rates builds a rock's hour (mods/MiningRates/RockRates.cs).
 ///
-/// A hit is the game's action: its time is the tree's interval. That every hit gives the XP of the tree's XP tag is the
-/// mod's reading of the game's words for that tag ("The Skill XP gained per action.", read on the same SkillXPPanel by
-/// Mining Rates' light check) and of its names (its event of a hit, TreeDamagedEventArgs, is its ActionPerformedEventArgs).
-/// What a hit takes from the tree, and so how many hits a cut takes, rests on a rule (<see cref="HitsRule"/>), and so does
-/// what the logs come with (<see cref="LogsRule"/>); while a part is not settled, what rests on it is null and the window
-/// shows "-", never a formula of the mod's own (the review of pull request #61). What the logs and the items of a hit come
-/// with is settled by the headings of the card's two lists (<see cref="LogsRule"/>, <see cref="HitItemsRule"/>); how much
-/// a hit takes is not, so the logs of an hour, the time of a log and the gold are still null.
+/// A hit comes every interval of the tree. What a hit takes from the tree, and so how many hits a cut takes, rests on a
+/// rule (<see cref="HitsRule"/>), and so do what the logs, the items of a hit and the XP come with (<see cref="LogsRule"/>,
+/// <see cref="HitItemsRule"/>, <see cref="XpRule"/>); while a part is not settled, what rests on it is null and the
+/// window shows "-", never a formula of the mod's own (the review of pull request #61). The logs and the items of a hit
+/// are settled by the headings of the card's two lists; how much a hit takes and what the XP comes with by the
+/// development watch on a character's own cutting (check-4-watch, 23 Nov 2026), with the card's words for what it did not
+/// see (a weak spot and an instant cut).
 /// </summary>
 sealed class TreeRates
 {
@@ -100,11 +114,28 @@ sealed class TreeRates
     static readonly Settled<LogsWith>? KnownLogs = new(LogsWith.Cut, RuleSource.GameWords, "Full Cut");
 
     /// <summary>
-    /// How much a hit takes from a tree, and what backs it: set here, in this one place, once the page's words or the
-    /// watch's counts ("AN ORDINARY HIT DEALS n", "A WEAK SPOT DEALS ...", "A DOUBLE HIT DEALS TWICE ...") settle it.
-    /// Null: the hits a cut takes, the cuts of an hour and what rests on them are not counted.
+    /// How much a hit takes from a tree, and what backs it: set here, in this one place. Measured by the development
+    /// watch on 597 hits and 88 cuts of a Maple Tree (check-4-watch, 23 Nov 2026): "AN ORDINARY HIT DEALS 1" (484 hits),
+    /// "A DOUBLE HIT DEALS TWICE AN ORDINARY ONE" (113 hits), the hit points go down by the damage, and 6.76 hits a cut
+    /// measured (standard error 0.08) against 6.755 by this rule. No weak spot and no instant cut came (both chances 0),
+    /// so those two parts are the card's own words, read as they say: a weak spot deals the game's base and its share of
+    /// the tree's hit points (3 and 10%, BaseWeakSpotDamage and MaxHitpointsWeakSpotDamage), instead of the hit's damage and
+    /// not rounded, since no rounding was seen; an instant cut takes the tree's hit points to 0. The light check holds
+    /// the quotes against the card's words ("Dev: words"); a watch that sees a weak spot can settle its rounding.
     /// </summary>
-    static readonly Settled<HitRule>? KnownHits = null;
+    static readonly Settled<HitRule>? KnownHits = new(new HitRule(1, Rounding.None, false), RuleSource.Measured,
+        "Your chance to hit a weak point, dealing 3 damage + 10% of the Tree's Max HP\n" +
+        "Your chance to instantly reduce a Tree's HP to 0 per hit",
+        "a hit takes 1 hit point, a double hit 2 (597 hits)");
+
+    /// <summary>
+    /// What the XP comes with, and what backs it: set here, in this one place. Measured by the same watch: "XP ON A CUT
+    /// ONLY", XP on 88 of 88 cuts and on none of 509 other hits, each time the XP of the card's XP tag, whose words
+    /// are "The Skill XP gained per action.": the action that gives it is a cut. The tag shows the XP of a cut
+    /// (<see cref="XpEach"/>; the light check holds it against every card).
+    /// </summary>
+    static readonly Settled<XpWith>? KnownXp = new(XpWith.Cut, RuleSource.Measured, "The Skill XP gained per action.",
+        "XP on 88 of 88 cuts and on none of 509 other hits");
 
     /// <summary>
     /// What the items of a hit come with, and what backs it: set here, in this one place, with the same evidence as the
@@ -123,6 +154,9 @@ sealed class TreeRates
 
     /// <summary>How much a hit takes, or null while nothing has settled it (<see cref="KnownHits"/>).</summary>
     public static Settled<HitRule>? HitsRule => KnownHits;
+
+    /// <summary>What the XP comes with, or null while nothing has settled it (<see cref="KnownXp"/>).</summary>
+    public static Settled<XpWith>? XpRule => KnownXp;
 
     /// <summary>
     /// One thing a hit or a cut can bring besides the logs: <see cref="Chance"/> per hit or per cut, <see cref="Each"/>
@@ -181,10 +215,16 @@ sealed class TreeRates
     public double InstantCutChance { get; private set; }
     public double Doubling { get; private set; }
 
-    /// <summary>The XP of every hit: the game's XP of the tree (WoodcuttingActionStats.Experience).</summary>
+    /// <summary>
+    /// The XP of the tree's XP tag, the game's XP of the tree (WoodcuttingActionStats.Experience): the XP of a cut, by
+    /// <see cref="XpRule"/>.
+    /// </summary>
     public double XpEach { get; private set; }
-    /// <summary>Woodcutting XP per hour: the XP of the tree's XP tag on every hit.</summary>
-    public double XpPerHour => XpEach * HitsPerHour;
+    /// <summary>
+    /// Woodcutting XP per hour by the settled rule (<see cref="XpRule"/>): the XP of a cut on every cut of an hour; null
+    /// while what it rests on is not settled.
+    /// </summary>
+    public double? XpPerHour => !HasTime || XpRule is not { } xp ? null : xp.Reading == XpWith.EveryHit ? XpEach * HitsPerHour : XpEach * CutsPerHour;
 
     /// <summary>The tree's logs (WoodcuttingRecipe.Product) and how many come at a time (WoodcuttingActionStats.ProductQuantity).</summary>
     public Item? Log { get; private set; }
@@ -319,21 +359,29 @@ sealed class TreeRates
         return new Drop(item, item.DisplayName.GetPluralText(2), chance, quantity, each, perHour, gold);
     }
 
+    /// <summary>A weak spot's damage by a reading of the rule: the game's base and its share of the tree's hit points.</summary>
+    public static double WeakSpotDamage(HitRule rule, int hitPoints)
+    {
+        double share = WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage * hitPoints;
+        double part = rule.WeakSpotRounding switch
+        {
+            Rounding.Down => Math.Floor(share + 1e-9),
+            Rounding.Up => Math.Ceiling(share - 1e-9),
+            Rounding.Nearest => Math.Round(share, MidpointRounding.AwayFromZero),
+            _ => share,
+        };
+        return WoodcuttingActionComponent.BaseWeakSpotDamage + part + (rule.WeakSpotAdded ? rule.Damage : 0);
+    }
+
     /// <summary>
     /// The damage of each kind of hit by a reading of the rule, with its chance: ordinary, double, weak spot, and both,
     /// a double and a weak spot being rolled apart (the game's event of a hit has a flag for each,
-    /// TreeDamagedEventArgs.DoubleDamage and IsWeakSpot).
+    /// TreeDamagedEventArgs.DoubleDamage and IsWeakSpot). A weak spot's damage need not be a whole number
+    /// (<see cref="Rounding.None"/>).
     /// </summary>
-    public static List<(double Chance, int Damage)> Outcomes(HitRule rule, int hitPoints, double doubleDamage, double weakSpot)
+    public static List<(double Chance, double Damage)> Outcomes(HitRule rule, int hitPoints, double doubleDamage, double weakSpot)
     {
-        double share = WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage * hitPoints;
-        int part = rule.WeakSpotRounding switch
-        {
-            Rounding.Down => (int)Math.Floor(share + 1e-9),
-            Rounding.Up => (int)Math.Ceiling(share - 1e-9),
-            _ => (int)Math.Round(share, MidpointRounding.AwayFromZero),
-        };
-        int weak = WoodcuttingActionComponent.BaseWeakSpotDamage + part + (rule.WeakSpotAdded ? rule.Damage : 0);
+        double weak = WeakSpotDamage(rule, hitPoints);
         double d = Fraction(doubleDamage), w = Fraction(weakSpot);
         return
         [
@@ -348,29 +396,53 @@ sealed class TreeRates
     public static double? ExpectedHits(HitRule rule, TreeRates t) =>
         ExpectedHits(t.HitPoints, Outcomes(rule, t.HitPoints, t.DoubleDamageChance, t.WeakSpotChance), t.InstantCutChance);
 
+    // More hit points left to tell apart than this, and the hits a cut takes are not counted (a tree has tens).
+    const int MostLeft = 200_000;
+    // Hit points left at or under this are none: a weak spot not rounded leaves fractions, and their sums are not exact.
+    const double NoneLeft = 1e-9;
+
     /// <summary>
     /// The hits a cut takes on average, from the tree's hit points, the damage of each kind of hit with its chance, and
     /// the chance that a hit cuts the tree at once: the sum over the hit points left of the chance of reaching them, the
-    /// arithmetic our review of pull request #61 called sound once every damage rule comes from the game. Null when the
-    /// tree would never be cut (no hit takes anything and no hit cuts it at once).
+    /// arithmetic our review of pull request #61 called sound once every damage rule comes from the game. The hit
+    /// points left need not be whole: every amount the hits can leave is counted, from the smallest up. Null when the
+    /// tree would never be cut (no hit takes anything and no hit cuts it at once), or has too many hit points to count.
     /// </summary>
-    public static double? ExpectedHits(int hitPoints, IReadOnlyList<(double Chance, int Damage)> outcomes, double instant)
+    public static double? ExpectedHits(int hitPoints, IReadOnlyList<(double Chance, double Damage)> outcomes, double instant)
     {
         if (hitPoints <= 0) return 1;
         if (hitPoints > 1_000_000) return null;
         double go = 1 - Fraction(instant);
-        double still = go * outcomes.Where(o => o.Damage <= 0).Sum(o => o.Chance);
+        double still = go * outcomes.Where(o => !(o.Damage > 0)).Sum(o => o.Chance);
         if (still >= 1 - 1e-12) return null;
-        // left[h]: the hits still to come with h hit points left.
-        var left = new double[hitPoints + 1];
-        for (int h = 1; h <= hitPoints; h++)
+        var hits = outcomes.Where(o => o.Damage > 0 && o.Chance > 0).ToList();
+        // Every amount of hit points the hits can leave above none, each once (amounts a millionth apart are one).
+        static long Key(double left) => (long)Math.Round(left * 1e6);
+        var amounts = new Dictionary<long, double> { [Key(hitPoints)] = hitPoints };
+        var todo = new Stack<double>();
+        todo.Push(hitPoints);
+        while (todo.Count > 0)
+        {
+            double h = todo.Pop();
+            foreach (var (_, damage) in hits)
+            {
+                double next = h - damage;
+                if (next <= NoneLeft || !amounts.TryAdd(Key(next), next)) continue;
+                if (amounts.Count > MostLeft) return null;
+                todo.Push(next);
+            }
+        }
+        // left: the hits still to come with that many hit points left, from the smallest amount up, so that what a hit
+        // leaves is always counted before.
+        var left = new Dictionary<long, double>(amounts.Count);
+        foreach (double h in amounts.Values.Order())
         {
             double more = 0;
-            foreach (var (chance, damage) in outcomes)
-                if (damage > 0) more += chance * left[Math.Max(0, h - damage)];
-            left[h] = (1 + go * more) / (1 - still);
+            foreach (var (chance, damage) in hits)
+                if (h - damage > NoneLeft) more += chance * left[Key(h - damage)];
+            left[Key(h)] = (1 + go * more) / (1 - still);
         }
-        return left[hitPoints];
+        return left[Key(hitPoints)];
     }
 
     static double? GoldOf(Item item) => item.SellsFor is { Currency: { Id: Gold }, Quantity: > 0 } price ? price.Quantity : null;

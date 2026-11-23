@@ -64,7 +64,7 @@ namespace WoodcuttingRates;
 //     Labelling), until the game shows it filled, and logs it word for word, with every number in it named against the
 //     tree's numbers and the game's two numbers of a weak spot. shot-woodcutting-stats-tooltip.png, proved over the
 //     tooltip's words where they are drawn. A tooltip that is not shown in 20 s is one line, and the request goes on.
-//     These are the words the rules of the hour (TreeRates.LogsRule, HitsRule) are to be settled by.
+//     These are the words the rules of the hour (TreeRates.LogsRule, HitsRule, XpRule) are settled by or held against.
 //  5. A picture of the screen without the window, for the proofs; presses the round button, and opens the window up
 //     with its own button if it opened folded; the round button must be lit.
 //  6. "Dev: row": every line's numbers as the game gives them (raw) and as counted, the hits a cut takes by each reading
@@ -73,7 +73,8 @@ namespace WoodcuttingRates;
 //     words over each and the tree's stats each is bound to, its picture, its overgrowth, its list of bonuses where it is
 //     filled) beside ours, DIFFER on a difference, the page's own order of cards against ours, and the big panel's.
 //     "Dev: words": the page's own words for the rules the hour rests on (the constants read by reflection, the member
-//     named when one is not there), and the filter's words and buttons. "Dev: effects": every overgrowth effect on a tree,
+//     named when one is not there), every quoted line of the hits rule and the XP rule against them, and the filter's
+//     words and buttons. "Dev: effects": every overgrowth effect on a tree,
 //     and whether the tree's stats hold it. "Dev: hidden": every tree not listed, and why. "Dev: lit". "Dev: tips": the
 //     longest line of every tip against Fishing Rates' longest. "Dev: cut" over every label of the picture.
 //     crop-woodcutting-window.png and, when the list scrolls, crop-woodcutting-window-end.png. "Dev: room": the
@@ -1533,6 +1534,7 @@ public partial class WoodcuttingRatesMod
     // ---- what is logged ------------------------------------------------------------------------------------------
 
     static string R(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+    static string R(double? value) => value is { } v ? R(v) : "-";
 
     static string DevTexture(Texture2D? texture) =>
         texture == null ? "none" : $"{(texture.ResourcePath is { Length: > 0 } path ? path : "a " + texture.GetType().Name)} {texture.GetWidth()}x{texture.GetHeight()}";
@@ -1569,7 +1571,8 @@ public partial class WoodcuttingRatesMod
                 $"weak spot {R(s.WeakSpotChance?.Total.Value ?? double.NaN)}, instant cut {R(s.InstantCutChance?.Total.Value ?? double.NaN)}, " +
                 $"on hit [{rawHit}], on cut [{rawCut}], " +
                 $"overgrowth [{string.Join(", ", s.OvergrowthStats?.List?.Select(o => $"{o.Effect?.Value?.Id} chance {R(o.ApplicationChance?.Total.Value ?? double.NaN)}") ?? [])}] | " +
-                $"counted: {R(t.HitSeconds)} s a hit, {R(t.HitsPerHour)} hits/h, XP {R(t.XpEach)} a hit = {R(t.XpPerHour)}/h, hit points {t.HitPoints}, " +
+                $"counted: {R(t.HitSeconds)} s a hit, {R(t.HitsPerHour)} hits/h, XP {R(t.XpEach)} a {(TreeRates.XpRule?.Reading == XpWith.EveryHit ? "hit" : "cut")} = {R(t.XpPerHour)}/h " +
+                $"(the XP rule {(TreeRates.XpRule is { } xr ? $"{xr.Reading}, {xr.Source}" : "not settled")}; on every hit it would be {R(t.XpEach * t.HitsPerHour)}/h), hit points {t.HitPoints}, " +
                 $"chances double {R(t.DoubleDamageChance)} weak {R(t.WeakSpotChance)} instant {R(t.InstantCutChance)} doubling {R(t.Doubling)}, " +
                 $"hits a cut {(t.HitsPerCut is { } h ? R(h) : "-")} (the rule {(TreeRates.HitsRule is { } hr ? $"{hr.Reading}, {hr.Source}" : "not settled")}; by each reading [{DevReadings(t)}]), " +
                 $"logs {t.Log?.Id} x{t.LogQuantity} (what they come with {(TreeRates.LogsRule is { } lr ? $"{lr.Reading}, {lr.Source}" : "not settled")}; with every hit it would be " +
@@ -1586,6 +1589,7 @@ public partial class WoodcuttingRatesMod
             $"{trees.Count(t => t.Locked)} locked, {trees.Count(t => t.Hidden)} hidden by the player (the box for hidden trees {(_woodcutting.Action.ShowHiddenTrees ? "ticked" : "not ticked")}); " +
             $"columns [{string.Join(", ", _list!.DevColumns)}]; the logs by {(TreeRates.LogsRule is { } logs ? $"{logs.Reading}, {logs.Source}" : "NO RULE")}, " +
             $"the hits a cut takes by {(TreeRates.HitsRule is { } hits ? $"{hits.Reading}, {hits.Source}" : "NO RULE")}, " +
+            $"the XP by {(TreeRates.XpRule is { } xp ? $"{xp.Reading}, {xp.Source}" : "NO RULE")}, " +
             $"the items of a hit by {(TreeRates.HitItemsRule is { } items ? $"{items.Reading}, {items.Source}" : "NO RULE (counted once a hit, the window's reading)")}" +
             (count != trees.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
@@ -1596,15 +1600,18 @@ public partial class WoodcuttingRatesMod
         $"gold {(d.GoldPerHour is { } g ? R(g) : "-")}/h";
 
     // The readings of how much a hit takes from a tree that the brief leaves open, with an ordinary hit of 1: a weak spot
-    // instead of the hit's damage or on top of it, its share of the hit points rounded down, to the nearest or up.
+    // instead of the hit's damage or on top of it, its share of the hit points rounded down, to the nearest, up or not at
+    // all (the settled rule's, the card's words read as they say).
     internal static readonly HitRule[] DevHitReadings = new[] { false, true }
         .SelectMany(added => Enum.GetValues<Rounding>().Select(rounding => new HitRule(1, rounding, added))).ToArray();
 
-    static string DevReadingName(HitRule rule) => $"{(rule.WeakSpotAdded ? "added" : "instead")} {rule.WeakSpotRounding.ToString().ToLowerInvariant()}";
+    static string DevReadingName(HitRule rule) => $"{(rule.WeakSpotAdded ? "added" : "instead")} " +
+        (rule.WeakSpotRounding == Rounding.None ? "not rounded" : rule.WeakSpotRounding.ToString().ToLowerInvariant()) +
+        (TreeRates.HitsRule?.Reading == rule ? " (THE SETTLED RULE)" : "");
 
     // The hits a cut takes by each reading, from the tree's own hit points and chances, and the damage of a weak spot by it.
     static string DevReadings(TreeRates t) => string.Join(", ", DevHitReadings.Select(rule =>
-        $"{DevReadingName(rule)} {(TreeRates.ExpectedHits(rule, t) is { } hits ? R(Math.Round(hits, 4)) : "never")} (a weak spot {TreeRates.Outcomes(rule, t.HitPoints, 0, 1)[2].Damage})"));
+        $"{DevReadingName(rule)} {(TreeRates.ExpectedHits(rule, t) is { } hits ? R(Math.Round(hits, 4)) : "never")} (a weak spot {R(TreeRates.WeakSpotDamage(rule, t.HitPoints))})"));
 
     // The longest line of every tip of the window in characters, against Fishing Rates' longest: Godot's tooltip does
     // not wrap, so a longer line makes a wider tooltip than Fishing Rates' (Mining Rates' code review of turn 1, fault 3).
@@ -1668,7 +1675,7 @@ public partial class WoodcuttingRatesMod
             $"hide button pressed={DevNative.HideButton(card).ButtonPressed} (ours hidden={t.Hidden}) | " +
             $"time: game {R(interval.Seconds)} s '{DevNative.IntervalLabel(interval).Text}', ours {R(t.HitSeconds)} s{(Math.Abs(interval.Seconds - t.HitSeconds) < 0.0005 ? "" : "  DIFFER")} | " +
             $"hit points: game {hp.Value} '{hp.Text}', ours {t.HitPoints}{(hp.Value == t.HitPoints ? "" : "  DIFFER")} | " +
-            $"XP: game '{xpLabel.Text}' ({xpLabel.Value}), ours {R(t.XpEach)} a hit: {DevXpSame(xpLabel.Value, t.XpEach)}; the XP tag is bound to " +
+            $"XP: game '{xpLabel.Text}' ({xpLabel.Value}), ours {R(t.XpEach)} a cut: {DevXpSame(xpLabel.Value, t.XpEach)}; the XP tag is bound to " +
             $"{(bound == null ? "no time" : ReferenceEquals(bound, tree.Stats.Interval) ? "the tree's time of a hit (WoodcuttingActionStats.Interval)" : $"another time ({R(bound.Value)} ms)")}; " +
             $"its tooltip '{xpWords}' | {DevXpPerSecond(xpWords, t)} | " +
             $"per hit: {DevGrants(DevNative.PerHit(card), tree)} | per cut: {DevGrants(DevNative.PerCut(card), tree)} | " +
@@ -1769,18 +1776,19 @@ public partial class WoodcuttingRatesMod
     }
 
     // Which rule the game's own XP tooltip follows: every number in it against the XP per second and per hour with the XP
-    // on every hit (ours). Mining Rates' check read its words: "... This equates to roughly {0:N0} XP/hr" where a time is
-    // bound to the tag.
+    // on every hit, and the XP an hour with the XP on a cut (ours). Mining Rates' check read its words: "... This equates
+    // to roughly {0:N0} XP/hr" where a time is bound to the tag.
     static string DevXpPerSecond(string tooltip, TreeRates ours)
     {
         var numbers = Regex.Matches(tooltip, @"\d[\d,]*(?:\.\d+)?").Select(m => double.Parse(m.Value.Replace(",", ""), CultureInfo.InvariantCulture)).ToList();
         if (!ours.HasTime) return $"numbers in it [{string.Join(", ", numbers.Select(R))}]";
-        double perSecond = ours.XpEach / ours.HitSeconds;
+        double perSecond = ours.XpEach / ours.HitSeconds, everyHit = ours.XpEach * ours.HitsPerHour;
         bool Near(double value, double room) => numbers.Any(n => Math.Abs(n - value) <= room);
         return $"numbers in it [{string.Join(", ", numbers.Select(R))}]; XP per second on every hit {R(perSecond)}: " +
-            (Near(perSecond, Math.Max(0.006, 0.002 * perSecond)) ? "IN IT" : "not in it") + $"; XP an hour on every hit {R(ours.XpPerHour)}: " +
-            (Near(ours.XpPerHour, Math.Max(1, 0.002 * ours.XpPerHour)) ? "IN IT, the game's XP of an hour is ours" : "not in it") +
-            $"; ours a hit {R(ours.XpEach)} is {(Near(ours.XpEach, 0.006) ? "in it" : "not in it")}";
+            (Near(perSecond, Math.Max(0.006, 0.002 * perSecond)) ? "IN IT" : "not in it") + $"; XP an hour on every hit {R(everyHit)}: " +
+            (Near(everyHit, Math.Max(1, 0.002 * everyHit)) ? "IN IT" : "not in it") + $"; XP an hour on a cut (ours) {R(ours.XpPerHour)}: " +
+            (ours.XpPerHour is { } hour && Near(hour, Math.Max(1, 0.002 * hour)) ? "IN IT, the game's XP of an hour is ours" : "not in it") +
+            $"; ours a cut {R(ours.XpEach)} is {(Near(ours.XpEach, 0.006) ? "in it" : "not in it")}";
     }
 
     // The rows of a list of a tree's bonuses: each stat's name and words as the page writes them, its value as written
@@ -1871,10 +1879,13 @@ public partial class WoodcuttingRatesMod
         // The quote of a settled rule, still in the game's words, or not (after a game update).
         static string Flat(string text) => Regex.Replace(text, @"\s+", " ").Trim();
         string heard = Flat(string.Join(" ", read));
-        // The logs' and the items' rules quote the headings of the cards' lists, held against every card in "Dev: game".
-        var (quote, source) = (TreeRates.HitsRule?.Quote, TreeRates.HitsRule?.Source);
-        DevLog("words | the quote of the hits rule: " + (source != RuleSource.GameWords || string.IsNullOrEmpty(quote) ? "none (the rule is not settled by the game's words)"
-            : heard.Contains(Flat(quote), StringComparison.Ordinal) ? $"'{quote}' is in the game's words read here" : $"'{quote}' NOT IN THE GAME'S WORDS read here (the card's are in 'card stats')"));
+        // The logs' and the items' rules quote the headings of the cards' lists, held against every card in "Dev: game";
+        // the hits rule quotes the card's words for a weak spot and an instant cut, the XP rule the XP tag's: each quoted
+        // line against the words read here, whatever backs the rest of the rule.
+        string Quoted(string? quote) => string.IsNullOrEmpty(quote) ? "none" : string.Join("; ", quote.Split('\n').Select(line =>
+            heard.Contains(Flat(line), StringComparison.Ordinal) ? $"'{line}' is in the game's words read here" : $"'{line}' NOT IN THE GAME'S WORDS read here (the card's are in 'card stats')"));
+        DevLog($"words | the quote of the hits rule ({TreeRates.HitsRule?.Source.ToString() ?? "not settled"}): {Quoted(TreeRates.HitsRule?.Quote)} | " +
+            $"the quote of the XP rule ({TreeRates.XpRule?.Source.ToString() ?? "not settled"}): {Quoted(TreeRates.XpRule?.Quote)}");
         // Every button of the page's filter, and which is which: the All button the put-back would press is found by the
         // game's word only (DevAllButton).
         try
@@ -2335,12 +2346,14 @@ public partial class WoodcuttingRatesMod
         {
             ("the game's base weak spot damage (BaseWeakSpotDamage)", b), ("the game's share of hit points of a weak spot (MaxHitpointsWeakSpotDamage)", f),
             ("the tree's hit points", t.HitPoints), ("the tree's time of a hit in seconds", t.HitSeconds), ("the tree's XP of a hit", t.XpEach),
-            ("the tree's XP an hour with XP on every hit (ours)", t.XpPerHour), ("the tree's hits an hour", t.HitsPerHour),
+            ("the tree's XP an hour with XP on every hit", t.XpEach * t.HitsPerHour), ("the tree's XP an hour with XP on a cut (ours)", t.XpPerHour ?? double.NaN),
+            ("the tree's hits an hour", t.HitsPerHour),
             ("the tree's double damage chance", t.DoubleDamageChance), ("the tree's weak spot chance", t.WeakSpotChance),
             ("the tree's instant cut chance", t.InstantCutChance), ("the tree's doubling chance", t.Doubling), ("the tree's logs at a time", t.LogQuantity),
             ("the share of the tree's hit points", f * t.HitPoints),
             ("a weak spot by the base and the share rounded down", b + Math.Floor(f * t.HitPoints + 1e-9)),
             ("... rounded to the nearest", b + Math.Round(f * t.HitPoints, MidpointRounding.AwayFromZero)), ("... rounded up", b + Math.Ceiling(f * t.HitPoints - 1e-9)),
+            ("... not rounded", b + f * t.HitPoints),
         };
         var said = new List<string>();
         foreach (Match m in Regex.Matches(words, @"-?\d[\d,]*(?:\.\d+)?\s*%?"))

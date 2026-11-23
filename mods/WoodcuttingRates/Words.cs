@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GamesByMalcs.Melvor2.Entities.Woodcutting;
 
 namespace WoodcuttingRates;
 
@@ -47,17 +48,22 @@ static class Words
     public static string Note(IEnumerable<TreeRates> trees)
     {
         var open = trees.Where(t => !t.Locked && t.HasTime).ToList();
-        bool logs = open.Any(t => t.Log != null && t.LogsPerHour == null);
-        var noGold = open.Where(t => t.GoldPerHour == null).ToList();
-        if (!logs && noGold.Count == 0) return "";
+        var dashes = new List<string>();
+        if (open.Any(t => t.Log != null && t.LogsPerHour == null)) dashes.AddRange(["Time", "Logs"]);
+        if (open.Any(t => t.XpPerHour == null)) dashes.Add("XP");
+        bool gold = open.Any(t => t.GoldPerHour == null);
+        if (dashes.Count == 0 && !gold) return "";
         var unknown = new List<string>();
         if (TreeRates.HitsRule == null) unknown.Add("how much a hit takes from a tree");
-        if (TreeRates.LogsRule == null && logs) unknown.Add("what its logs come with");
-        if (TreeRates.HitItemsRule == null && noGold.Any(t => t.PerHitGoldPerHour == null)) unknown.Add("what the items of a hit come with");
+        if (TreeRates.LogsRule == null && dashes.Contains("Logs")) unknown.Add("what its logs come with");
+        if (TreeRates.XpRule == null && dashes.Contains("XP")) unknown.Add("what the XP comes with");
+        if (TreeRates.HitItemsRule == null && open.Any(t => t.GoldPerHour == null && t.PerHitGoldPerHour == null)) unknown.Add("what the items of a hit come with");
         if (unknown.Count == 0) return "";
         string said = unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
-        return (logs ? "Time, Logs and Gold show -" : "Gold shows - where an item of the hour that sells is not counted") +
-            $": the window does not know {said}.";
+        if (dashes.Count == 0) return $"Gold shows - where an item of the hour that sells is not counted: the window does not know {said}.";
+        if (gold) dashes.Add("Gold");
+        string columns = dashes.Count == 1 ? dashes[0] + " shows" : string.Join(", ", dashes.Take(dashes.Count - 1)) + " and " + dashes[^1] + " show";
+        return $"{columns} -: the window does not know {said}.";
     }
 
     /// <summary>
@@ -79,15 +85,20 @@ static class Words
         }
 
         lines.Add($"One hit every {Seconds(t.HitSeconds)}: {Number(t.HitsPerHour)} hits an hour.");
-        lines.Add($"Woodcutting XP: {Number(t.XpPerHour)} an hour, {Number(t.XpEach)} a hit.");
-        lines.Add($"Hit points: {t.HitPoints:N0}, with your bonuses.");
-        if (t.HitsPerCut is { } hits && t.CutsPerHour is { } cuts && TreeRates.HitsRule is { } rule)
-            lines.Add($"A cut every {Number(hits)} hits on average, {How(rule.Source)}: {Number(cuts)} an hour.");
+        // The XP of the card's tag comes with what the settled rule says; the tag's own word for it is "action".
+        string per = TreeRates.XpRule?.Reading switch { XpWith.Cut => "a cut", XpWith.EveryHit => "a hit", _ => "an action" };
+        lines.Add(t.XpPerHour is { } xp ? $"Woodcutting XP: {Number(xp)} an hour, {Number(t.XpEach)} {per}." : $"Woodcutting XP: {Number(t.XpEach)} {per}.");
+        HitRule? rule = TreeRates.HitsRule?.Reading;
+        lines.Add($"Hit points: {t.HitPoints:N0}, with your bonuses." + (rule != null ? $" A hit takes {rule.Damage:N0}, a double hit {2 * rule.Damage:N0}." : ""));
+        if (t.HitsPerCut is { } hits && t.CutsPerHour is { } cuts && TreeRates.HitsRule is { } settled)
+            lines.Add($"A cut every {Number(hits)} hits on average, {How(settled.Source)}: {Number(cuts)} an hour.");
         if (t.HitChances.Count > 0)
         {
-            // The game's own names, as the Woodcutting page lists them among a tree's bonuses.
+            // The game's own names, as the Woodcutting page lists them among a tree's bonuses; a weak spot with what it
+            // takes by the settled rule, and how that is read from the card's words.
             lines.Add(t.HitsPerCut != null ? "Counted in the hits a cut takes:" : "Your chances that change the hits a cut takes, not counted:");
-            lines.AddRange(t.HitChances.Select(b => $"  {nameOf(b.Key) ?? BonusNames.Kind(b.Key)}: {Percent(b.Value)}"));
+            lines.AddRange(t.HitChances.Select(b => $"  {nameOf(b.Key) ?? BonusNames.Kind(b.Key)}: {Percent(b.Value)}" +
+                (b.Key == TreeRates.WeakSpot && rule != null && t.HitsPerCut != null ? WeakSpot(rule, t.HitPoints) : "")));
         }
 
         lines.Add("");
@@ -143,6 +154,22 @@ static class Words
             _ => "for each hit point a hit takes",
         };
         return $"Logs: {t.LogName}, {t.LogQuantity:N0} {with}" + (t.LogsPerHour is { } logs ? $": {Number(logs)} an hour." : ".");
+    }
+
+    // ", a weak spot taking 3.8: 3 + 10% of 8, not rounded": the game's base and its share of the tree's hit points, as
+    // the card's words give them, and the way the share is read.
+    static string WeakSpot(HitRule rule, int hitPoints)
+    {
+        string how = rule.WeakSpotRounding switch
+        {
+            Rounding.Down => "rounded down",
+            Rounding.Up => "rounded up",
+            Rounding.Nearest => "rounded",
+            _ => "not rounded",
+        };
+        return $", a weak spot taking {Number(TreeRates.WeakSpotDamage(rule, hitPoints))}: " +
+            $"{WoodcuttingActionComponent.BaseWeakSpotDamage} + {Percent(WoodcuttingActionComponent.MaxHitpointsWeakSpotDamage)} of {hitPoints:N0}" +
+            (rule.WeakSpotAdded ? $" + {rule.Damage:N0}" : "") + $", {how}";
     }
 
     // What backs a rule, in plain words: the number is always worked out by the mod, from the tree's own numbers by a rule

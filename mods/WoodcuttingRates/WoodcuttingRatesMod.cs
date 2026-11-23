@@ -14,11 +14,12 @@ namespace WoodcuttingRates;
 /// Which tree gives what per hour. On the Woodcutting page a round button in the strip on the right edge of the screen
 /// opens a window with one line per tree the page shows: its picture, its category, the time of a log, and the logs,
 /// Woodcutting XP and gold of an hour, from the game's own numbers for each tree (TreeRates); what rests on a rule not
-/// settled yet (TreeRates.LogsRule, HitsRule) is "-", and a note under the list says why. The best number of each column
-/// is gold, a click on a column's name sorts by it, the tree the Woodcutting page shows has a lit outline, and a line's
-/// tooltip has the hour as far as it is counted. A click on a line shows that tree on the Woodcutting page, clear of the
-/// window, as the player's own clicks there would (ShowOnPage); nothing is started or stopped from it. Built the way
-/// Mining Rates is (mods/MiningRates/MiningRatesMod.cs), itself Fishing Rates' (mods/FishingRates).
+/// settled (TreeRates.HitsRule, LogsRule, XpRule, HitItemsRule) is "-", and a note under the list says why. The best
+/// number of each column is gold, a click on a column's name sorts by it, the tree the Woodcutting page shows has a lit
+/// outline, and a line's tooltip has the hour as far as it is counted. A click on a line shows that tree on the
+/// Woodcutting page, clear of the window, as the player's own clicks there would (ShowOnPage); nothing is started or
+/// stopped from it. Built the way Mining Rates is (mods/MiningRates/MiningRatesMod.cs), itself Fishing Rates'
+/// (mods/FishingRates).
 /// </summary>
 public partial class WoodcuttingRatesMod : IMod
 {
