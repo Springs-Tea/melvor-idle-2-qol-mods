@@ -1,0 +1,71 @@
+NAME
+Firemaking Rates
+
+VERSION
+{version}
+
+FILE
+dist/FiremakingRates-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+none yet
+
+SUMMARY (the short line under the name, at most 350 characters)
+Which log gives the most per hour? On the Firemaking page, a round button opens a window with one line per log: the time of a fire, and the logs burnt, Firemaking XP, cost and gold of an hour, the best in gold, sortable. Each line's tooltip has the whole hour with every item and its chance. A click opens the log on the page.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Firemaking Rates[/b][/size]
+Every log has its own time to burn, its own XP, and some give coins or items on the side. Recipe Rates already writes the XP per hour under each log; the rest of the hour, how many logs it uses up, what they would sell for and what burning gives, you would work out log by log. This window puts the logs side by side, with what an hour of burning each gives and costs your character.
+
+[size=4][b]Where it is[/b][/size]
+On the Firemaking page, a round button with the Firemaking icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Firemaking.
+
+[size=4][b]What the window shows[/b][/size]
+One line per log the Firemaking page shows you, starting with the log's picture and its category, and:
+[list]
+[*][b]Time[/b]: how long one fire takes, the game's time to burn one log.
+[*][b]Logs[/b]: the logs burnt per hour, the ones your preservation chance keeps not counted.
+[*][b]XP[/b]: Firemaking XP per hour.
+[*][b]Cost[/b]: what the logs burnt in an hour would sell for, in gold.
+[*][b]Gold[/b]: what burning gives in an hour, in gold: its coins, and what its items sell for.
+[/list]
+The best number of each column is in gold: the most XP and gold, the least time and cost; the logs have no best. Click a column's name to sort by it; the first click puts the best logs on top. The log the Firemaking page shows has a lit outline. A log you cannot burn yet is greyed, with the level it needs.
+Click a line to open that log on the Firemaking page: the page shows the log's category and selects the log, and its list scrolls until the log's button is in sight beside the window. When the page has no room for that, the line's tooltip says so: drag the window aside. Burning is not started or stopped, the Start button and the bonfire are not touched, and the window stays open.
+
+[size=4][b]In the tooltip of a line[/b][/size]
+The whole hour of burning that log: the time of a fire, the XP per hour and per fire, the logs burnt and how long the bank's last, what else a fire uses, the coins and items a fire gives with their chances, the game's bonfire time for the log, the gold and the cost of the hour, and the game's Firemaking events that may come, which are not counted.
+
+[size=4][b]What is counted[/b][/size]
+The numbers start from the game's own values for each log, so whatever changes those changes the window too. They are counted the way Recipe Rates counts the same log, so where Recipe Rates writes a number under a log, this window has the same one: every fire gives the XP of the log's XP tag, takes the log (kept at your preservation chance), makes the log's items at their chances (the doubling chance doubles them) and gives its coins (not doubled). Nobody has measured these on a character's burning yet. Chances count as their long-run average. The bonfire time is the game's bonfire time for the log; whether every fire adds it to the bonfire the window does not know yet, so it gives no hour of it.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]It is an estimate, not a promise: chances average out over many fires.
+[*]Firemaking has no mastery XP per log in this game, so there is no column for it.
+[*]The game's Firemaking events and its rare events are not counted: the window does not know how often the game rolls them.
+[*]The window starts nothing. A click on a line only selects the log's category and the log on the Firemaking page, as your own clicks there would, and scrolls its list.
+[*]A log the game has no picture for yet shows none, rather than the game's grey stand-in.
+[*]Until you move it, the window opens at the right side of the page, beside the page's list of logs. Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\FiremakingRates\FiremakingRates.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\FiremakingRates[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.
+It uses the game's own textures, fonts and colours, so it looks like part of the game. It gives no items, XP or bonuses.
+Open source (MIT), with the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/FiremakingRates]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/FiremakingRates[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
