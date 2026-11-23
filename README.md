@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: twelve quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: thirteen quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -83,6 +83,15 @@ Take the ones you want. Each has a page of its own with pictures and details.
       Every fishing spot side by side, from a round button on the Fishing page: its fish, the time of a
       catch, and catches, Fishing XP, gold and bait per hour, the best of each column in gold. Hover a
       line for the whole hour there; click it to go to that spot on the page.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/MiningRates"><img src="docs/img/mining-rates.png" alt="Mining Rates"></a></td>
+    <td>
+      <h3><a href="mods/MiningRates">Mining Rates</a></h3>
+      Every rock side by side, from a round button on the Mining page: the time of one ore, and ore,
+      Mining XP and gold per hour, worked out by the game's own rule for breaking a rock, the best of each
+      column in gold. Hover a line for the whole hour there; click it to see that rock's card on the page.
     </td>
   </tr>
   <tr>
@@ -243,9 +252,10 @@ flowchart TB
         M10["SkillBonuses"]
         M11["FishingRates"]
         M12["ThievingOverview"]
+        M13["MiningRates"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

@@ -1,6 +1,14 @@
-# Mining Rates
+<h1 align="center"><img src="../../docs/img/art/h-mining-rates.svg" alt="Mining Rates" width="720"></h1>
+
+<p align="center">
+  <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
+  &nbsp;
+  <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+</p>
 
 > Where do I mine for the most XP, ore or gold per hour?
+
+![Every rock with its category, the time of one ore, and ore, Mining XP and gold per hour, sorted by XP, the best of each column in gold](../../docs/img/mining-rates.png)
 
 Every rock has its own time per hit, its own XP and its own ore, and some give gems or other items on the
 side. The ore does not come on every hit: it comes when the rock breaks, and how often that is depends on the
@@ -62,6 +70,9 @@ category, and:
   not scroll to it: drag the window aside, off the rocks' cards. The card of a rock of another category is
   measured once its category is shown: a click on its line changes the filter, and from then on its tooltip
   says when there is no room.
+
+![After a click on Gold Ore's line: the Mining page scrolled so that the whole card of Gold Ore stands beside the window](../../docs/img/mining-rates-clicked.png)
+
 - **A rock you cannot mine yet is greyed**, with the Mining level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
   marked best. In a list sorted by a number, the locked rocks come last.
@@ -92,6 +103,8 @@ Put the pointer on a line for the whole hour at that rock:
 | **Click to show this rock on the Mining page. Mining is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Mining page has no room for this rock's card beside this window: drag the window aside.** | Instead of the line above, when no scroll of the page's list shows the rock's whole card clear of the window. |
 | **The Mining page has no room to show this rock's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
+
+![The tooltip of Clay: the time of a hit, the hits a break takes by the game's own rule, the XP, the ore of a break, the doubling chance, the gold, and that the page has no room for its card beside the window](../../docs/img/mining-rates-tooltip.png)
 
 ## What is counted
 

@@ -4,6 +4,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Mining Rates**, a new mod: on the Mining page, a round button opens one line per rock, with its picture, its
+  category, the time of one ore, and ore, Mining XP and gold per hour, from the game's own numbers for your
+  character and the game's own rule for breaking a rock. The best of each column is gold, a click on a column's
+  name sorts by it, the rock you are mining is lit, a locked rock is greyed with the level it needs, and a click on
+  a line scrolls the Mining page to that rock's whole card, beside the window, without starting to mine. A line's
+  tooltip has the whole hour.
 - **Combat Simulator**: Lowest hitpoints, First death, Safe, Max hit and Best drop have no range, so against
   another setup or an item they are now grey where they differ ("could be luck, no range"), unless only one of
   the two died or the game's own numbers decide it, and the line says which. A shortened best drop is whole in
