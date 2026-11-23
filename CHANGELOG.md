@@ -4,6 +4,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Woodcutting Rates**, a new mod: on the Woodcutting page, a round button opens one line per tree, with its
+  picture, its category, the time of one log, and logs, Woodcutting XP and gold per hour for your character: the hits
+  a cut takes (a hit takes 1, a double hit 2) and the XP coming with a cut were measured in the game. The best of each
+  column is gold, a click on a column's name sorts by it, the tree you are cutting is lit, a locked tree is greyed with
+  the level it needs, and a click on a line scrolls the Woodcutting page to that tree's whole card, beside the window,
+  without starting to cut. The window first opens at the right of the page, beside the cards.
 - **Mining Rates**, a new mod: on the Mining page, a round button opens one line per rock, with its picture, its
   category, the time of one ore, and ore, Mining XP and gold per hour, from the game's own numbers for your
   character and the game's own rule for breaking a rock. The best of each column is gold, a click on a column's

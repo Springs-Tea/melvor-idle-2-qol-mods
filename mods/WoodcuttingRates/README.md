@@ -1,6 +1,14 @@
-# Woodcutting Rates
+<h1 align="center"><img src="../../docs/img/art/h-woodcutting-rates.svg" alt="Woodcutting Rates" width="720"></h1>
+
+<p align="center">
+  <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
+  &nbsp;
+  <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+</p>
 
 > Which tree gives me the most XP, logs or gold per hour?
+
+![Every tree with its category, the time of one log, and logs, Woodcutting XP and gold per hour, sorted by XP, the best of each column in gold](../../docs/img/woodcutting-rates.png)
 
 Every tree has its own time per hit, its own hit points, its own XP and its own logs, and some give other
 items on the side. A tree takes several hits to cut, so the time a card shows is not the time of a log. To
@@ -68,6 +76,9 @@ category, and:
   not scroll to it: drag the window aside, off the trees' cards. The card of a tree of another category is
   measured once its category is shown: a click on its line changes the filter, and from then on its tooltip
   says when there is no room.
+
+![After a click on Ashen Tree's line: the window at the right of the Woodcutting page, and Ashen Tree's whole card beside it](../../docs/img/woodcutting-rates-clicked.png)
+
 - **A tree you cannot cut yet is greyed**, with the Woodcutting level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
   marked best. In a list sorted by a number, the locked trees come last.
@@ -98,6 +109,8 @@ Put the pointer on a line for the hour at that tree, as far as it is counted:
 | **Click to show this tree on the Woodcutting page. Woodcutting is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Woodcutting page has no room for this tree's card beside this window: drag the window aside.** | Instead of the line above, on two lines, when no scroll of the page's list shows the tree's whole card clear of the window. |
 | **The Woodcutting page has no room to show this tree's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
+
+![The tooltip of Normal Tree: the time of a hit, the XP of a cut, the hit points and the hits a cut takes, the logs of a cut, the items of a hit, the doubling chance and the gold](../../docs/img/woodcutting-rates-tooltip.png)
 
 ## What is counted
 
