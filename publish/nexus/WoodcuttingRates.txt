@@ -1,0 +1,72 @@
+NAME
+Woodcutting Rates
+
+VERSION
+{version}
+
+FILE
+dist/WoodcuttingRates-{version}.zip
+
+REQUIREMENT
+Melvor Mod Loader, 0.1.3 or newer
+
+PICTURES
+none yet
+
+SUMMARY (the short line under the name, at most 350 characters)
+Which tree gives the most XP? On the Woodcutting page, a round button opens a window with one line per tree: Woodcutting XP per hour, the best in gold, sortable, and in each line's tooltip the time of a hit, the tree's hit points and every item a hit or a cut can bring with its chance. A click shows the tree on the page.
+
+DESCRIPTION (paste as is: it is in Nexus formatting)
+
+[size=5][b]Woodcutting Rates[/b][/size]
+Every tree has its own time per hit, its own hit points, its own XP and its own logs, and some give other items on the side. To compare them you would open the trees one by one and work out the hour in your head. This window puts them side by side, with what an hour at each tree gives your character.
+
+[size=4][b]Where it is[/b][/size]
+On the Woodcutting page, a round button with the Woodcutting icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Woodcutting.
+
+[size=4][b]What the window shows[/b][/size]
+One line per tree the Woodcutting page shows you, starting with the tree's picture and its category, and per hour:
+[list]
+[*][b]Time[/b]: how long one log takes, every hit of a cut counted in.
+[*][b]Logs[/b]: logs per hour.
+[*][b]XP[/b]: Woodcutting XP.
+[*][b]Gold[/b]: what the logs and items of an hour sell for.
+[/list]
+Time, Logs and Gold show - for now: a tree takes several hits to cut, and the game gives no number for the damage of a hit, so the window does not count the hits a cut takes, and does not guess them.
+The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best trees on top. The tree being cut has a lit outline. A tree you cannot cut yet is greyed, with the level it needs.
+Click a line to show that tree on the Woodcutting page: the page shows the tree's category if its card is hidden, and scrolls until the card is in sight. Nothing is started or stopped, and the window stays open.
+
+[size=4][b]In the tooltip of a line[/b][/size]
+The hour at that tree as far as it is counted: the time of a hit, the XP per hour and per hit, the tree's hit points and your chances of double damage, a weak spot and an instant cut, the logs, every item a hit or a cut can bring with its chance, and the overgrowth on the tree now.
+
+[size=4][b]What is counted[/b][/size]
+The numbers start from the game's own values for each tree, the ones its tree cards show, so whatever changes those changes the window too. Every hit gives the tree's XP, a hit being what the game counts as one Woodcutting action, and chances count as their long-run average. The hits a cut takes, and with them the logs of an hour and the gold, are not counted.
+
+[size=4][b]Good to know[/b][/size]
+[list]
+[*]It is an estimate, not a promise: chances average out over many hits.
+[*]Woodcutting has no mastery XP in this game, so there is no column for it.
+[*]The overgrowth on a tree now is in its numbers; what a cut may put on later is not counted.
+[*]A tree you hid on the Woodcutting page is listed only while the page's "Show hidden" is ticked.
+[*]The window starts nothing. A click on a line only changes which category the Woodcutting page shows and scrolls its list of trees; woodcutting, the trees you hid and "Show hidden" are left as they are.
+[*]A tree the game has no picture for yet shows none, rather than the game's grey stand-in.
+[*]Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
+[/list]
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]Install the [url=https://www.nexusmods.com/melvoridle2/mods/2]Melvor Mod Loader[/url] (0.1.3 or newer).
+[*]Extract this zip into the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files. The file ends up as [font=Courier New]mods\WoodcuttingRates\WoodcuttingRates.dll[/font].
+[*]Start the game.
+[/list]
+To update, extract the new zip over the old one.
+
+[size=4][b]Uninstall[/b][/size]
+Delete the folder [font=Courier New]mods\WoodcuttingRates[/font]. Nothing in your save is changed.
+
+[size=4][b]About[/b][/size]
+Made for game version 0.11.6-alpha.1 with Melvor Mod Loader 0.1.3. The game is in early access: an update can break the mod until it is rebuilt. It then switches itself off and says so in MelvorModLoader.log; the game and your other mods keep running.
+It uses the game's own textures, fonts and colours, so it looks like part of the game. It gives no items, XP or bonuses.
+Open source (MIT), with the full guide: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/WoodcuttingRates]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/tree/main/mods/WoodcuttingRates[/url]
+Problems and ideas: [url=https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues]https://github.com/Springs-Tea/melvor-idle-2-qol-mods/issues[/url]
+Unofficial and fan-made. Not affiliated with Games by Malcs or Jagex.
