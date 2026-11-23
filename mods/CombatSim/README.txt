@@ -53,26 +53,30 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     the spell show and change; the first time, B is a copy of A. One press of Simulate runs
     every fight with both, from the same moment of your character and with the same dice. Each
     column of the list becomes three: under its name which setup is better and by how much
-    ("A by 23%", "A ×4" from twice as much up; for Healed, Items and Sim time which has more,
-    "A +12%"), then the number with A and with B. The better side is green and the worse red,
-    grey where it could be luck: green and red where the difference is larger than the two 95%
-    ranges side by side would allow, less the share of the luck that A and B met alike. That
-    share is measured from the fights at the same kills, and only what is beyond its own
-    chance is taken off, so two setups that meet no luck alike are coloured by luck about as
-    often as two ranges side by side. The more alike the two fight, the more luck they share
-    (two helmets, one weapon in two stances); Warrior and Mage share almost none. Details
-    writes the lead with how far luck could move it, "A by 48% ± 47%": green and red exactly
-    when the lead is larger than its ±, with one more figure where the two would read the
-    same ("A by 64.4% ± 64.1%"). Judged as before, by the two own ranges side by side: counts
-    that did not come in every part of either fight (a death or two), a number one of them had
-    none of, fights that ended at different times (Go on until, or From bank when supplies ran
-    out), fights whose dice could not be kept in step, and scans made before this. Click a
-    column's name for the fights where the choice matters most; the line above the list counts
-    the fights each setup wins in the column it is sorted by, and in Best for says where each
-    setup does best. Details shows the fight with both setups side by side, each with its
-    stance ("as the game has it" where both fought in the same one and only one chose it).
-    Fight is for the setup on the left. A and B last until the game is closed or another
-    character is opened.
+    ("A by 23%", "A ×4" from twice as much up; for Healed, Items, Fought and Sim time which
+    has more, "A +12%"), then the number with A and with B. The better side is green and the
+    worse red, grey where it could be luck: green and red where the difference is larger than
+    the two 95% ranges side by side would allow, less the share of the luck that A and B met
+    alike. That share is measured from the fights at the same kills, and only what is beyond
+    its own chance is taken off, so two setups that meet no luck alike are coloured by luck
+    about as often as two ranges side by side. The more alike the two fight, the more luck
+    they share (two helmets, one weapon in two stances); Warrior and Mage share almost none.
+    Details writes the lead with how far luck could move it, "A by 48% ± 47%": green and red
+    exactly when the lead is larger than its ±, with one more figure where the two would read
+    the same ("A by 64.4% ± 64.1%"). Judged as before, by the two own ranges side by side:
+    counts that did not come in every part of either fight (a death or two), a number one of
+    them had none of, fights that ended at different times (Go on until, or From bank when
+    supplies ran out), fights whose dice could not be kept in step, and scans made before
+    this. Low HP, First death, Safe, Max hit and Best drop have no range: where two setups
+    differ in one of them it is grey, unless only one of the two died, which goes as Deaths
+    does (Low HP, First death, Safe), or the game's own numbers decide it (Safe, Max hit). In
+    Details the line under it says which: "A, could be luck, no range", "A, by the deaths" or
+    "A, by the game's own numbers" (see Ranges). Click a column's name for the fights where
+    the choice matters most; the line above the list counts the fights each setup wins in the
+    column it is sorted by, and in Best for says where each setup does best. Details shows the
+    fight with both setups side by side, each with its stance ("as the game has it" where both
+    fought in the same one and only one chose it). Fight is for the setup on the left. A and B
+    last until the game is closed or another character is opened.
   - Find upgrades, the button over "Wear this setup first", opens a panel where you choose
     which items to try against the selected fight, one slot at a time, on top of the setup on
     the left: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop,
@@ -84,11 +88,16 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     the setup as it is, so a difference comes from the item, not from the dice. Every column
     of the list says what the item changes: "+14%", "-23%", "×2.5", "+7,300" where there was
     none, "+1,200" more Net gold; green better, red worse, grey where it could be luck, "no
-    better" for the same. That is judged as Compare judges B against A, the item against the
-    setup as it is: the share of the luck they met alike is measured at the same kills, so an
-    item that changes how fast you kill (a weapon of another speed, boots that add damage)
-    shares less of it. Only words stay the item's own: Safe or Risky, the best drop, a first
-    death where one of the two never dies. Click a column's name to put the largest gains on
+    "better" for the same, no colour for Healed, Items, Fought and Sim time. That is judged as
+    Compare judges B against A, the item against the setup as it is: the share of the luck
+    they met alike is measured at the same kills, so an item that changes how fast you kill (a
+    weapon of another speed, boots that add damage) shares less of it. Only words stay the
+    item's own: Safe or Risky, the best drop, a first death where one of the two never dies.
+    Low HP, First death, Safe, Max hit and Best drop have no range: where two setups differ in
+    one of them it is grey, unless only one of the two died, which goes as Deaths does (Low
+    HP, First death, Safe), or the game's own numbers decide it (Safe, Max hit). In Details
+    the line under it says which: "could be luck, no range", "by the deaths" or "by the game's
+    own numbers" (see Ranges). Click a column's name to put the largest gains on
     top. "Comes from" is Item Sources' answer, or "In your bank" when you have one. A
     two-handed weapon takes the shield off and a shield the two-handed weapon, as a pick in
     the slot does. An item that fought in another stance than the setup as it is, such as a
@@ -112,7 +121,16 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     and "Deaths up to 3.69": no deaths in an hour is not "never"). In Details the range of each
     rate is on the small line under it. Scans made before the ranges were counted have none. A
     rare drop that did not come in the time simulated is in no range: when an enemy's gold
-    hangs on one, simulate it for 12 hours.
+    hangs on one, simulate it for 12 hours. Low HP, First death, Safe, Max hit and Best drop
+    have no range: each is one moment of one fight, or hangs on one. Where two setups differ
+    in one of them it is grey, "could be luck, no range", unless only one of the two died,
+    which goes as Deaths does (Low HP, First death, Safe), or the game's own numbers decide it
+    (Safe, Max hit): the enemy's biggest hit as the game gives it, against your auto-eat
+    point. A bigger loss of hitpoints seen in the fight, a biggest hit of the game's that rose
+    after a prayer or a toolbelt item ran out, and a scan made before this version leave it to
+    luck. A number per kill against a fight that killed nothing goes as Kills does, and one
+    per run as Runs does. Fought has no colour: it says how long a fight ran, not how good a
+    setup is.
   - Columns, over the list, chooses which numbers it shows and in which order, out of 43 in
     groups (offence, defence, supplies, economy, experience, dungeons, time): runes, ammo and
     prayer points used, what the supplies cost and the gold left after them, damage taken,
@@ -129,11 +147,15 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     same fight was simulated with other equipment or another stance, the difference is shown
     for every column of the list, green where it is better, red where it is worse, but only
     when the two ranges do not overlap (for A and B of one compare, when the change is larger
-    than its ±, as in Compare): otherwise it is grey and says "could be luck". The
-    other setup's stance is under its name when it tells the two apart: another stance, or the
-    same one chosen on one side only. XP in a skill one setup does not train at all, like Magic
-    with a sword, is a real 0: any XP in it is better. The columns in which both are the same
-    share one line.
+    than its ±, as in Compare): otherwise it is grey and says "could be luck". Low HP, First
+    death, Safe, Max hit and Best drop have no range: where two setups differ in one of them
+    it is grey, unless only one of the two died, which goes as Deaths does (Low HP, First
+    death, Safe), or the game's own numbers decide it (Safe, Max hit). The line under it says
+    which: "could be luck, no range", "by the deaths" or "by the game's own numbers" (see
+    Ranges). The other setup's stance is under its name when it tells the two apart: another
+    stance, or the same one chosen on one side only. XP in a skill one setup does not train at
+    all, like Magic with a sword, is a real 0: any XP in it is better, and its line says "not
+    trained by one of the two". The columns in which both are the same share one line.
   - Best for: pick the skill you want to train and the areas to look in. Every fight is tried
     in each attack stance of your weapon and the fights are ranked by what they give that
     skill, with the best stance named on each line.

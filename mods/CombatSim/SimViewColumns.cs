@@ -170,7 +170,9 @@ sealed partial class SimView
         ApplyOffset();
     }
 
-    Control RowCells(SimResult result)
+    // The cells of a line of the list. Words that can be longer than their cell (a drop's name) are cut short with "..."
+    // where they do not fit, and the line's tooltip then starts with them whole, after the column's name (ShortWithTip).
+    Control RowCells(SimResult result, Control line)
     {
         Control strip = NumbersStrip(out HBoxContainer cells);
         foreach (SimColumn column in Shown())
@@ -181,11 +183,7 @@ sealed partial class SimView
             cell.HorizontalAlignment = HorizontalAlignment.Right;
             cell.CustomMinimumSize = new Vector2(_s.Px(column.Width), 0);
             cell.MouseFilter = Control.MouseFilterEnum.Ignore;
-            if (column.Trim)
-            {
-                cell.ClipText = true;
-                cell.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
-            }
+            if (column.Trim) ShortWithTip(cell, line, column.Name);
             cells.AddChild(cell);
         }
         _rowCells.Add(cells);
@@ -534,8 +532,10 @@ sealed partial class SimView
     /// This setup against another, column by column, by the simulator's one rule (<see cref="Judge"/>): green where
     /// this one is better, red where it is worse, grey with "could be luck" where the two ranges overlap. Against B of the
     /// same compare, which met the same dice (issue #57), the bar is lowered by the luck the two met alike, and the small
-    /// line says how far luck could move the change: "± 18%" under "+22%" (<see cref="SameDiceNote"/>). The columns
-    /// in which the two are the same share one line at the end, so a long list stays short to read.
+    /// line says how far luck could move the change: "± 18%" under "+22%" (<see cref="SameDiceNote"/>). A number without a
+    /// range that nothing sure decides is grey too, and says why: "could be luck, no range"; one that something else decides
+    /// says what: "by the deaths", "by the game's own numbers" (issue #67, <see cref="Decided"/>). The columns in which the
+    /// two are the same share one line at the end, so a long list stays short to read.
     /// </summary>
     IEnumerable<Control> Compared(SimResult r, SimResult other)
     {
@@ -557,11 +557,12 @@ sealed partial class SimView
             // A number one of the two does not have (nothing killed, not a dungeon, not recorded) is left out.
             if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
             string name = NameOf(column);
-            Verdict verdict = Judge(column, r, other);
-            string? luck = verdict == Verdict.Luck ? SimRanges.Words(verdict) : null;
+            var (verdict, by) = Judged(column, r, other);
+            // "could be luck", and what decided a number without a range of its own (issue #67, Decided).
+            string? said = Decided(verdict, by);
             // Against B of the same compare: the reach of luck the verdict went by (SimRanges.Apart).
             SimLuck? dice = verdict != Verdict.Same && column.Rate?.Invoke() is { } rate ? SimRanges.Apart(r, other, rate) : null;
-            var (change, note) = dice is { } reach ? SameDiceNote(column, mine, theirs, reach, luck) : (null, luck);
+            var (change, note) = dice is { } reach ? SameDiceNote(column, mine, theirs, reach, said) : (null, said);
             if (!column.Percent)
             {
                 // This setup's own words or number, coloured against the other's.
@@ -605,38 +606,66 @@ sealed partial class SimView
     }
 
     /// <summary>
-    /// This setup's number in a column against another setup's, by the one rule of <see cref="SimRanges.Judge"/>:
-    /// better or worse only when their ranges do not overlap, or for A and B of one compare, which met the same dice, when
-    /// the difference is beyond the reach of luck, which the luck they met alike lowers (issue #57). For "Compared with",
-    /// and for the setups side by side of issue #2.
+    /// This setup's number in a column against another setup's, by the simulator's one rule (<see cref="SimRanges.Judge"/>)
+    /// with what the column says of its number: its rate, or what it is without one (issue #67). Better or worse only when
+    /// their ranges do not overlap, or for A and B of one compare, which met the same dice, when the difference is beyond
+    /// the reach of luck, which the luck they met alike lowers (issue #57); a number without a range only where a line with
+    /// one (the deaths, the kills, the runs) or the game's own numbers decide it. For "Compared with", for the setups side by
+    /// side of issue #2 and for Find upgrades.
     /// </summary>
-    Verdict Judge(SimColumn column, SimResult r, SimResult other) =>
-        column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)
-            ? SimRanges.Judge(r, other, column.Rate?.Invoke(), mine, theirs, column.Better)
-            : Verdict.Differs;
+    static Verdict Judge(SimColumn column, SimResult r, SimResult other) => Judged(column, r, other).Verdict;
 
-    /// <summary>
-    /// Whether <see cref="Judge"/> between the two went by luck: the same dice (SimRanges.Apart) or two ranges
-    /// (SimRanges.Basis, the counts behind a quantity one of them had none of included). False for a number without a range
-    /// (Lowest hitpoints, Max hit, Safe, the best drop, a first death), a number that is the worst there is, a real 0 and a
-    /// scan made before the ranges: SimRanges.Judge makes those green or red wherever the two differ.
-    /// </summary>
-    static bool JudgedByLuck(SimColumn column, SimResult r, SimResult other) =>
-        column.Rate?.Invoke() is { } rate && column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)
-        && (SimRanges.Apart(r, other, rate) != null || SimRanges.Basis(r, other, rate) is (not null, not null, _));
+    /// <summary><see cref="Judge"/> and what decided it; Differs where one of the two has no number.</summary>
+    static (Verdict Verdict, Ground By) Judged(SimColumn column, SimResult r, SimResult other) =>
+        column.Value(r) is { } mine && column.Value(other) is { } theirs
+            ? SimRanges.Judged(r, other, column.Rate?.Invoke(), mine, theirs, column.Better, column.Unranged)
+            : (Verdict.Differs, Ground.None);
 
-    // After a foot's sentence of the rule (Compare's Details, an item's in Find upgrades): the lines above it that are green
-    // or red and were judged without a range (not JudgedByLuck: a number that has none, one that is the worst there is, a
-    // real 0), by the names they show, so that the foot is true of every colour above it (issue #63). Not "has no range": a
-    // real 0 and the worst there is have one (review of turn 2). Listed as "Compared with" lists the columns that are the
-    // same ("The same: ..."), so a name with words of its own ("Safe or risky") reads as one name. In the foot's own words
-    // for its colours: " Judged without a range, green or red wherever the two differ: Lowest hitpoints, Safe or risky.";
-    // nothing when there is none.
-    static string NoRange(IEnumerable<string> names, string colours)
+    // The words of a line's small line for its verdict, in every view alike: "Compared with", Compare's Details and an item's
+    // in Find upgrades (issue #67). Grey: "could be luck", and why where the number has no range of its own: "could be luck,
+    // no range" for one moment of one fight, "could be luck, by the deaths" for a death against none where the deaths could
+    // be luck, the same by the kills or the runs for the worst there is. Green or red by anything but the two ranges or the
+    // same dice: what decided it (Reason), so the colour explains itself where it stands, as grey does; the foot of Details
+    // only points to it (ColourFoot). Null for the same, a number neither way better, and green or red by the ranges or the
+    // same dice, which the foot's sentence covers. A rate's own words follow it where it is written (its range, its ±).
+    static string? Decided(Verdict verdict, Ground by) => verdict switch
     {
-        var list = names.Distinct().ToList();
-        return list.Count == 0 ? "" : $" Judged without a range, {colours} wherever the two differ: {string.Join(", ", list)}.";
-    }
+        Verdict.Luck => SimRanges.Words(Verdict.Luck) + by switch
+        {
+            Ground.Moment => ", no range",
+            Ground.Deaths or Ground.Kills or Ground.Runs => ", " + Reason(by),
+            _ => "",
+        },
+        Verdict.Better or Verdict.Worse => Reason(by),
+        _ => null,
+    };
+
+    // What decided a verdict that is not the two ranges' or the same dice's, in a line's words: a line with a range (the
+    // deaths, the kills, the runs), the game's own numbers, a skill one of the two does not train at all (a real 0, any XP
+    // in it is better), or a rate a fight was too short to have a range for. Null for the ranges, the same dice, one moment,
+    // and a scan made before the ranges, whose foot says it was judged without them.
+    static string? Reason(Ground by) => by switch
+    {
+        Ground.Deaths => "by the deaths",
+        Ground.Kills => "by the kills",
+        Ground.Runs => "by the runs",
+        Ground.Game => "by the game's own numbers",
+        Ground.RealZero => "not trained by one of the two",
+        Ground.Short => "without a range",
+        _ => null,
+    };
+
+    // The foot of Details in Compare and in Find upgrades, of its colours, both alike (issue #67): green and red only where
+    // the two ranges do not overlap, or the same dice decide, and where any line above is green or red by anything else,
+    // "or where a line says what decided it": each such line says it under its numbers (Decided). So the foot is true of
+    // every colour above it, and stays short. Not "has no range": a real 0 and the worst there is have one (review 2 of
+    // issue #63). A grey line says why itself. For results with ranges; Compare says of a scan made before them that it is
+    // judged without them.
+    static string ColourFoot(string colours, string what, bool sameDice, bool lineSays) =>
+        $"{colours} only where the two 95% ranges do not overlap" + (sameDice ? $", or with the same dice where {what} is larger than its ±" : "") +
+        (lineSays ? ", " + LineSays : "") + ".";
+
+    const string LineSays = "or where a line says what decided it";
 
     // Green when better, red when worse; grey when it could be luck; white for the same, or a number neither way better.
     static Color Tint(Verdict verdict) => verdict switch

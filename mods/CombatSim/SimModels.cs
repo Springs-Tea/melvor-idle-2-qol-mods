@@ -140,6 +140,16 @@ sealed class SimResult
     public int? MaxEnemyHit;
     public double? AutoEatHp;
     /// <summary>
+    /// The enemy's biggest hit as the game gives it alone (AllAttacksDamageWatcher.Maximum, issue #67), the highest it
+    /// settled at in the fight: where <see cref="MaxEnemyHit"/> is no more than this, it is the game's own number, the same
+    /// in every fight of the setup; where it is more, it is a loss of hitpoints seen in the fight, one moment of it
+    /// (SimRanges.GameHit). Null in scans made before it was kept, whose biggest hit counts as one moment, when the game gave
+    /// none, and when the game's number rose after a prayer or toolbelt item (a potion) of the copy ran out (CardReadings),
+    /// at a moment of the fight. Not written when null, so a file of before loads as it did.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? GameMaxHit;
+    /// <summary>
     /// The attack stance the copy fought in, as the game names it, and its id: read from the copy when the fight is over
     /// (SimEngine.ReadStance, issue #51), or the one it was put in when that could not be read. Null in scans made before
     /// the stance was kept, and when the game could not say.

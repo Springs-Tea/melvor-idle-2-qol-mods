@@ -60,13 +60,71 @@ enum Verdict
     Same,
     /// <summary>
     /// The two ranges overlap, or for two fights with the same dice (a compare, an item of Find upgrades) the difference is
-    /// within the reach of luck (<see cref="SimLuck"/>): a longer fight, or other dice, could turn it round.
+    /// within the reach of luck (<see cref="SimLuck"/>): a longer fight, or other dice, could turn it round. Also a number of
+    /// one moment of one fight that nothing sure decides (issue #67, <see cref="Unranged"/>): it has no range to tell it from
+    /// luck.
     /// </summary>
     Luck,
     Better,
     Worse,
     /// <summary>Apart, for a number of which neither more nor less is better.</summary>
     Differs,
+}
+
+/// <summary>
+/// What a number without a rate is, as its column says it (SimColumn.Unranged, issue #67), for the rule
+/// (<see cref="SimRanges.Judged"/>): what, if anything, can decide a difference of it. The lowest point of a fight, the
+/// moment of a first death and the most valuable drop are each one moment of one fight: they have no range, and nothing in
+/// the fight's parts says how far they could move. A bar for them would be a rule of the mod's own about the game's hits
+/// and auto eat, so a difference is coloured only where a line with a range, or the game's own numbers, decide it.
+/// </summary>
+enum Unranged
+{
+    /// <summary>One moment of one fight (the most valuable drop): nothing decides a difference.</summary>
+    Moment,
+    /// <summary>One moment that a death sets (the lowest hitpoints, the first death): a death against none goes by the deaths.</summary>
+    Death,
+    /// <summary>
+    /// The enemy's biggest hit: by the game's own number where both fights have it (SimRanges.GameHit), otherwise one
+    /// moment, a loss of hitpoints seen in the fight.
+    /// </summary>
+    Hit,
+    /// <summary>
+    /// Safe or risky: by the game's own numbers where they decide both fights' words and those differ (SimRanges.GameSafe:
+    /// the enemy's biggest hit against the auto-eat point); otherwise a death against none by the deaths; otherwise one
+    /// moment.
+    /// </summary>
+    Safe,
+}
+
+/// <summary>What decided a verdict of the rule (issue #67), for the words beside it and the foot of Details.</summary>
+enum Ground
+{
+    /// <summary>Nothing to decide: the same, or a number of which neither more nor less is better.</summary>
+    None,
+    /// <summary>A rate by the two 95% ranges, or by the counts behind a quantity one of them had none of (SimRanges.Basis).</summary>
+    Ranges,
+    /// <summary>A rate of two fights with the same dice, by the reach of luck between them (SimRanges.Apart).</summary>
+    SameDice,
+    /// <summary>A rate of a scan made before the ranges, one of the two without any: apart is better or worse, as before them.</summary>
+    Before,
+    /// <summary>
+    /// A rate one of two fights with ranges has none for (a fight too short for them): apart is better or worse, as before
+    /// the ranges, and its line says so.
+    /// </summary>
+    Short,
+    /// <summary>A real 0, the XP of a skill one of the two does not train (SimRanges.Basis): any XP in it is better.</summary>
+    RealZero,
+    /// <summary>A death against none: as the deaths of the two are judged.</summary>
+    Deaths,
+    /// <summary>Nothing killed against kills, the worst there is of a number per kill: as the kills are judged.</summary>
+    Kills,
+    /// <summary>No run finished against runs, the worst there is of a number per run: as the runs are judged.</summary>
+    Runs,
+    /// <summary>The game's own numbers, the same in every fight of a setup: the enemy's biggest hit, the auto-eat point.</summary>
+    Game,
+    /// <summary>One moment of one fight that nothing sure decides: could be luck.</summary>
+    Moment,
 }
 
 /// <summary>
@@ -417,11 +475,9 @@ static class SimRanges
     // ---- comparing two setups ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// The simulator's one rule for "is this number better than that one" (issue #5), for "Compared with", for two
-    /// setups side by side (issue #2) and for an item of Find upgrades against the setup as it is (issue #4). Under half
-    /// a percent apart: the same. With a range on both: better or worse only when the ranges do not overlap, otherwise it
-    /// could be luck. A result without ranges (a scan made before them, a number that has none) keeps the rule of before:
-    /// apart is better or worse.
+    /// Two numbers by their ranges (issue #5), the step of the rule (<see cref="Judged"/>) for a rate. Under half a percent
+    /// apart: the same. With a range on both: better or worse only when the ranges do not overlap, otherwise it could be
+    /// luck. Without ranges (a scan made before them, a real 0) apart is better or worse, as before them.
     /// </summary>
     public static Verdict Judge(double mine, double theirs, SimRange? myRange, SimRange? theirRange, Better better) =>
         Judge(mine, theirs, myRange is { } a && theirRange is { } b && a.Overlaps(b), better);
@@ -447,18 +503,122 @@ static class SimRanges
     }
 
     /// <summary>
-    /// <see cref="Judge(double, double, SimRange?, SimRange?, Better)"/> for one rate of two results, as "Compared with",
-    /// two setups side by side and Find upgrades use it: for two fights with the same dice that were paired (a compare, an
-    /// item and the setup as it is) by the reach of luck between them (<see cref="Apart(SimResult, SimResult, SimRate)"/>),
-    /// otherwise by the ranges <see cref="Basis"/> gives.
+    /// The simulator's one rule for "is this number better than that one" (issue #5), for "Compared with", for two setups
+    /// side by side (issue #2) and for an item of Find upgrades against the setup as it is (issue #4): the verdict of
+    /// <see cref="Judged"/>.
     /// </summary>
-    public static Verdict Judge(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better)
+    public static Verdict Judge(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better,
+        Unranged? unranged = null) => Judged(mine, theirs, rate, myValue, theirValue, better, unranged).Verdict;
+
+    /// <summary>
+    /// The one rule, and what decided it (<see cref="Ground"/>), for a number of two results: <paramref name="rate"/> and
+    /// <paramref name="unranged"/> are what its column says of it. Under half a percent apart: the same.
+    /// <list type="bullet">
+    /// <item>A rate: for two fights with the same dice that were paired (a compare, an item and the setup as it is) by the
+    /// reach of luck between them (<see cref="Apart(SimResult, SimResult, SimRate)"/>), otherwise by the ranges
+    /// <see cref="Basis"/> gives, a real 0 included; without ranges, apart is better or worse, as before them.</item>
+    /// <item>The worst there is (issue #67): a number per kill of a fight that killed nothing, or per run of a dungeon that
+    /// finished no run, is infinity on the bad side (SimColumns). Against a number it takes the verdict of the kills, or the
+    /// runs, of the two by this rule: worse where they are worse, could be luck where they could be. Against another such
+    /// it is the same.</item>
+    /// <item>A number without a rate (issue #67), by what its column says of it (<see cref="Unranged"/>; one moment where it
+    /// says nothing): the enemy's biggest hit, and Safe or risky, by the game's own numbers where they decide both fights'
+    /// numbers; a death against none by the deaths of the two, judged by this rule; any other difference is one moment of
+    /// one fight, which has no range: could be luck.</item>
+    /// </list>
+    /// A number of which neither more nor less is better only differs, as before.
+    /// </summary>
+    public static (Verdict Verdict, Ground By) Judged(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue,
+        Better better, Unranged? unranged = null)
     {
-        if (rate == null) return Judge(myValue, theirValue, null, null, better);
-        if (Apart(mine, theirs, rate) is { } luck) return Judge(myValue, theirValue, luck, better);
-        var (a, b, _) = Basis(mine, theirs, rate);
-        return Judge(myValue, theirValue, a, b, better);
+        if (!double.IsFinite(myValue) || !double.IsFinite(theirValue)) return Worst(mine, theirs, rate, myValue, theirValue, better);
+        if (rate == null) return WithoutRate(mine, theirs, myValue, theirValue, better, unranged ?? Unranged.Moment);
+        if (Apart(mine, theirs, rate) is { } luck) return On(Judge(myValue, theirValue, luck, better), Ground.SameDice);
+        var (a, b, realZero) = Basis(mine, theirs, rate);
+        return On(Judge(myValue, theirValue, a, b, better),
+            realZero ? Ground.RealZero : a != null && b != null ? Ground.Ranges : mine.Spread != null && theirs.Spread != null ? Ground.Short : Ground.Before);
     }
+
+    // A verdict and what decided it; the same, and a number neither way better, need nothing to decide them.
+    static (Verdict, Ground) On(Verdict verdict, Ground by) => (verdict, verdict is Verdict.Same or Verdict.Differs ? Ground.None : by);
+
+    // The worst there is on one side or both (issue #67): nothing killed, or no run of a dungeon finished. One side has it
+    // because it killed nothing, or finished nothing, where the other did: the kills, or the runs, of the two decide.
+    static (Verdict, Ground) Worst(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better)
+    {
+        bool mineWorst = !double.IsFinite(myValue);
+        if (mineWorst == !double.IsFinite(theirValue)) return (Verdict.Same, Ground.None);
+        if (better == Better.Neither) return (Verdict.Differs, Ground.None);
+        return rate?.Per switch
+        {
+            Per.Kill => (Carried(Judge(mine, theirs, SimRate.PerHour(Kills), mine.KillsPerHour, theirs.KillsPerHour, Better.More), mineWorst), Ground.Kills),
+            Per.Run => (Carried(Judge(mine, theirs, SimRate.PerHour(Runs), mine.PerHour(mine.DungeonRuns), theirs.PerHour(theirs.DungeonRuns), Better.More), mineWorst),
+                Ground.Runs),
+            // No count behind it: nothing decides it.
+            _ => (Verdict.Luck, Ground.Moment),
+        };
+    }
+
+    // A number without a rate (issue #67), by what its column says of it.
+    static (Verdict, Ground) WithoutRate(SimResult mine, SimResult theirs, double myValue, double theirValue, Better better, Unranged unranged)
+    {
+        // The same, apart for a number neither way better, or else which of the two is ahead.
+        Verdict apart = Judge(myValue, theirValue, null, null, better);
+        if (apart is not (Verdict.Better or Verdict.Worse)) return (apart, Ground.None);
+        bool mineWorse = apart == Verdict.Worse;
+        // The game's own numbers, the same in every fight of a setup: both biggest hits, or both fights' words where the
+        // game's numbers alone give them (a death in a fight the game's numbers make Risky anyway changes nothing).
+        if (unranged == Unranged.Hit && GameHit(mine) && GameHit(theirs)) return (apart, Ground.Game);
+        if (unranged == Unranged.Safe && GameSafe(mine) is { } safe && GameSafe(theirs) is { } other && safe != other
+            && mine.Safe == safe && theirs.Safe == other && safe != mineWorse)
+            return (apart, Ground.Game);
+        // A death against none, which made the number of the one that died the worse: as the deaths of the two are judged.
+        bool died = mine.Deaths > 0;
+        if (unranged is Unranged.Death or Unranged.Safe && died != (theirs.Deaths > 0) && died == mineWorse)
+            return (Carried(Judge(mine, theirs, SimRate.PerHour(Deaths), mine.DeathsPerHour, theirs.DeathsPerHour, Better.Less), mineWorse), Ground.Deaths);
+        return (Verdict.Luck, Ground.Moment);
+    }
+
+    // The verdict of a line with a range (the deaths, kills or runs) carried over to a number it decides, of which mine is
+    // the worse when mineWorse: better or worse where that line says so the same way, could be luck otherwise.
+    static Verdict Carried(Verdict line, bool mineWorse) =>
+        line == (mineWorse ? Verdict.Worse : Verdict.Better) ? line : Verdict.Luck;
+
+    /// <summary>
+    /// Whether a fight's biggest hit of the enemy is the game's own number (CardReadings: AllAttacksDamageWatcher.Maximum),
+    /// the same in every fight of its setup, and not a bigger loss of hitpoints seen in the fight, which is one moment. A
+    /// scan made before the game's number was kept apart (SimResult.GameMaxHit), and a fight in which the game's number
+    /// rose after a prayer or toolbelt item of the copy ran out (at a moment of the fight, CardReadings), cannot tell: one
+    /// moment.
+    /// </summary>
+    public static bool GameHit(SimResult r) => r.MaxEnemyHit is { } hit && r.GameMaxHit is { } game && hit <= game;
+
+    /// <summary>
+    /// Safe or risky by the game's own numbers alone, the enemy's biggest hit as the game gives it against the auto-eat point:
+    /// Risky where the game's hit reaches that point, whatever the fight saw; Safe where it does not and the biggest hit
+    /// shown is the game's (<see cref="GameHit"/>). Null where the game's numbers do not decide it: a bigger loss seen in the
+    /// fight under the auto-eat point, no game's number or no auto-eat point, or a fight From bank whose food ran out, from
+    /// when on auto eat had nothing to eat.
+    /// </summary>
+    public static bool? GameSafe(SimResult r)
+    {
+        if (r.GameMaxHit is not { } game || r.AutoEatHp is not { } eat || r.FoodGoneSeconds >= 0) return null;
+        if (game >= eat) return false;
+        return GameHit(r) ? true : null;
+    }
+
+#if DEVTOOLS
+    /// <summary>
+    /// Development: the verdict of the rule before issue #67, for the window's verdict lines ("BEFORE ..., AFTER ..."): a
+    /// number without a rate, and the worst there is against a number, better or worse wherever the two were apart.
+    /// </summary>
+    public static Verdict DevBefore(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better)
+    {
+        bool fa = double.IsFinite(myValue), fb = double.IsFinite(theirValue);
+        if (!fa || !fb) return fa == fb ? Verdict.Same : better == Better.Neither ? Verdict.Differs : fa ? Verdict.Better : Verdict.Worse;
+        return rate == null ? Judge(myValue, theirValue, null, null, better) : Judge(mine, theirs, rate, myValue, theirValue, better);
+    }
+#endif
 
     // Worked out once for each pair of results and rate, on the game's thread, as Of does for one result.
     static readonly ConditionalWeakTable<SimResult, Dictionary<(SimResult Theirs, SimRate Rate), SimLuck?>> s_apart = new();
