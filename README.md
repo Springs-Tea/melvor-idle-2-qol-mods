@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: thirteen quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: fourteen quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -92,6 +92,15 @@ Take the ones you want. Each has a page of its own with pictures and details.
       Every rock side by side, from a round button on the Mining page: the time of one ore, and ore,
       Mining XP and gold per hour, worked out by the game's own rule for breaking a rock, the best of each
       column in gold. Hover a line for the whole hour there; click it to see that rock's card on the page.
+    </td>
+  </tr>
+  <tr>
+    <td><a href="mods/WoodcuttingRates"><img src="docs/img/woodcutting-rates.png" alt="Woodcutting Rates"></a></td>
+    <td>
+      <h3><a href="mods/WoodcuttingRates">Woodcutting Rates</a></h3>
+      Every tree side by side, from a round button on the Woodcutting page: the time of one log, and logs,
+      Woodcutting XP and gold per hour, with the hits a cut takes and the XP of a cut as measured in the game,
+      the best of each column in gold. Hover a line for the whole hour there; click it to see that tree's card.
     </td>
   </tr>
   <tr>
@@ -253,9 +262,10 @@ flowchart TB
         M11["FishingRates"]
         M12["ThievingOverview"]
         M13["MiningRates"]
+        M14["WoodcuttingRates"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own
