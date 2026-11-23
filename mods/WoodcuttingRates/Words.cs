@@ -48,12 +48,16 @@ static class Words
     {
         var open = trees.Where(t => !t.Locked && t.HasTime).ToList();
         bool logs = open.Any(t => t.Log != null && t.LogsPerHour == null);
-        if (!logs && !open.Any(t => t.GoldPerHour == null)) return "";
+        var noGold = open.Where(t => t.GoldPerHour == null).ToList();
+        if (!logs && noGold.Count == 0) return "";
         var unknown = new List<string>();
         if (TreeRates.HitsRule == null) unknown.Add("how much a hit takes from a tree");
         if (TreeRates.LogsRule == null && logs) unknown.Add("what its logs come with");
-        return (logs ? "Time, Logs and Gold show -" : "Gold shows - where a cut can bring items that sell") +
-            $": the window does not know {string.Join(", or ", unknown)}.";
+        if (TreeRates.HitItemsRule == null && noGold.Any(t => t.PerHitGoldPerHour == null)) unknown.Add("what the items of a hit come with");
+        if (unknown.Count == 0) return "";
+        string said = unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
+        return (logs ? "Time, Logs and Gold show -" : "Gold shows - where an item of the hour that sells is not counted") +
+            $": the window does not know {said}.";
     }
 
     /// <summary>
@@ -90,8 +94,13 @@ static class Words
         if (t.Log != null) lines.Add(LogLine(t));
         if (t.PerHit.Count > 0)
         {
-            lines.Add("Every hit, a chance of:");
-            lines.AddRange(t.PerHit.Select(d => Item(d, "hit", "hits")));
+            // What the items of a hit come with, as far as it is settled; until then the window's reading is named: the
+            // game's name for their list says once a hit, but one of the card's lists is named per hit point in the game's
+            // code, and which items that list shows is not read yet (the code review of turn 2, fault 5).
+            bool points = TreeRates.HitItemsRule?.Reading == HitItemsWith.HitPoint;
+            lines.Add(TreeRates.HitItemsRule == null ? "Every hit, a chance of (once a hit: the window's reading):"
+                : points ? "Every hit point a hit takes, a chance of:" : "Every hit, a chance of:");
+            lines.AddRange(t.PerHit.Select(d => points ? Item(d, "hit point", "hit points") : Item(d, "hit", "hits")));
         }
         if (t.PerCut.Count > 0)
         {
@@ -106,7 +115,7 @@ static class Words
         if (t.GoldPerHour is { } gold)
         {
             lines.Add("");
-            double others = t.PerHitGoldPerHour + (t.PerCutGoldPerHour ?? 0);
+            double others = (t.PerHitGoldPerHour ?? 0) + (t.PerCutGoldPerHour ?? 0);
             lines.Add(t.LogPrice != null && others > 0
                 ? $"Gold: {Number(gold)} an hour, what the logs and items sell for; {Number(others)} of it from the other items."
                 : $"Gold: {Number(gold)} an hour, what {(t.LogPrice != null ? "the logs sell" : "the items sell")} for.");

@@ -45,9 +45,8 @@ category, and:
 | **Gold** | What the logs and the other items of an hour sell for. |
 
 - **Time, Logs and Gold show `-`.** The window does not know how much a hit takes from a tree, or what its
-  logs come with: a hit, a cut, or each hit point a hit takes. No value of the game's gives the damage of a
-  hit, so the window does not count the hits a cut takes, and it shows `-` rather than a guess. A note under
-  the list says so.
+  logs come with: a hit, a cut, or each hit point a hit takes. So it does not count the hits a cut takes, and
+  it shows `-` rather than a guess. A note under the list says so.
 - **The best number of each column is gold.**
 - **Click a column's name to sort by it.** The first click puts the best trees on top, the next turns the
   order around. "Tree" goes back to the order of the page. The name the list is sorted by is gold, with the
@@ -86,10 +85,10 @@ Put the pointer on a line for the hour at that tree, as far as it is counted:
 | **Hit points: 30, with your bonuses.** | The tree's hit points, as its card shows them. |
 | **Your chances that change the hits a cut takes, not counted:**, and a line per chance | Your chances of double damage, of a weak spot and of an instant cut at that tree, by the names the Woodcutting page gives them, when you have any. |
 | **Logs: Oak Logs, 1 at a time, with your bonuses.** | The tree's logs, and how many come at a time. |
-| **Every hit, a chance of:**, and a line per item | Each item a hit can bring besides the logs, with its chance per hit, how many it brings when it is more than one, and how many an hour brings. |
+| **Every hit, a chance of (once a hit: the window's reading):**, and a line per item | Each item a hit can bring besides the logs, with its chance per hit, how many it brings when it is more than one, and how many an hour brings if every hit rolls it once. That is the window's reading, not settled: a hit could also roll its items once for every hit point it takes. |
 | **Every cut, a chance of:**, and a line per item | Each item a cut can bring, with its chance per cut. Not per hour, as the cuts of an hour are not counted. |
 | **The doubling chance (5%) is counted in the items.** | Only when you have one. |
-| **Gold: 1,234 an hour, ...** | What the items of an hour sell for, when nothing of the hour that sells is left out. |
+| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, when everything of the hour that sells is counted by the game's rule. |
 | **Overgrowth on this tree now, its bonuses in the numbers above:**, and a line per effect | The overgrowth on the tree, by the game's names, with the stacks each has left. |
 | **Click to show this tree on the Woodcutting page. Woodcutting is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Woodcutting page has no room for this tree's card beside this window: drag the window aside.** | Instead of the line above, on two lines, when no scroll of the page's list shows the tree's whole card clear of the window. |
@@ -106,13 +105,13 @@ level, equipment, potions and every other bonus, so the list moves with them.
 | --- | --- |
 | A hit takes the tree's time of a hit. | The game's value for the tree. |
 | The hits of an hour are an hour over the time of a hit. | The mod's. |
-| Every hit gives the tree's XP. | The mod's reading of the XP tag's words, "The Skill XP gained per action.": a hit is the game's action for Woodcutting. |
-| The items of a hit come at their chance on every hit, and the items of a cut at theirs on every cut. | The game's chances, from its two lists for the tree; that one comes with a hit and the other with a cut is the mod's reading of their names. |
+| Every hit gives the tree's XP. | The mod's reading of the XP tag's words, "The Skill XP gained per action.", taking a hit as the action. |
+| The items of a hit come at their chance once a hit, and the items of a cut at theirs on every cut. | The game's chances, from its two lists for the tree. That one comes once a hit and the other on every cut is the mod's reading of their names, not settled: a hit could also roll its items once for every hit point it takes. So the gold, which would rest on it, is not counted. |
 | The doubling chance doubles the items. | The mod's reading of the game's words for it, "Your chance to double the output". |
 | The overgrowth on a tree now is in its numbers. | The mod's reading: the game keeps a tree's numbers with its overgrowth. Overgrowth a cut may put on later is not counted. |
-| How much a hit takes from a tree, and so the hits a cut takes. | Not counted: no value of the game's gives the damage of a hit. Time, Logs and Gold show `-`. |
+| How much a hit takes from a tree, and so the hits a cut takes. | Not counted: the window does not know it. Time, Logs and Gold show `-`. |
 | What the logs come with: every hit, a cut, or each hit point a hit takes. | Not counted. Time, Logs and Gold show `-`. |
-| Gold is what the logs and the items sell for. | The game's sell prices; shown only when none of the hour's items that sell is left out. |
+| Gold is what the logs and the items sell for. | The game's sell prices; shown only when everything of the hour that sells is counted by a settled rule, not by the mod's reading. |
 | Chances count as their long-run average. | The mod's. |
 
 ## Questions it answers

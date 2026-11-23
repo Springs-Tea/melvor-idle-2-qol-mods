@@ -27,9 +27,10 @@ namespace WoodcuttingRates;
 // them, the tree's hit points before and after, the cut (instant or not), the order of the game's events, the XP and the
 // items it added, the overgrowth it put on. It ends when the minutes are up or after a minute without a hit, with, for
 // every tree hit, one line per question, each with a verdict in capitals; NOT DECIDED below MostCuts whole cuts or
-// MostHits frames. The questions are the parts of the rule the window's hour rests on (TreeRates.LogsRule, HitsRule): how
-// much an ordinary, a double and a weak spot hit takes (against the game's two numbers of a weak spot and each reading of
-// TreeRates.HitRule), the hits a cut takes against each reading's, what the logs and the XP come with. Then the game's
+// MostHits frames. The questions are the parts of the rule the window's hour rests on (TreeRates.LogsRule, HitsRule,
+// HitItemsRule): how much an ordinary, a double and a weak spot hit takes (against the game's two numbers of a weak spot
+// and each reading of TreeRates.HitRule), the hits a cut takes against each reading's, what the logs, the items of a hit
+// (once a hit, or for every hit point it takes) and the XP come with. Then the game's
 // own tracker (WoodcuttingEntity.Tracker) over its periods beside ours. Its last line says it stopped listening and
 // changed nothing. Every listener runs inside a try, and all are taken off when it ends, on Stop (with the done file,
 // DevStopped) and on another character (DevUnwatchAll).
@@ -430,19 +431,33 @@ public partial class WoodcuttingRatesMod
                 (plain.Count < MostHits ? $" (fewer than {MostHits} frames decide nothing)" : ""));
         }
 
-        // Every other item: per hit against our chances of a hit, per cut against our chances of a cut.
+        // Every other item: per hit against our chances of a hit, once a hit and for every hit point a hit takes (the same
+        // evidence that settles what the logs come with settles what the items of a hit come with: the code review of
+        // turn 2, fault 5), and per cut against our chances of a cut.
+        int hitsAlone = hitOnly.Sum(m => m.Hits.Count(h => ReferenceEquals(h.Tree, tree)));
+        int pointsAlone = hitOnly.Sum(m => m.Hits.Where(h => ReferenceEquals(h.Tree, tree)).Sum(h => h.Damage));
+        static bool Fits(double seen, double expect) => Math.Abs(seen - expect) <= 3 * Math.Sqrt(Math.Max(0, expect)) + 2;
+        var hitItems = new List<(bool Once, bool Point)>();
         var others = moments.SelectMany(m => m.Items.Select(i => i.Item)).Where(i => !ReferenceEquals(i, ours.Log))
             .Concat(ours.PerHit.Select(x => x.Item)).Concat(ours.PerCut.Select(x => x.Item)).Distinct(ReferenceEqualityComparer.Instance).Cast<Item>().ToList();
         foreach (Item item in others)
         {
             int inHits = hitOnly.Sum(m => m.ItemsOf(item)), inCuts = withCut.Sum(m => m.ItemsOf(item));
             double onHit = ours.PerHit.Where(x => ReferenceEquals(x.Item, item)).Sum(x => x.Chance * x.Each);
-            double expectHits = onHit * hitOnly.Sum(m => m.Hits.Count);
+            double expectHits = onHit * hitsAlone, expectPoints = onHit * pointsAlone;
             double expectCuts = (ours.PerCut.Where(x => ReferenceEquals(x.Item, item)).Sum(x => x.Chance * x.Each) + onHit) * withCut.Count;
-            bool far = Math.Abs(inHits - expectHits) > 3 * Math.Sqrt(expectHits) + 2 || Math.Abs(inCuts - expectCuts) > 3 * Math.Sqrt(expectCuts) + 2;
-            DevLog($"watch | {id} | item {item.Id} | {inHits} in frames with a hit and no cut (ours {R(expectHits)} by our chance of a hit), {inCuts} in frames with a cut " +
-                $"(ours {R(expectCuts)} by our chances of a hit and a cut){(far ? "  FAR FROM OURS" : "")}");
+            bool once = Fits(inHits, expectHits), point = Fits(inHits, expectPoints);
+            if (onHit > 0) hitItems.Add((once, point));
+            bool far = (!once && !point) || !Fits(inCuts, expectCuts);
+            DevLog($"watch | {id} | item {item.Id} | {inHits} in frames with a hit and no cut (ours {R(expectHits)} once a hit, {R(expectPoints)} for every hit point " +
+                $"a hit takes), {inCuts} in frames with a cut (ours {R(expectCuts)} by our chances of a hit and a cut){(far ? "  FAR FROM OURS" : "")}");
         }
+        if (hitItems.Count > 0)
+            Say("the items of a hit", hitOnly.Count < MostHits ? "NOT DECIDED" : pointsAlone == hitsAlone ? "NOT DECIDED (no hit took more than 1 hit point)"
+                    : hitItems.All(x => x.Once && !x.Point) ? "ITEMS OF A HIT ONCE A HIT"
+                    : hitItems.All(x => x.Point && !x.Once) ? "ITEMS OF A HIT FOR EACH HIT POINT IT TAKES" : "NOT DECIDED",
+                $"{hitItems.Count} items on our list of a hit: {hitItems.Count(x => x.Once)} fit once a hit, {hitItems.Count(x => x.Point)} fit for every hit point; " +
+                $"{hitsAlone} hits taking {pointsAlone} hit points in frames without a cut{(hitOnly.Count < MostHits ? $" (fewer than {MostHits} frames decide nothing)" : "")}");
         DevLog($"watch | {id} | overgrowth put on or taken off | {string.Join(", ", moments.SelectMany(m => m.Effects).DefaultIfEmpty("none"))}");
         return verdicts;
     }

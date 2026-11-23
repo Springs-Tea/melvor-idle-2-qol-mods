@@ -23,7 +23,9 @@ cut can bring with its chance, and the overgrowth on the tree now.
 
 The numbers come from the game's own values for each tree, so whatever changes those
 changes the window too. That every hit gives the tree's XP is the window's reading of the
-game's words for the XP tag, "The Skill XP gained per action." Chances count as their
+game's words for the XP tag, "The Skill XP gained per action." So is counting the items of
+a hit once a hit, which the tooltip says; a hit could also roll them for every hit point it
+takes, so the gold, which would rest on that, is not counted. Chances count as their
 long-run average. It is an estimate, not a promise. A tree you hid on the Woodcutting page
 is listed only while the page lists hidden trees too.
 

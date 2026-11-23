@@ -105,13 +105,22 @@ namespace WoodcuttingRates;
 // 10. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
 //     closed and folded as it was, the page's category filter (by hand if its signal did not) and its scroll two drawn
 //     frames later, each only if it is still as the request left it (otherwise the player changed it, and it is left as
-//     he did); reads the Woodcutting page's filter and scroll back while it is still on the screen; then the page that
-//     was on the screen, only if the request opened Woodcutting itself, and the pointer where the real one is.
+//     he did); reads the Woodcutting page's filter and scroll back while it is still on the screen; then the keyboard
+//     focus (off a control the request pressed, back to the one that had it), the page that was on the screen, only if
+//     the request opened Woodcutting itself, and the pointer where the real one is. The page is read again right before
+//     every put-back press and every scroll write: the press by hand is not made, and the scroll is not written, over a
+//     filter or scroll the player changed while it waited, and the scroll is not written while a hand was at the mouse
+//     since it was decided (the request then keeps it as its own and tries again at the end). Every part (settings.json,
+//     the window, the filter, the scroll, the focus, the page, the pointer) is put back in its own try, with one line:
+//     a part that fails is NOT AS IT WAS, and the next part runs all the same; a put-back step that fails is said, and the
+//     put-back goes on with the next step.
 // 11. Reads the rest back from the screen, the game and the disk, what woodcutting is doing too, and says in its last line
 //     what was put back, with NOT AS IT WAS for anything that is not, and for any put-back on the way that was not, and
-//     NOT READ BACK for what could not be read (the done line then ends NOT ALL AS IT WAS, NOT ALL READ BACK).
-// A step that fails jumps to 10: a failed request puts everything back too. If the mod stops while a request runs, the
-// done file says so, and settings.json is written back from the copy (DevStopped).
+//     NOT READ BACK for what could not be read (the done line then ends NOT ALL AS IT WAS, NOT ALL READ BACK). What the
+//     player changed himself is said as his, and is no fault.
+// A step that fails jumps to 10: a failed request puts everything back too. If the mod stops while a request runs, or
+// another character is opened, the done file says so, settings.json is written back from the copy and read again by the
+// window, and the done line names where the request left the filter of its character (DevStopped, DevReset).
 public partial class WoodcuttingRatesMod
 {
     const string RequestFile = "woodcutting.request", DoneFile = "woodcutting.done";
@@ -157,18 +166,40 @@ public partial class WoodcuttingRatesMod
     bool _devInFlight;
     // The page's box for hidden trees just before the last press of a game button (DevHiddenMoved).
     bool _devHiddenBefore;
+    // When the request decided to put the page's scroll back, and the scroll it had left then: the scroll is read again
+    // right before it is written, and left when a hand was at the mouse since, or when it is neither what the request
+    // left nor what the page's relayout made of it (the code review of turn 2, fault 2).
+    (ulong At, int? Left)? _devScrollDecided;
+    // What of the page the request left alone because the player changed it while it waited ("filter", "scroll"): the
+    // read back says so, and does not count it against the put-back.
+    readonly HashSet<string> _devHis = new();
+    // The scroll was not written back because a hand was at the mouse: the request keeps it as its own, and the read back
+    // says why it is not as it was.
+    bool _devScrollAtHand;
+    // The controls the request pressed with the pointer: one of them left with the keyboard focus would be pressed again
+    // by a key of his, so the put-back takes the focus off them, and gives it back to the control that had it (the code
+    // review of turn 2, polish).
+    readonly List<Control> _devPressed = new();
+    Control? _devFocusBefore;
+    // The Woodcutting of the character the request runs for: when another character is opened meanwhile, the done line
+    // names where the request left that one's filter (the code review of turn 2, fault 3).
+    WoodcuttingActionComponent? _devAction;
 
     void DevReset()
     {
-        // Another character while a request runs: its listening is let go, and the request says it stopped.
+        // Another character while a request runs: its listening is let go, settings.json is written back from the copy
+        // (the window's settings are the same for every character), and the request says what it could not put back.
         if (_devSteps.Count > 0)
         {
             DevUnwatchAll();
-            DevEnd("stopped: another character was opened, nothing more was put back");
+            string settings = DevSettingsBack();
+            DevEnd($"stopped: another character was opened; put back: {settings}; not put back: {DevLeftOn()}, the window of the character before (freed " +
+                "with it), its page and the pointer  NOT ALL AS IT WAS");
         }
         if (_devHits != null) DevWatchEnd("stopped: another character was opened", summarise: false);
         _devSteps.Clear();
         _devAt = 0;
+        _devAction = null;
     }
 
     // The mod stops (Stop) while a request runs: the done file says so, so that the check does not wait its whole time
@@ -178,19 +209,43 @@ public partial class WoodcuttingRatesMod
         DevUnwatchAll();
         if (_devHits != null) DevWatchEnd("stopped: the mod stopped", summarise: false);
         if (_devSteps.Count == 0) return;
-        string settings = "settings.json not read";
-        if (_devSettingsRead)
-        {
-            try
-            {
-                if (_devSettingsCopy == null) File.Delete(SettingsFile);
-                else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
-                settings = "settings.json put back byte for byte";
-            }
-            catch (Exception e) { settings = "settings.json NOT AS IT WAS: " + e.Message; }
-        }
+        string settings = DevSettingsBack();
         string step = _devAt < _devSteps.Count ? _devSteps[_devAt].Name : "the end";
-        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; the window, the page's filter and scroll and the page were not put back  NOT ALL AS IT WAS");
+        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; not put back: {DevLeftOn()}, the window, the page and the pointer  NOT ALL AS IT WAS");
+    }
+
+    // settings.json written back byte for byte from the copy the request read at its start, and read again by the window,
+    // so that a window built afterwards opens as the player had it (sort, size, place, fold).
+    string DevSettingsBack()
+    {
+        if (!_devSettingsRead) return "settings.json not read by the request";
+        try
+        {
+            if (_devSettingsCopy == null) File.Delete(SettingsFile);
+            else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
+            _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
+            _settings.Sort ??= RatesList.NameKey;
+            return _devSettingsCopy == null ? "settings.json not there, as it was not at the start"
+                : "settings.json written back byte for byte from the copy, and read again by the window";
+        }
+        catch (Exception e) { return $"settings.json NOT AS IT WAS: {e.GetType().Name}: {e.Message}"; }
+    }
+
+    // Where the request left the page's category filter of its own character, when it could not put it back: the game
+    // keeps that filter in the character's Woodcutting (WoodcuttingActionComponent.SelectedCategory; the component is
+    // written to the save, WriteTo), so it may stay there.
+    string DevLeftOn()
+    {
+        try
+        {
+            if (_devAction == null) return "the page's filter (no character read)";
+            string now = _devAction.SelectedCategory?.Id ?? "all";
+            string was = _devOrigin is { } origin ? origin.Filter?.Id ?? "all" : "unchanged by the request";
+            string left = _devLeft is { } l ? $"the request had left it on {l.Filter?.Id ?? "all"}" : "the request had nothing of its own left on it";
+            return $"the category filter of the character the request ran for, now on {now} ({left}; before the request's first change it was {was}), " +
+                "which the game may keep in that character's save, and the scroll of its list";
+        }
+        catch (Exception e) { return $"the page's filter (not read: {e.GetType().Name})"; }
     }
 
     void DevRequest()
@@ -225,6 +280,13 @@ public partial class WoodcuttingRatesMod
         catch (Exception e)
         {
             DevLog($"'{step}' failed: {e.GetType().Name}: {e.Message} at {string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(3).Select(l => l.Trim()))}");
+            try { DevPointerBack(); } catch (Exception) { }
+            if (_devPutBackAt == 0 || _devSteps.Count == 0)
+            {
+                DevUnwatchAll();
+                DevEnd($"failed before it began: {e.Message}");
+                return;
+            }
             if (_devAt < _devPutBackAt)
             {
                 // What the steps before changed is put back all the same, and read back.
@@ -235,12 +297,15 @@ public partial class WoodcuttingRatesMod
                 _devFrameMark = 0;
                 _devAim = null;
                 _devMisses = 0;
-                DevPointerBack();
                 return;
             }
-            DevUnwatchAll();
-            DevEnd(_devPutBackAt == 0 ? $"failed before it began: {e.Message}"
-                : $"{_devFailure ?? "ok until the put-back"}; the put-back FAILED at {step}: {e.Message}");
+            // A step of the put-back failed: what it puts back is NOT AS IT WAS, said once, and the put-back goes on with the
+            // next step, so that one failure never leaves the rest as the request left it (the code review of turn 2,
+            // fault 4). A step that fails on every tick moves on all the same.
+            string words = $"the put-back's step '{step}' NOT AS IT WAS: it failed ({e.GetType().Name}: {e.Message}), and the put-back goes on";
+            DevLog("put back | " + words);
+            _devOnTheWay.Add(words);
+            DevNext();
         }
     }
 
@@ -253,7 +318,10 @@ public partial class WoodcuttingRatesMod
         _devMisses = 0;
         _devFrameMark = 0;
         if (_devAt < _devSteps.Count) return;
-        DevEnd($"{_devFailure ?? "ok"}; put back: {_devPutBackWords}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
+        // The last step reads everything back and says it; when it failed itself, what went wrong on the way is said.
+        string words = _devPutBackWords ?? "the read back did not run to its end; on the way: " +
+            (_devOnTheWay.Count == 0 ? "nothing said" : string.Join(" | ", _devOnTheWay));
+        DevEnd($"{_devFailure ?? "ok"}; put back: {words}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
     }
 
     void DevEnd(string result)
@@ -309,7 +377,7 @@ public partial class WoodcuttingRatesMod
         if (_devLeft is { } left)
         {
             int? scroll = DevScrollNow();
-            if (!ReferenceEquals(action.SelectedCategory, left.Filter) || scroll != left.Scroll)
+            if (!ReferenceEquals(action.SelectedCategory, left.Filter) || !DevRelaid(scroll, left.Scroll))
             {
                 string words = $"{what} NOT MADE: the page's filter {action.SelectedCategory?.Id ?? "all"}, scrolled to {scroll?.ToString() ?? "-"}, is not what " +
                     $"the request left (the filter {left.Filter?.Id ?? "all"}, scrolled to {left.Scroll?.ToString() ?? "-"}): the player changed it while the press " +
@@ -325,6 +393,9 @@ public partial class WoodcuttingRatesMod
         {
             DevPageWas was = _devOrigin ?? new DevPageWas(before.Filter, before.Scroll, before.Look);
             _devOrigin = _devOriginWait ?? DevPageNow();
+            // What the player changed earlier is in this origin now: it is put back as his, not left aside.
+            _devHis.Clear();
+            _devScrollAtHand = false;
             if (!ReferenceEquals(_devOrigin.Filter, was.Filter) || _devOrigin.Scroll != was.Scroll || _devOrigin.Look != was.Look)
                 DevLog($"click | the page just before {what}: the filter {_devOrigin.Filter?.Id ?? "all"}, drawn {_devOrigin.Look ?? "-"}, " +
                     $"scrolled to {_devOrigin.Scroll?.ToString() ?? "-"}; not as the request found it (the filter {was.Filter?.Id ?? "all"}, drawn {was.Look ?? "-"}, " +
@@ -350,9 +421,15 @@ public partial class WoodcuttingRatesMod
         _devOnTheWay.Clear();
         _devHandBack = null;
         _devInFlight = false;
+        _devScrollDecided = null;
+        _devHis.Clear();
+        _devScrollAtHand = false;
+        _devPressed.Clear();
         _devWithout?.Dispose();
         _devWithout = null;
         _devStarted = Time.GetTicksMsec();
+        _devAction = _woodcutting!.Action;
+        _devFocusBefore = _ctx.Tree.Root.GuiGetFocusOwner();
         GameView view = GameAccess.FindGameView() ?? throw new InvalidOperationException("No character is open.");
         var action = _woodcutting!.Action;
         // settings.json as it is on disk, the copy everything of the window is put back from (lesson 50).
@@ -556,12 +633,23 @@ public partial class WoodcuttingRatesMod
 
         // After a put-back of the page's filter by its button's signal (DevFilterBack): when the signal did not set the
         // filter, the same button pressed with the pointer as a player would, and read back (Mining Rates' code review
-        // of turn 2, fault 1); then the scroll, two drawn frames after the filter, and one line that says all of it.
+        // of turn 2, fault 1); then the scroll, two drawn frames after the filter, and one line that says all of it. The
+        // press by hand reads the page again on every tick before it points and before it presses, and the scroll is
+        // decided only once the press by hand is read back: the player is at the mouse while it waits, and what he
+        // changes meanwhile is his (the code review of turn 2, faults 1 and 2).
         void AddPageBack(string name, Func<bool> skip, string head)
         {
             Add($"{name}: the button by hand", () =>
             {
                 if (skip() || _devHandBack is not { } hand) return true;
+                if (DevPageMoved() is { } moved)
+                {
+                    _devHandBack = null;
+                    DevLetGo("filter", "scroll");
+                    handWords = $"the filter and scroll left as the player changed them while the press by hand waited for the mouse ({moved}): " +
+                        $"the page's own '{hand.Button.Text}' button is not pressed";
+                    return true;
+                }
                 try
                 {
                     if (!GodotObject.IsInstanceValid(hand.Button) || !hand.Button.IsVisibleInTree())
@@ -583,22 +671,31 @@ public partial class WoodcuttingRatesMod
                 if (!ReferenceEquals(action.SelectedCategory, hand.Filter) && Time.GetTicksMsec() - _devStarted < 3000) return false;
                 _devHandBack = null;
                 bool back = ReferenceEquals(action.SelectedCategory, hand.Filter);
-                // Back: nothing of the request's is left on the filter. Not back: the final put-back tries again.
-                if (back) _devLeft = null;
                 handWords = (back ? $"the filter put back with the pointer on the page's own '{hand.Button.Text}' button"
                     : $"the filter NOT AS IT WAS after the signal and the pointer on the page's own '{hand.Button.Text}' button ({action.SelectedCategory?.Id ?? "all"})")
                     + DevHiddenMoved("the put-back's press of the page's own button");
+                // Back: the scroll is decided now, and nothing of the request's is left on the filter. Not back: the request
+                // still owns what it left, and the final put-back tries again.
+                if (back && _devLeft is { } left && _devOrigin is { } origin)
+                {
+                    handWords = DevJoin(handWords, DevDecideScroll(left.Scroll, origin.Scroll));
+                    _devLeft = null;
+                }
                 return true;
             });
             Add($"{name}: the scroll", () =>
             {
                 if (skip()) return true;
                 if (_devScrollBack != null && !DevFramesDrawn()) return false;
-                string said = DevJoin(pageBack, handWords, DevScrollBack());
+                // The scroll in its own try: a failure is its own NOT AS IT WAS, and the filter's words are said all the same.
+                string scrollWords;
+                try { scrollWords = DevScrollBack(); }
+                catch (Exception e) { scrollWords = $"the scroll NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message})"; }
+                string said = DevJoin(pageBack, handWords, scrollWords);
                 DevLog($"{head} {said}; drawn {DevFilterLook() ?? "NOT FOUND"}");
                 // Into the done line too, even when a later put-back mends it (Mining Rates' code review of turn 3, fault 7).
                 if (said.Contains("NOT AS IT WAS") || said.Contains("SHOW HIDDEN CHANGED")) _devOnTheWay.Add($"{head} {said}");
-                handWords = "";
+                pageBack = handWords = "";
                 return true;
             });
         }
@@ -840,31 +937,65 @@ public partial class WoodcuttingRatesMod
             readOk &= same;
             said.Add(same ? $"{what} as it was" : $"{what} NOT AS IT WAS (now {now})");
         }
+        // A part of the page the request left alone because the player changed it is said as his, and is no fault.
+        void SayPage(bool same, string part, string what, string now)
+        {
+            if (!same && _devHis.Contains(part)) said.Add($"{what}: left as the player changed it (now {now})");
+            else Say(same, what, now);
+        }
+        // One part of the put-back in its own try: one line, NOT AS IT WAS for a part that failed or did not take, and the
+        // next part runs all the same (the code review of turn 2, fault 4). carry: a NOT AS IT WAS in its words goes into
+        // the done line (the filter's words go there later with its scroll's, in AddPageBack).
+        void Part(string part, Func<string> put, bool carry = true)
+        {
+            try
+            {
+                string words = put();
+                DevLog($"put back | {part}: {words}");
+                if (carry && (words.Contains("NOT AS IT WAS") || words.Contains("SHOW HIDDEN CHANGED"))) _devOnTheWay.Add($"{part}: {words}");
+            }
+            catch (Exception e)
+            {
+                string words = $"{part} NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message}), and the put-back goes on";
+                DevLog("put back | " + words);
+                _devOnTheWay.Add(words);
+            }
+        }
         Add("put back", () =>
         {
-            events?.Dispose();
-            events = null;
-            if (before.Settings == null) File.Delete(SettingsFile);
-            else ModFiles.WriteWhole(SettingsFile, before.Settings);
-            _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
-            _settings.Sort ??= RatesList.NameKey;
-            _window?.Free();
-            _window = null;
-            _list = null;
-            _fitPending = false;
-            _wanted = before.Wanted;
-            if (_devInFlight)
+            Part("the game's events", () =>
             {
-                // The request ended between a press and its read-back: what the page shows now is what it left.
-                _devLeft = (_woodcutting!.Action.SelectedCategory, DevScrollNow());
-                _devInFlight = false;
-                DevLog("put back | the request ended before it read back its last press: the page's filter and scroll as they are now are taken as what it left");
-            }
-            // The filter now, through the page's own buttons (by hand in the next steps if their signal did not set it);
-            // its scroll two drawn frames later. The page that was on the screen comes back only after both are read.
-            pageBack = DevFilterBack();
-            Sync();
-            SyncStripButton();
+                events?.Dispose();
+                events = null;
+                return "no longer listened to";
+            });
+            Part("settings.json", DevSettingsBack);
+            Part("the window", () =>
+            {
+                _window?.Free();
+                _window = null;
+                _list = null;
+                _fitPending = false;
+                _wanted = before.Wanted;
+                Sync();
+                SyncStripButton();
+                return $"{(before.Wanted ? "open" : "closed")}, as the request found it, with what settings.json holds";
+            });
+            pageBack = "";
+            Part("the page's filter", () =>
+            {
+                if (_devInFlight)
+                {
+                    // The request ended between a press and its read-back: what the page shows now is what it left.
+                    _devLeft = (_woodcutting!.Action.SelectedCategory, DevScrollNow());
+                    _devInFlight = false;
+                    DevLog("put back | the request ended before it read back its last press: the page's filter and scroll as they are now are taken as what it left");
+                }
+                // The filter now, through the page's own buttons (by hand in the next steps if their signal did not set
+                // it); its scroll two drawn frames later. The page that was on the screen comes back only after both.
+                pageBack = DevFilterBack();
+                return pageBack;
+            }, carry: false);
             return true;
         });
         AddPageBack("put back the page's filter", () => false, "put back | the page's filter and scroll:");
@@ -885,23 +1016,38 @@ public partial class WoodcuttingRatesMod
             }
             string when = _devOrigin != null && (!ReferenceEquals(_devOrigin.Filter, before.Filter) || _devOrigin.Scroll != before.Scroll || _devOrigin.Look != before.Look)
                 ? " (as the player left it before the request's first change)" : "";
-            Say(ReferenceEquals(action.SelectedCategory, want.Filter), $"the page's category filter {want.Filter?.Id ?? "all"}{when}", action.SelectedCategory?.Id ?? "all");
+            SayPage(ReferenceEquals(action.SelectedCategory, want.Filter), "filter", $"the page's category filter {want.Filter?.Id ?? "all"}{when}",
+                action.SelectedCategory?.Id ?? "all");
             // The filter as the page draws it too, not only the member (Mining Rates' code review of turn 1, fault 2).
-            Say(look != null && look == want.Look, $"the page's filter drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
-            Say(scroll == want.Scroll, $"the page's list of trees scrolled to {want.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
+            SayPage(look != null && look == want.Look, "filter", $"the page's filter drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
+            SayPage(scroll == want.Scroll, "scroll", $"the page's list of trees scrolled to {want.Scroll?.ToString() ?? "-"}",
+                (scroll?.ToString() ?? "-") + (_devScrollAtHand ? ", not written while a hand was at the mouse" : ""));
             return true;
         });
         Add("put back the page", () =>
         {
-            if (before.Page != null && _devOpenedPage && !ReferenceEquals(DevNative.CurrentPage(view)?.Item1, before.Page))
+            Part("the keyboard focus", DevFocusBack);
+            Part("the page", () =>
             {
+                if (before.Page == null || !_devOpenedPage) return "as it was: the request did not open Woodcutting";
+                GamePage? now = DevNative.CurrentPage(view)?.Item1;
+                if (ReferenceEquals(now, before.Page)) return $"{before.Page.Id}, as it was";
                 // Only the page the request opened itself: a page the player went to meanwhile is his.
-                if (PageShown) view.SetCurrentPage(before.Page);
-                else DevLog($"put back | the page is no longer Woodcutting, which the request opened: the player went to {DevNative.CurrentPage(view)?.Item1?.Id ?? "none"}, and it is left there");
-            }
-            Sync();
-            SyncStripButton();
-            DevPointerBack();
+                if (!PageShown) return $"left on {now?.Id ?? "none"}: the player went there from the Woodcutting page the request opened, and it is his";
+                view.SetCurrentPage(before.Page);
+                return $"back to {before.Page.Id}, the page on the screen before the request opened Woodcutting";
+            });
+            Part("the window on that page", () =>
+            {
+                Sync();
+                SyncStripButton();
+                return IsOpen ? "on the screen" : "not on the screen";
+            });
+            Part("the pointer", () =>
+            {
+                DevPointerBack();
+                return "back where the real one is";
+            });
             return true;
         });
         Add("read back", () =>
@@ -1103,71 +1249,175 @@ public partial class WoodcuttingRatesMod
         : $"  SHOW HIDDEN CHANGED by {what} (it was {(_devHiddenBefore ? "ticked" : "not ticked")})";
 
     // The page's filter as it was just before the request's first change (_devOrigin), only if it is still as the request
-    // left it (_devLeft): otherwise the player changed it meanwhile, and it is left as he did. Through the page's own
-    // buttons: the category's, or the "All" button found by the game's word (DevAllButton); never through the member
-    // behind them (turn 1 set WoodcuttingActionComponent.SelectedCategory here), and never a guessed button: when the
-    // button is not found the filter stays as the request left it, NOT AS IT WAS. First by the button's signal, as a click
-    // on a line presses a category's; when that does not set the filter, the same button is left for the pointer
-    // (_devHandBack, pressed by the steps after: AddPageBack). The scroll is decided now (still what the request left, or
-    // moved by the player) and put back two drawn frames later (DevScrollBack), once the page has laid its cards out for
-    // the filter: a ScrollContainer cuts a value to the range it has at that moment (turn 1 set it in the same tick).
+    // left it (_devLeft): otherwise the player changed it meanwhile, and it is left as he did, with its scroll. Through the
+    // page's own buttons: the category's, or the "All" button found by the game's word (DevAllButton); never through the
+    // member behind them, and never a guessed button. First by the button's signal, as a click on a line presses a
+    // category's; when that does not set the filter, the same button is left for the pointer (_devHandBack, pressed by the
+    // steps after: AddPageBack), and the scroll is decided only once that press is read back. The page is read again right
+    // before the press: the scroll he moved is his, and left (the code review of turn 2). When the request cannot put
+    // the filter back, it keeps the page as its own (_devLeft), so that a later press never takes the request's leftover
+    // for the player's choice. The scroll is written two drawn frames later (DevScrollBack), once the page has laid its
+    // cards out for the filter: a ScrollContainer cuts a value to the range it has at that moment.
     string DevFilterBack()
     {
         _devScrollBack = null;
+        _devScrollDecided = null;
         _devHandBack = null;
         if (_devLeft is not { } was || _devOrigin is not { } origin) return "nothing to put back: the request changed neither";
         _devLeft = null;
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Woodcutting page is gone: its filter and scroll NOT AS IT WAS (not put back)";
         var action = _woodcutting!.Action;
         var said = new List<string>();
+        if (!ReferenceEquals(action.SelectedCategory, origin.Filter) && !ReferenceEquals(action.SelectedCategory, was.Filter))
+        {
+            DevLetGo("filter", "scroll");
+            return $"the filter {action.SelectedCategory?.Id ?? "all"} is not what the request left ({was.Filter?.Id ?? "all"}): the player changed it, and it is left, " +
+                $"with its scroll ({DevScrollNow()?.ToString() ?? "-"})";
+        }
+        // Read before the press, which lays the page out again: a scroll that is not what the request left is his.
         int? scroll = DevScrollNow();
-        if (scroll != was.Scroll && scroll != origin.Scroll)
-            said.Add($"the scroll {scroll?.ToString() ?? "-"} is not what the request left ({was.Scroll?.ToString() ?? "-"}): the player moved it, and it is left");
-        else _devScrollBack = origin.Scroll;
+        bool scrollHis = scroll != origin.Scroll && !DevRelaid(scroll, was.Scroll);
         if (ReferenceEquals(action.SelectedCategory, origin.Filter)) said.Add("the filter as it was");
-        else if (!ReferenceEquals(action.SelectedCategory, was.Filter))
-            said.Add($"the filter {action.SelectedCategory?.Id ?? "all"} is not what the request left ({was.Filter?.Id ?? "all"}): the player changed it, and it is left");
         else
         {
             string why = "";
             Button? button = origin.Filter == null ? DevAllButton(out why)
                 : Native.CategoryButtons(DevNative.Filter(_page)) is { } buttons && buttons.TryGetValue(origin.Filter, out Button? b) && GodotObject.IsInstanceValid(b) ? b : null;
             if (button == null)
-                said.Add($"the filter NOT AS IT WAS: it stays on {action.SelectedCategory?.Id ?? "all"}, as the request left it, since " +
-                    (origin.Filter == null ? why : $"the page has no button of {origin.Filter.Id}") + "; it is never set behind the page's buttons");
-            else
             {
-                bool hidden = action.ShowHiddenTrees;
-                DevSignalPress(button);
-                string moved = action.ShowHiddenTrees == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press";
-                if (ReferenceEquals(action.SelectedCategory, origin.Filter))
-                    said.Add($"the filter put back with the page's own '{button.Text}' button{moved}");
-                else
-                {
-                    // Pressed with the pointer next, as a player would; the request still owns what it left until then.
-                    _devHandBack = (button, origin.Filter);
-                    _devLeft = was;
-                    said.Add($"the signal of the page's own '{button.Text}' button left the filter on {action.SelectedCategory?.Id ?? "all"}: " +
-                        $"the button is pressed with the pointer next{moved}");
-                }
+                // The request keeps what it left, and the final put-back tries again.
+                _devLeft = was;
+                return $"the filter NOT AS IT WAS: it stays on {action.SelectedCategory?.Id ?? "all"}, as the request left it, since " +
+                    (origin.Filter == null ? why : $"the page has no button of {origin.Filter.Id}") + "; it is never set behind the page's buttons, and its scroll is left with it";
             }
+            bool hidden = action.ShowHiddenTrees;
+            DevSignalPress(button);
+            string moved = action.ShowHiddenTrees == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press";
+            if (!ReferenceEquals(action.SelectedCategory, origin.Filter))
+            {
+                // Pressed with the pointer next, as a player would; the request still owns what it left until then.
+                _devHandBack = (button, origin.Filter);
+                _devLeft = was;
+                return $"the signal of the page's own '{button.Text}' button left the filter on {action.SelectedCategory?.Id ?? "all"}: " +
+                    $"the button is pressed with the pointer next, and the scroll decided after it{moved}";
+            }
+            said.Add($"the filter put back with the page's own '{button.Text}' button{moved}");
         }
-        return string.Join(", ", said);
+        if (scrollHis)
+        {
+            _devHis.Add("scroll");
+            said.Add($"the scroll {scroll?.ToString() ?? "-"} is not what the request left ({was.Scroll?.ToString() ?? "-"}): the player moved it, and it is left");
+        }
+        else said.Add(DevDecideScroll(was.Scroll, origin.Scroll));
+        return DevJoin(said.ToArray());
     }
 
-    // Two drawn frames after DevFilterBack: the scroll put back, once the page has laid its cards out for the filter.
+    // The scroll to put back, decided now and written two drawn frames later (DevScrollBack): nothing when it is as it
+    // was already, left (and said) when it is neither what the request left nor what the page's relayout made of it.
+    string DevDecideScroll(int? left, int? origin)
+    {
+        int? now = DevScrollNow();
+        if (now == origin) return "the scroll as it was";
+        if (!DevRelaid(now, left))
+        {
+            _devHis.Add("scroll");
+            return $"the scroll {now?.ToString() ?? "-"} is not what the request left ({left?.ToString() ?? "-"}) nor what the page's relayout made of it: the player moved it, and it is left";
+        }
+        _devScrollBack = origin;
+        _devScrollDecided = (Time.GetTicksMsec(), left);
+        return "";
+    }
+
+    // The scroll is what the request left, or what the page made of it when it laid its cards out again: a
+    // ScrollContainer cuts a value to the range it has (Native.Place reads the range the same way).
+    bool DevRelaid(int? now, int? left)
+    {
+        if (now == left) return true;
+        if (now is not { } n || left is not { } l || _page == null || !GodotObject.IsInstanceValid(_page)) return false;
+        try
+        {
+            VScrollBar bar = DevNative.CardScroll(_page).GetVScrollBar();
+            int least = (int)Math.Ceiling(bar.MinValue), most = Math.Max(least, (int)Math.Floor(bar.MaxValue - bar.Page));
+            return n == Math.Clamp(l, least, most);
+        }
+        catch (Exception) { return false; }
+    }
+
+    // How the page differs from what the request left on it (_devLeft), or null when it does not: the filter, or a scroll
+    // that is neither what it left nor what the page's relayout made of it. Read before every put-back press by hand.
+    string? DevPageMoved()
+    {
+        if (_devLeft is not { } left || _woodcutting == null) return null;
+        var action = _woodcutting.Action;
+        int? scroll = DevScrollNow();
+        if (ReferenceEquals(action.SelectedCategory, left.Filter) && DevRelaid(scroll, left.Scroll)) return null;
+        return $"the filter {action.SelectedCategory?.Id ?? "all"}, scrolled to {scroll?.ToString() ?? "-"}, where the request left the filter " +
+            $"{left.Filter?.Id ?? "all"}, scrolled to {left.Scroll?.ToString() ?? "-"}";
+    }
+
+    // The request lets go of the page: nothing of its own is left there to put back, and the parts named are the player's.
+    void DevLetGo(params string[] parts)
+    {
+        _devLeft = null;
+        _devScrollBack = null;
+        _devScrollDecided = null;
+        foreach (string part in parts) _devHis.Add(part);
+    }
+
+    // Two drawn frames after DevFilterBack: the scroll put back, read again right before it is written. Left, and said,
+    // when a hand was at the mouse since the request decided to write it (then the request keeps the page as its own, so
+    // that the final put-back tries again and the read back says why), and when it is neither what the request left nor
+    // what the page's relayout made of it (then it is the player's). When the write does not take, the request keeps the
+    // page as its own too, never taking its own leftover for his choice (the code review of turn 2, fault 2 and polish).
     string DevScrollBack()
     {
-        if (_devScrollBack is not { } back) return "";
+        if (_devScrollBack is not { } back || _devScrollDecided is not { } decided)
+        {
+            _devScrollBack = null;
+            _devScrollDecided = null;
+            return "";
+        }
         _devScrollBack = null;
+        _devScrollDecided = null;
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Woodcutting page is gone: its scroll NOT AS IT WAS (not put back)";
-        bool already = DevScrollNow() == back;
-        if (!already) DevNative.CardScroll(_page).ScrollVertical = back;
+        var action = _woodcutting!.Action;
         int? now = DevScrollNow();
-        // A filter the request still owns (its put-back by hand failed) keeps the scroll the page has now, not the one
-        // the request left before this put-back (Mining Rates' code review of turn 3, fault 7).
-        if (_devLeft is { } left) _devLeft = (left.Filter, now);
-        return already ? "the scroll as it was" : now == back ? $"the scroll put back to {back}" : $"the scroll NOT AS IT WAS (put back to {back}, it reads {now?.ToString() ?? "-"})";
+        if (now == back) return "the scroll as it was";
+        if (_devHandAt > decided.At)
+        {
+            _devLeft = (action.SelectedCategory, now);
+            _devScrollAtHand = true;
+            return $"the scroll left at {now?.ToString() ?? "-"} for now (it would go back to {back}): a hand was at the mouse since the request decided to write it, " +
+                "so it is not written over what the player may be doing; the request keeps it as its own, and tries again at the end";
+        }
+        if (!DevRelaid(now, decided.Left))
+        {
+            _devHis.Add("scroll");
+            return $"the scroll {now?.ToString() ?? "-"} is neither what the request left ({decided.Left?.ToString() ?? "-"}) nor what the page's relayout made of it: " +
+                "the player moved it, and it is left";
+        }
+        DevNative.CardScroll(_page).ScrollVertical = back;
+        int? after = DevScrollNow();
+        _devScrollAtHand = false;
+        if (after == back) return $"the scroll put back to {back}";
+        _devLeft = (action.SelectedCategory, after);
+        return $"the scroll NOT AS IT WAS (put back to {back}, it reads {after?.ToString() ?? "-"}); the request keeps it as its own";
+    }
+
+    // The keyboard focus: taken off a control the request pressed with the pointer (a game category button keeps it after
+    // a click, and a key of his would press it again), and given back to the control that had it when the request began.
+    // A control he gave the focus to meanwhile keeps it.
+    string DevFocusBack()
+    {
+        Control? now = _ctx.Tree.Root.GuiGetFocusOwner();
+        Control? was = _devFocusBefore != null && GodotObject.IsInstanceValid(_devFocusBefore) ? _devFocusBefore : null;
+        if (now == was) return $"the keyboard focus as it was, on {DevName(now)}";
+        if (now != null && !_devPressed.Contains(now)) return $"the keyboard focus on {DevName(now)}, which the request did not press: the player's, and it is left";
+        now?.ReleaseFocus();
+        if (was != null && was.IsVisibleInTree() && was.FocusMode != Control.FocusModeEnum.None) was.GrabFocus();
+        Control? after = _ctx.Tree.Root.GuiGetFocusOwner();
+        return after == was ? $"the keyboard focus taken off {DevName(now)}{(was == null ? "" : $" and given back to {DevName(was)}")}"
+            : $"the keyboard focus NOT AS IT WAS: on {DevName(after)}, it was on {DevName(was)}";
     }
 
     Button DevLineOf(TreeRates tree) => _list!.DevLines().First(l => ReferenceEquals(l.Tree.Tree, tree.Tree)).Button;
@@ -1289,7 +1539,8 @@ public partial class WoodcuttingRatesMod
                 $"hits a cut {(t.HitsPerCut is { } h ? R(h) : "-")} (the rule {(TreeRates.HitsRule is { } hr ? $"{hr.Reading}, {hr.Source}" : "not settled")}; by each reading [{DevReadings(t)}]), " +
                 $"logs {t.Log?.Id} x{t.LogQuantity} (what they come with {(TreeRates.LogsRule is { } lr ? $"{lr.Reading}, {lr.Source}" : "not settled")}; with every hit it would be " +
                 $"{R(t.HitsPerHour * t.LogQuantity * (1 + t.Doubling))}/h), logs/h {(t.LogsPerHour is { } l ? R(l) : "-")}, time per log {(t.SecondsPerLog is { } sl ? R(sl) : "-")}, " +
-                $"log price {(t.LogPrice is { } p ? R(p) : "-")}, gold/h {(t.GoldPerHour is { } g ? R(g) : "-")} | per hit [{string.Join(", ", t.PerHit.Select(DevDrop))}] | " +
+                $"log price {(t.LogPrice is { } p ? R(p) : "-")}, gold/h {(t.GoldPerHour is { } g ? R(g) : "-")} | per hit, " +
+                $"{(TreeRates.HitItemsRule is { } ir ? $"by {ir.Reading}, {ir.Source}" : "NO RULE: once a hit, the window's reading")} [{string.Join(", ", t.PerHit.Select(DevDrop))}] | " +
                 $"per cut [{string.Join(", ", t.PerCut.Select(DevDrop))}] | effects [{string.Join(", ", t.Effects.Select(e => $"{e.Name} {e.StacksLeft} left"))}] | " +
                 $"picture {DevTexture(picture)}{(picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : "")}");
             DevLog($"row | {when} | drawn {drawn}");
@@ -1299,7 +1550,9 @@ public partial class WoodcuttingRatesMod
         DevLog($"rows | {when} | {count} lines, {DevRowsInSight()} in sight; the game has {_woodcutting!.Action.Trees.Count} trees, {trees.Count} listed, " +
             $"{trees.Count(t => t.Locked)} locked, {trees.Count(t => t.Hidden)} hidden by the player (the box for hidden trees {(_woodcutting.Action.ShowHiddenTrees ? "ticked" : "not ticked")}); " +
             $"columns [{string.Join(", ", _list!.DevColumns)}]; the logs by {(TreeRates.LogsRule is { } logs ? $"{logs.Reading}, {logs.Source}" : "NO RULE")}, " +
-            $"the hits a cut takes by {(TreeRates.HitsRule is { } hits ? $"{hits.Reading}, {hits.Source}" : "NO RULE")}" + (count != trees.Count ? "  MISMATCH" : ""));
+            $"the hits a cut takes by {(TreeRates.HitsRule is { } hits ? $"{hits.Reading}, {hits.Source}" : "NO RULE")}, " +
+            $"the items of a hit by {(TreeRates.HitItemsRule is { } items ? $"{items.Reading}, {items.Source}" : "NO RULE (counted once a hit, the window's reading)")}" +
+            (count != trees.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
     }
 
@@ -1634,8 +1887,12 @@ public partial class WoodcuttingRatesMod
         WoodcuttingTree? panel = null;
         try { panel = DevNative.Tree(DevNative.BigPanel(_page!)); } catch (Exception) { }
         var lit = _list!.DevLines().Where(l => l.Tree.OnPage).Select(l => l.Tree.Tree).ToList();
-        bool right = action.CuttingTree == null ? lit.Count == 0 : lit.Count == 1 && ReferenceEquals(lit[0], action.CuttingTree);
-        DevLog($"lit | the tree cut {action.CuttingTree?.Recipe.Id ?? "none"}, the big panel's {panel?.Recipe.Id ?? "none"}, woodcutting now: {DevCuttingNow()} | " +
+        // The tree cut is lit only when the window lists it: one he hid, with the box for hidden trees not ticked, is not
+        // listed, and then no line is lit (as the click step reads it).
+        bool listed = action.CuttingTree is { } cut && _list.DevLines().Any(l => ReferenceEquals(l.Tree.Tree, cut));
+        bool right = listed ? lit.Count == 1 && ReferenceEquals(lit[0], action.CuttingTree) : lit.Count == 0;
+        DevLog($"lit | the tree cut {action.CuttingTree?.Recipe.Id ?? "none"}{(action.CuttingTree != null && !listed ? " (not listed)" : "")}, " +
+            $"the big panel's {panel?.Recipe.Id ?? "none"}, woodcutting now: {DevCuttingNow()} | " +
             $"the lit line{(lit.Count == 1 ? " is" : "s are")} {(lit.Count == 0 ? "none" : string.Join(", ", lit.Select(t => t.Recipe.Id)))}" +
             $" (drawn lit: {string.Join(", ", _list.DevLines().Where(l => l.Drawn.EndsWith("lit=True")).Select(l => l.Tree.Tree.Recipe.LocalId))})" +
             (right ? "" : "  MISMATCH"));
@@ -2124,6 +2381,9 @@ public partial class WoodcuttingRatesMod
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = false });
         _devAim = null;
         _devMisses = 0;
+        // A pressed control may keep the keyboard focus: the put-back takes it off (DevFocusBack).
+        if (!_devPressed.Contains(target)) _devPressed.Add(target);
+        if (over != target && !_devPressed.Contains(over)) _devPressed.Add(over);
         DevLog($"pressed {what} at {_devAimAt}, the pointer on {DevName(over)}");
         return true;
     }

@@ -18,8 +18,23 @@ enum LogsWith
     Cut,
     /// <summary>
     /// A hit brings them for every hit point it takes from the tree, so a cut brings them for every hit point of the tree:
-    /// the card lists the logs in its PerHealthGrantsContainer, by its name a list per hit point.
+    /// a reading of the name of one of the card's two lists (PerHealthGrantsContainer, by its name a list per hit point).
+    /// Which items that list shows, and the words over it, the light check reads ("Dev: game").
     /// </summary>
+    HitPoint,
+}
+
+/// <summary>
+/// What the items of a hit come with (<see cref="TreeRates.HitItemsRule"/>): the game's name for their list is
+/// "OnHitItemChances", once a hit, while one of the card's two lists is named PerHealthGrantsContainer, by its name per
+/// hit point; which items that list shows, and the words over it, the light check reads ("Dev: game"). The same evidence
+/// that settles what the logs come with settles these (the code review of turn 2, fault 5).
+/// </summary>
+enum HitItemsWith
+{
+    /// <summary>Every hit rolls each item once, at its chance.</summary>
+    EveryHit,
+    /// <summary>Every hit point a hit takes rolls each item once, so a cut rolls them for every hit point of the tree.</summary>
     HitPoint,
 }
 
@@ -62,7 +77,9 @@ sealed record Settled<T>(T Reading, RuleSource Source, string Quote);
 /// Mining Rates' light check) and of its names (its event of a hit, TreeDamagedEventArgs, is its ActionPerformedEventArgs).
 /// What a hit takes from the tree, and so how many hits a cut takes, rests on a rule (<see cref="HitsRule"/>), and so does
 /// what the logs come with (<see cref="LogsRule"/>); while a part is not settled, what rests on it is null and the window
-/// shows "-", never a formula of the mod's own (the review of pull request #61).
+/// shows "-", never a formula of the mod's own (the review of pull request #61). The items of a hit are counted once a hit
+/// until what they come with is settled (<see cref="HitItemsRule"/>): the tooltip names that reading, and the gold, which
+/// would rest on it, is not counted.
 /// </summary>
 sealed class TreeRates
 {
@@ -80,8 +97,19 @@ sealed class TreeRates
     /// </summary>
     static readonly Settled<HitRule>? KnownHits = null;
 
+    /// <summary>
+    /// What the items of a hit come with, and what backs it: set here, in this one place, with the same evidence as the
+    /// logs (the words over the card's list that shows them and what it is bound to, "Dev: game"; the watch's "ITEMS OF A
+    /// HIT ..."). Null: they are counted once a hit, the window's reading of the game's name for their list
+    /// (OnHitItemChances), and the line's tooltip says so; the gold, which would rest on that reading, is not counted.
+    /// </summary>
+    static readonly Settled<HitItemsWith>? KnownHitItems = null;
+
     /// <summary>What the logs come with, or null while nothing has settled it (<see cref="KnownLogs"/>).</summary>
     public static Settled<LogsWith>? LogsRule => KnownLogs;
+
+    /// <summary>What the items of a hit come with, or null while nothing has settled it (<see cref="KnownHitItems"/>).</summary>
+    public static Settled<HitItemsWith>? HitItemsRule => KnownHitItems;
 
     /// <summary>How much a hit takes, or null while nothing has settled it (<see cref="KnownHits"/>).</summary>
     public static Settled<HitRule>? HitsRule => KnownHits;
@@ -171,15 +199,20 @@ sealed class TreeRates
     public List<Drop> PerHit { get; } = new();
     /// <summary>What a cut can bring besides (WoodcuttingActionStats.OnCutItemChances), with your bonuses.</summary>
     public List<Drop> PerCut { get; } = new();
-    public double PerHitGoldPerHour => PerHit.Sum(d => d.GoldPerHour ?? 0);
+    /// <summary>
+    /// What the items of a hit sell for in an hour; null while one that sells is not counted, or is counted only by the
+    /// window's reading (<see cref="HitItemsRule"/> not settled).
+    /// </summary>
+    public double? PerHitGoldPerHour => PerHit.Any(d => GoldOf(d.Item) != null && (d.GoldPerHour == null || HitItemsRule == null)) ? null
+        : PerHit.Sum(d => d.GoldPerHour ?? 0);
     public double? PerCutGoldPerHour => PerCut.Any(d => GoldOf(d.Item) != null && d.GoldPerHour == null) ? null : PerCut.Sum(d => d.GoldPerHour ?? 0);
 
     /// <summary>
-    /// What the logs and the items of an hour sell for, in gold. Null while a part of it that sells is not counted: the
-    /// logs, or the items of a cut while the cuts of an hour are not.
+    /// What the logs and the items of an hour sell for, in gold. Null while a part of it that sells is not counted by a
+    /// settled rule: the logs, the items of a hit, or the items of a cut while the cuts of an hour are not.
     /// </summary>
-    public double? GoldPerHour => !HasTime || (LogPrice != null && LogsPerHour == null) || PerCutGoldPerHour is not { } cuts ? null
-        : (LogPrice is { } price ? LogsPerHour!.Value * price : 0) + PerHitGoldPerHour + cuts;
+    public double? GoldPerHour => !HasTime || (LogPrice != null && LogsPerHour == null) || PerHitGoldPerHour is not { } hits || PerCutGoldPerHour is not { } cuts ? null
+        : (LogPrice is { } price ? LogsPerHour!.Value * price : 0) + hits + cuts;
 
     /// <summary>The tree's chances that change the hits a cut takes, the ones above zero.</summary>
     public List<Bonus> HitChances { get; } = new();
@@ -252,10 +285,12 @@ sealed class TreeRates
 
         // The items a hit and a cut can bring, with the character's bonuses (not the recipe's base lists). The game hands
         // the doubling chance to what adds them (WoodcuttingActionComponent.AddRandomItems takes the item chances and the
-        // doubling chance), so it doubles them, as Fishing Rates and Mining Rates count their items of a hit.
+        // doubling chance), so it doubles them, as Fishing Rates and Mining Rates count their items of a hit. The items of
+        // a hit come once a hit, or for every hit point a hit takes (HitItemsRule); once a hit until that is settled.
+        double? rolls = !r.HasTime ? null : HitItemsRule?.Reading == HitItemsWith.HitPoint ? r.CutsPerHour * r.HitPoints : r.HitsPerHour;
         foreach (var node in stats.OnHitItemChances?.Values ?? [])
             if (node?.Value is { Item: { } item } drop && drop.Quantity > 0)
-                r.PerHit.Add(Line(item, Fraction(drop.Chance), drop.Quantity, 1 + r.Doubling, r.HasTime ? r.HitsPerHour : null));
+                r.PerHit.Add(Line(item, Fraction(drop.Chance), drop.Quantity, 1 + r.Doubling, rolls));
         foreach (var node in stats.OnCutItemChances?.Values ?? [])
             if (node?.Value is { Item: { } item } drop && drop.Quantity > 0)
                 r.PerCut.Add(Line(item, Fraction(drop.Chance), drop.Quantity, 1 + r.Doubling, r.CutsPerHour));

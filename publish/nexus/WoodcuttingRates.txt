@@ -40,7 +40,7 @@ Click a line to see that tree on the Woodcutting page: the page's category filte
 The hour at that tree as far as it is counted: the time of a hit, the XP per hour and per hit, the tree's hit points and your chances of double damage, a weak spot and an instant cut, the logs, every item a hit or a cut can bring with its chance, and the overgrowth on the tree now.
 
 [size=4][b]What is counted[/b][/size]
-The numbers start from the game's own values for each tree, so whatever changes those changes the window too. A hit takes the tree's time of a hit, and chances count as their long-run average. These are the window's reading: every hit gives the tree's XP, from the game's words for the XP tag, "The Skill XP gained per action."; the doubling chance doubles the items, from its words, "Your chance to double the output"; the overgrowth on a tree now is in its numbers. How much a hit takes from a tree, and what the logs come with, are not counted.
+The numbers start from the game's own values for each tree, so whatever changes those changes the window too. A hit takes the tree's time of a hit, and chances count as their long-run average. These are the window's reading: every hit gives the tree's XP, from the game's words for the XP tag, "The Skill XP gained per action."; the doubling chance doubles the items, from its words, "Your chance to double the output"; the items of a hit come once a hit, which the tooltip says (a hit could also roll them for every hit point it takes, so the gold, which would rest on that, is not counted); the overgrowth on a tree now is in its numbers. How much a hit takes from a tree, and what the logs come with, are not counted.
 
 [size=4][b]Good to know[/b][/size]
 [list]
