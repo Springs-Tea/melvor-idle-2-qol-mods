@@ -944,8 +944,9 @@ public partial class CombatSimMod : IMod, ISimLookup
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
         // The pictures of stance=shot are taken first: nothing else changes the window, nor is it built again, meanwhile.
-        // So is the game's pop-up of popup= measured and closed again (SizeProbe.cs).
-        if (DevStanceShooting() || DevPopupMeasuring()) return;
+        // So is the game's pop-up of popup= measured and closed again (SizeProbe.cs), the picture of shot= taken, and the
+        // window drawn twice before cuts= measures it (CutProbe.cs).
+        if (DevStanceShooting() || DevPopupMeasuring() || DevShooting() || DevCutsWaiting()) return;
         if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1
             && _run == null && !_state.Running && !_engine.Running) DevPutBack();
         if (_devCommands.Count == 0 && File.Exists(request))
@@ -1085,7 +1086,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   wait=selected   after select=first: the next lines wait until the first line is the selected one, two frames
     //                 were drawn since and the frame drawn last shows it so (DevSelectWaiting), 5 s at most; otherwise
     //                 one line, and the rest is dropped
-    //   shot=<name>   shot-<name>.png and crop-<name>.png once drawn, the window's state in shot-<name>.txt
+    //   shot=<name>   shot-<name>.png and crop-<name>.png two drawn frames later, the window's state in shot-<name>.txt, and
+    //                 what the picture shows read back from the window and from its pixels (the next lines wait for it)
     //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
     //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
     //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
@@ -1102,6 +1104,17 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   size=log, size=every, popup=<statistics|milestones|...>, spellnow=longest   the window against its size rule and the
     //                 game's bars, without a run: at its size, or at every size; a pop-up of the game beside it; the Spell box
     //                 with the longest first choice it can get, in the simulator's words only (SizeProbe.cs, issue #44)
+    //   cuts=log, cuts=every, cuts=widest, cuts=close, cuts=view=best|compare|fights, details=top|found|end   every label of
+    //                 the window and of a panel open beside it against its room, by parts, at its size or at every size; the
+    //                 widest "Found in" name of the game's data, the game's widest enemy, dungeon and area names on a line of
+    //                 the list, Fight and Where, Compare's line at its widest, and the line above the list with a setup's
+    //                 name as wide as the line; the panel beside the window closed again (open one with picker=history,
+    //                 picker=where, picker=columns or picker=<slot>); the newest earlier scan of a kind, as a click on its
+    //                 row in History shows it; Details scrolled (CutProbe.cs, issue #59)
+    //   cuts=long, cuts=long=nopicture, cuts=long=off, cuts=index   the longest words of the line above the list, the earlier
+    //                 scans under an empty list and Fight left on show for cuts=log and shot=, in the simulator's words only,
+    //                 and put back with whether the window grew; Item Sources' index read as Find upgrades reads it, for
+    //                 cuts=widest without a search (CutProbe.cs, issue #59)
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1137,8 +1150,9 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("wear=", StringComparison.Ordinal)) DevTickWear(command[5..].Trim());
                 else if (command.StartsWith("upgrades=", StringComparison.Ordinal)) DevUpgradesCommand(command[9..].Trim());
                 else if (command.StartsWith("stance=", StringComparison.Ordinal)) DevStance(command[7..].Trim());
-                // size=, scale=<size>, popup= (SizeProbe.cs); pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
-                else if (!DevSizeCommand(command) && !DevGearCommand(command)) return false;
+                // size=, scale=<size>, popup= (SizeProbe.cs); pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs); cuts=,
+                // details= (CutProbe.cs)
+                else if (!DevSizeCommand(command) && !DevGearCommand(command) && !DevCutsCommand(command)) return false;
                 break;
         }
         return true;
@@ -1234,7 +1248,30 @@ public partial class CombatSimMod : IMod, ISimLookup
         _ctx.Log($"Dev: twice: {target.Name} {target.StanceName}, {options.Hours:0.##} h, with {options.SetupLabel}, two copies side by side from one snapshot.");
     }
 
-    void DevShot(string name)
+    // The pictures under way, each with what runs after every drawn frame until it is taken and since when: shot= lines,
+    // and the pictures of gear=, hover= and fight.request. Each is taken on its own, none gives up another, and one not
+    // taken in five seconds is named in the log. The request waits while any is under way (DevRequests): a line after it
+    // that builds the window again would otherwise come first.
+    readonly List<(string Name, Action Capture, long Since)> _devShots = new();
+
+    bool DevShooting()
+    {
+        long now = (long)Time.GetTicksMsec();
+        foreach (var late in _devShots.Where(s => now - s.Since >= 5000).ToList())
+        {
+            RenderingServer.FramePostDraw -= late.Capture;
+            _devShots.Remove(late);
+            _ctx.Log($"Dev: shot-{late.Name}.png was given up: no frame was drawn for it in five seconds.");
+        }
+        return _devShots.Count > 0;
+    }
+
+    // shot=<name>: the picture is of the frame drawn last, so it is taken two drawn frames after the line, when the frame
+    // holds what the lines before it put on show (issue #59). Before its name is logged, what it shows is read back from the
+    // window (SimView.DevShows: the tab, the list, the line Details follows, where Details is scrolled) and from the
+    // picture's own pixels where the window and Details are (DevDrawn). "also" takes more from the same frame (the game's
+    // own part of gear= and hover=, CombatSimGear.DevGameCrop), also when the window is not there to be pictured.
+    void DevShot(string name, Action<Image, Transform2D>? also = null)
     {
         if (name.Length == 0 || !name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
         {
@@ -1242,18 +1279,25 @@ public partial class CombatSimMod : IMod, ISimLookup
             return;
         }
         GameWindow? window = _window;
+        long from = (long)Engine.GetFramesDrawn();
         void Capture()
         {
+            if ((long)Engine.GetFramesDrawn() < from + 2) return;
             RenderingServer.FramePostDraw -= Capture;
+            _devShots.RemoveAll(s => s.Capture == (Action)Capture);
             string file = $"shot-{name}.png";
-            if (window == null || window != _window || !window.IsAlive)
-            {
-                _ctx.Log($"Dev: {file} not taken: the window was built again, or the character changed, before it was drawn.");
-                return;
-            }
             try
             {
                 using Image image = _ctx.Tree.Root.GetTexture().GetImage();
+                Transform2D screen = _ctx.Tree.Root.GetFinalTransform();
+                also?.Invoke(image, screen);
+                if (window == null || window != _window || !window.IsAlive)
+                {
+                    _ctx.Log($"Dev: {file} not taken: the window was built again, or the character changed, before it was drawn.");
+                    return;
+                }
+                _ctx.Log($"Dev: {file} shows: {_view?.DevShows() ?? "no view"}; {DevDrawn(image, screen, "the window", window.Visible ? window.Root.GetGlobalRect() : null)}; " +
+                         DevDrawn(image, screen, "Details", _view?.DevDetailsRect));
                 Error saved = image.SavePng(Path.Combine(_ctx.Directory, file));
                 if (saved != Error.Ok) { _ctx.Log($"Dev: could not save {file}: {saved}"); return; }
                 LogFold(file);
@@ -1275,6 +1319,7 @@ public partial class CombatSimMod : IMod, ISimLookup
             }
             catch (Exception e) { _ctx.Log($"Dev: could not capture {file}: {e.Message}"); }
         }
+        _devShots.Add((name, Capture, (long)Time.GetTicksMsec()));
         RenderingServer.FramePostDraw += Capture;
     }
 

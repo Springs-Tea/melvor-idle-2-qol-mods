@@ -291,9 +291,17 @@ sealed partial class SimView
 
     const float SetupWidth = 244;
 
+    // The room inside the Setup column, in pixels of this window: its planned width less the margins of its frame, each
+    // rounded as the frame rounds them (GameStyle.ColumnPanel). Px(SetupWidth - 20) was a pixel more than that at 0.75
+    // (168 of 167) and at 0.95 (213 of 212), and the line that asked for it made the column a pixel wider than planned
+    // (issue #59, check-1). Every line of the column that asks for a width asks for this one at most.
+    float SetupRoom { get; set; }
+
     Control BuildSetup()
     {
         Control column = _s.Column("Setup", out VBoxContainer body, SetupWidth);
+        StyleBox frame = body.GetParent<Control>().GetThemeStylebox("panel");
+        SetupRoom = MathF.Floor(_s.Px(SetupWidth) - frame.GetMargin(Side.Left) - frame.GetMargin(Side.Right));
 #if DEVTOOLS
         _devSetup = (column, body);
 #endif
@@ -333,6 +341,8 @@ sealed partial class SimView
         body.AddChild(Caption("Where"));
         _where = WhereButton();
         _where.Pressed += OpenAreas;
+        _where.Resized += FitWhereWords;
+        _where.ThemeChanged += FitWhereWords;
         body.AddChild(_where);
 
         // Spaced like the rows of two buttons above and below it, so its two drop-downs line up with them.
@@ -361,7 +371,7 @@ sealed partial class SimView
         supplies.AddChild(_unlimited);
         supplies.AddChild(_fromBank);
         body.AddChild(supplies);
-        _supplyHint = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
+        _supplyHint = SetupWords();
         body.AddChild(_supplyHint);
 
         body.AddChild(EquipmentHeading());   // with the Compare box (SimViewCompare.cs)
@@ -394,14 +404,14 @@ sealed partial class SimView
         _reset.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
         _reset.Pressed += () => { _state.Overrides.Clear(); ShowCurrent(); ClosePicker(); _gearChanged(); FillGear(); Refresh(); };
         body.AddChild(_reset);
-        _food = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
+        _food = SetupWords();
         _food.HorizontalAlignment = HorizontalAlignment.Center;
         body.AddChild(_food);
         FillGear();
 
         body.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
 
-        _estimate = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
+        _estimate = SetupWords();
         _estimate.HorizontalAlignment = HorizontalAlignment.Center;
         body.AddChild(_estimate);
         _go = _s.GameButton("Simulate", "TexturedActionButtonGreen8x", 18);
@@ -412,11 +422,19 @@ sealed partial class SimView
         _progress.AddThemeStyleboxOverride("background", new StyleBoxFlat { BgColor = new Color("41454c") });
         _progress.AddThemeStyleboxOverride("fill", new StyleBoxFlat { BgColor = new Color("cd964f") });
         body.AddChild(_progress);
-        _status = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
+        _status = SetupWords();
         _status.HorizontalAlignment = HorizontalAlignment.Center;
-        _status.CustomMinimumSize = new Vector2(_s.Px(SetupWidth - 20), _s.Px(18));
+        _status.CustomMinimumSize = new Vector2(SetupRoom, _s.Px(18));
         body.AddChild(_status);
         return column;
+    }
+
+    // A grey line of the Setup column that wraps, as wide as the column has room (SetupRoom), as Wrapped makes one.
+    Label SetupWords()
+    {
+        Label label = Wrapped("", SetupWidth - 20, GameStyle.TextGrey, 12);
+        label.CustomMinimumSize = new Vector2(SetupRoom, 0);
+        return label;
     }
 
     // The slots sit where the game's own equipment panel has them. A changed slot has a gold frame.
@@ -575,6 +593,8 @@ sealed partial class SimView
 
     // ---- where to fight: any number of areas ---------------------------------------------------------------
 
+    const string WhereTip = "Choose one area, several, or all of them. An area simulates every enemy in it; a dungeon is simulated as a whole.";
+
     // Looks like the drop-downs next to it, but opens a list in which several areas can be ticked.
     Button WhereButton()
     {
@@ -583,7 +603,7 @@ sealed partial class SimView
             ThemeTypeVariation = "OptionButton", ClipText = true, Alignment = HorizontalAlignment.Left,
             IconAlignment = HorizontalAlignment.Right, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             FocusMode = Control.FocusModeEnum.None, MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-            TooltipText = "Choose one area, several, or all of them. An area simulates every enemy in it; a dungeon is simulated as a whole.",
+            TooltipText = WhereTip,
         };
         if (GameStyle.Load<Theme>("res://Assets/Styles/Themes/custom_dropdown_1.tres") is { } theme)
         {
@@ -593,6 +613,23 @@ sealed partial class SimView
         if (GameStyle.SemiBold is { } font) button.AddThemeFontOverride("font", font);
         button.AddThemeFontSizeOverride("font_size", _s.Px(12));
         return button;
+    }
+
+    // The button's words are whole at every size (issue #59): the areas chosen by name (ScopeLabel) where they fit beside
+    // its arrow, measured as the Spell box's words are (Margins, ChoiceWidth), and otherwise how many they are, "2 areas",
+    // as ScopeLabel says three or more; its tooltip then starts with their names. The button cuts nothing itself any more
+    // than the Spell box does (ShowWhole), and it asks for no width of its own (ClipText).
+    void FitWhereWords()
+    {
+        if (!GodotObject.IsInstanceValid(_where)) return;
+        string whole = _state.ScopeLabel;
+        int chosen = _state.Areas.Count(a => _state.ScopeAreas.Contains(a.AreaId));
+        // Before it is laid out it has its whole words, as before.
+        bool fits = _where.Size.X <= 0 || chosen == 0 || ChoiceWidth(_where, whole, _where.Icon != null) <= _where.Size.X - Margins(_where) + 0.5f;
+        string words = fits ? whole : $"{chosen} {(chosen == 1 ? "area" : "areas")}";
+        if (_where.Text != words) _where.Text = words;
+        string tip = words == whole ? WhereTip : $"{whole}\n{WhereTip}";
+        if (_where.TooltipText != tip) _where.TooltipText = tip;
     }
 
     void OpenAreas()
@@ -755,7 +792,7 @@ sealed partial class SimView
             var list = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 3);
             scroll.AddChild(list);
             column.AddChild(scroll);
-            foreach (Scan scan in _state.History) list.AddChild(ScanRow(scan));
+            foreach (Scan scan in _state.History) list.AddChild(ScanRow(scan, wraps: true));
 
             var foot = _s.Spaced(new HBoxContainer(), 8);
             Label kept = Wrapped($"The last {SimHistory.Kept} are kept. Old numbers: your character has moved on since.", width - 110, GameStyle.TextDim, 11);
@@ -788,7 +825,12 @@ sealed partial class SimView
     // "Best for Ranged                      2 h ago"
     // "Every unlocked area · 1 hour · Loadout 1"
     // "Top: Scarecrow 4,188 XP/h           126 fights"
-    Button ScanRow(Scan scan)
+    // A line too long for its row goes on to a second line and the row grows with it (issue #59: a Compare scan's second
+    // line, "where · how long · A: ..., B: ...", can be wider than its row at the smaller sizes). In History's list (wraps)
+    // Godot wraps it: the panel's list scrolls. Under the empty list nothing scrolls, and a label Godot wraps there could
+    // make the window higher for good (FitShowing), so its lines are laid out by the mod against the room the row is
+    // planned with (LayOutBeside), as the line above the list is.
+    Button ScanRow(Scan scan, bool wraps = false)
     {
         var row = new Button
         {
@@ -806,42 +848,230 @@ sealed partial class SimView
         {
             var line = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 8);
             Label a = _s.Text(left, leftColor, leftSize, leftFont);
-            a.ClipText = true;
             a.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             a.MouseFilter = Control.MouseFilterEnum.Ignore;
             line.AddChild(a);
+            Label? b = null;
             if (right != "")
             {
-                Label b = _s.Text(right, rightColor, 12);
+                b = _s.Text(right, rightColor, 12);
                 b.MouseFilter = Control.MouseFilterEnum.Ignore;
                 line.AddChild(b);
             }
+            if (wraps) Whole(a);
+            else LayOutBeside(a, b, left);
             return line;
         }
 
-        string duration = SimState.Durations.FirstOrDefault(d => Math.Abs(d.Hours - scan.Hours) < 1e-6).Label ?? $"{scan.Hours:0.##} h";
-        string what = (scan.BestMode ? scan.Where + "  ·  " : "") + duration + (scan.Unlimited ? "" : ", from bank") + "  ·  " + scan.Setups;
+        string title = scan.Title, where = scan.Where, setups = scan.Setups;
         SimResult? top = scan.Top;
+        string? topName = top?.Target.Name;
+#if DEVTOOLS
+        // cuts=long: the widest words a row under the empty list can get, in the simulator's words only (DevLongOn).
+        if (!wraps && _devRecentStandIn is { } standIn)
+            (title, where, setups, topName) = ("A against B: " + standIn.Where, standIn.Where, DevAsWide(setups, RecentRoom()), standIn.Fight);
+#endif
+        string duration = SimState.Durations.FirstOrDefault(d => Math.Abs(d.Hours - scan.Hours) < 1e-6).Label ?? $"{scan.Hours:0.##} h";
+        string what = (scan.BestMode ? where + "  ·  " : "") + duration + (scan.Unlimited ? "" : ", from bank") + "  ·  " + setups;
         string best = top == null ? "Nothing could be fought"
-            : $"Top: {top.Target.Name}{(top.Target.StanceName != "" ? " (" + top.Target.StanceName + ")" : "")}  {Fmt(scan.Rank(top))} XP/h" +
+            : $"Top: {topName}{(top.Target.StanceName != "" ? " (" + top.Target.StanceName + ")" : "")}  {Fmt(scan.Rank(top))} XP/h" +
               (scan.Compare ? (top.SetupKey == scan.SetupKey ? " with A" : " with B") : "");
         int fights = scan.Fights;
-        lines.AddChild(Line(scan.Title, GameStyle.TextWhite, 14, GameStyle.SemiBold, Ago(scan.At), GameStyle.TextGrey));
+        lines.AddChild(Line(title, GameStyle.TextWhite, 14, GameStyle.SemiBold, Ago(scan.At), GameStyle.TextGrey));
         lines.AddChild(Line(what, GameStyle.TextGrey, 12, null, "", GameStyle.TextGrey));
         lines.AddChild(Line(best, GameStyle.TextPaper, 12, null, $"{fights} {(fights == 1 ? "fight" : "fights")}{(scan.Stopped ? ", stopped" : "")}", GameStyle.TextDim));
+        Grows(row, lines, 66);
         return row;
     }
 
-    internal static string Ago(DateTime utc)
+    // A line of a row under the empty list, whole without Godot's wrap (ScanRow): its words go on at their spaces (WrapAt)
+    // where they do not fit the room the row is planned with (RecentRoom) less the words beside it, as the line above the
+    // list is laid out (FitShowing). The label itself neither wraps nor asks for a width (ClipText). Laid out when its theme
+    // changes, which it does as it enters the window: when both it and the words beside it are in, their fonts are known.
+    void LayOutBeside(Label words, Label? beside, string whole)
     {
-        TimeSpan age = DateTime.UtcNow - utc;
-        DateTime local = utc.ToLocalTime();
+        words.ClipText = true;
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(words) || !words.IsInsideTree() || (beside != null && (!GodotObject.IsInstanceValid(beside) || !beside.IsInsideTree())))
+                return;
+            float room = RecentRoom() - words.GetThemeStylebox("normal").GetMinimumSize().X;
+            if (beside != null) room -= MathF.Ceiling(beside.GetCombinedMinimumSize().X) + words.GetParent<Control>().GetThemeConstant("separation");
+            Font font = words.GetThemeFont("font");
+            int size = words.GetThemeFontSize("font_size");
+            string text = string.Join("\n", WrapAt(whole, w => font.GetStringSize(w, HorizontalAlignment.Left, -1, size).X, MathF.Floor(room)));
+            if (words.Text != text) words.Text = text;
+        }
+        words.ThemeChanged += Fit;
+        if (beside != null) beside.ThemeChanged += Fit;
+    }
+
+    // The room inside a row under the empty list, for its words: the Results column's room as it is planned (ResultsRoom)
+    // less the margins either side of the rows (BuildResults) and inside each row (ScanRow).
+    float RecentRoom() => ResultsRoom() - 2 * _s.Px(40) - 2 * _s.Px(8);
+
+    internal static string Ago(DateTime utc) => Ago(utc, DateTime.UtcNow);
+
+    // As it reads at the moment now.
+    static string Ago(DateTime utc, DateTime now)
+    {
+        TimeSpan age = now - utc;
+        DateTime local = utc.ToLocalTime(), today = now.ToLocalTime().Date;
         return age.TotalMinutes < 1 ? "just now"
             : age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes} min ago"
             : age.TotalHours < 12 ? $"{(int)age.TotalHours} h ago"
-            : local.Date == DateTime.Now.Date ? $"today {local:HH:mm}"
-            : local.Date == DateTime.Now.Date.AddDays(-1) ? $"yesterday {local:HH:mm}"
+            : local.Date == today ? $"today {local:HH:mm}"
+            : local.Date == today.AddDays(-1) ? $"yesterday {local:HH:mm}"
             : local.ToString("d MMM, HH:mm");
+    }
+
+    // Every way Ago can say this time from now on as it gets older, from "just now" and "59 min ago" to "yesterday 03:27"
+    // and "23 Nov, 03:27": a line that holds it is laid out by the widest of them (ShowWords), so it does not change its
+    // lines while it is on show.
+    static IEnumerable<string> AgoWords(DateTime utc)
+    {
+        DateTime now = DateTime.UtcNow;
+        return new[] { TimeSpan.Zero, TimeSpan.FromMinutes(59.5), TimeSpan.FromHours(11.5), TimeSpan.FromHours(12.5), TimeSpan.FromDays(1), TimeSpan.FromDays(3) }
+            .Select(age => Ago(utc, utc + age > now ? utc + age : now)).Distinct();
+    }
+
+    // ---- the line above the list ----------------------------------------------------------------------------
+
+    // Between the parts of a line, as the simulator writes them all ("Black Slime  ·  Slime Forest").
+    const string Dot = "  ·  ";
+
+    /// <summary>
+    /// A part of the line above the list (issue #59): its words on one line, the same parted where they read best ("the
+    /// fight and the setup" over "how far the search is", as OneOrTwo parts a Details head), and every other way its words
+    /// can read while the line is on show, at their widest (how far a search is, how long ago a scan was, the counts of a
+    /// Compare scan as it goes on), each on one line and parted.
+    /// </summary>
+    readonly record struct ShownPart(string One, string Parted, IReadOnlyList<(string One, string Parted)> Alike)
+    {
+        public ShownPart(string words) : this(words, words, Array.Empty<(string, string)>()) { }
+    }
+
+    // The parts of the line above the list as they were last given, for FitShowing.
+    ShownPart[] _showingParts = Array.Empty<ShownPart>();
+
+    // The words of the line above the list, made once a refresh (FillRows, FillPairShowing, FillUpgradeShowing).
+    void ShowWords(params ShownPart[] parts)
+    {
+#if DEVTOOLS
+        // cuts=widest: a setup's name as wide as the line, in the simulator's words only (DevStandIn).
+        if (_devStandIn is { } standIn)
+        {
+            string Put(string words) => words.Replace(standIn.Real, standIn.Name);
+            parts = parts.Select(p => new ShownPart(Put(p.One), Put(p.Parted), p.Alike.Select(a => (Put(a.One), Put(a.Parted))).ToArray())).ToArray();
+        }
+#endif
+        _showingParts = parts;
+        FitShowing();
+    }
+
+    // The line above the list is whole at every size, for every list, and asks the window for no room it does not have.
+    // Its lines are decided here against the room it is planned with (ShowingRoom), never against the width it has for a
+    // moment while the window is built: each part on one line where its words fit there in every way they can read while
+    // on show (so the line keeps its lines and the list under it does not move), and otherwise parted; a line still too
+    // wide goes on at its spaces (WrapAt). The label itself neither wraps nor asks for a width (ClipText). With Godot's own
+    // wrap (turn 1 of issue #59) the window, built again at another size, came out far higher than its columns: 818x864 at
+    // size 0.6 for 530 in Find upgrades, 818x608 with an earlier scan (check-1). A wrapping label is shaped at whatever width
+    // it has at each step of the layout, and a passing width far narrower than its own gives it many lines; the window took
+    // that height, and a window never shrinks back by itself (GameWindow: ResetSize only on a fold).
+    void FitShowing()
+    {
+        if (!GodotObject.IsInstanceValid(_showing)) return;
+        string text = string.Join("\n", LaidOut(_showingParts, ShowingRoom()));
+        if (_showing.Text != text) _showing.Text = text;
+    }
+
+    // The lines these parts take in this room, in the line's own font and size.
+    List<string> LaidOut(IEnumerable<ShownPart> parts, float room)
+    {
+        Font font = _showing.GetThemeFont("font");
+        int size = _showing.GetThemeFontSize("font_size");
+        float Wide(string words) => font.GetStringSize(words, HorizontalAlignment.Left, -1, size).X;
+        var lines = new List<string>();
+        foreach (ShownPart part in parts) lines.AddRange(LinesOf(OnOne(part, Wide, room) ? part.One : part.Parted, Wide, room));
+        return lines;
+    }
+
+    // Whether a part goes on one line: its words fit there in every way they can read while on show.
+    static bool OnOne(ShownPart part, Func<string, float> wide, float room) => wide(part.One) <= room && part.Alike.All(a => wide(a.One) <= room);
+
+    // The lines of one form of a part's words (one line, or parted) in this room.
+    static IEnumerable<string> LinesOf(string form, Func<string, float> wide, float room) => form.Split('\n').SelectMany(line => WrapAt(line, wide, room));
+
+    // A line of words in a room: as it is where it fits, otherwise broken at its spaces with as many words to a line as
+    // fit, as Godot's own wrap breaks it; a word alone wider than the room is broken after the last letter that fits, as
+    // WordSmart breaks one. Every line it gives is within the room. Without a room (not laid out), the line as it is.
+    static IEnumerable<string> WrapAt(string line, Func<string, float> wide, float room)
+    {
+        if (room <= 0)
+        {
+            yield return line;
+            yield break;
+        }
+        string rest = line;
+        while (rest.Length > 0 && wide(rest) > room)
+        {
+            int cut = 0;
+            for (int space = rest.IndexOf(' '); space > 0; space = rest.IndexOf(' ', space + 1))
+            {
+                if (wide(rest[..space].TrimEnd()) > room) break;
+                cut = space;
+            }
+            if (cut == 0)
+                for (cut = 1; cut < rest.Length && wide(rest[..(cut + 1)]) <= room; cut++) { }
+            yield return rest[..cut].TrimEnd();
+            rest = rest[cut..].TrimStart();
+        }
+        if (rest.Length > 0 || line.Length == 0) yield return rest;
+    }
+
+    // The room inside the Results column as it is planned (BuildResults, ResultsWidth): its width less its frame's margins.
+    // A column is never narrower than planned, so what is laid out in this room fits whatever else the window does.
+    float ResultsRoom()
+    {
+        if (_showing.GetParent()?.GetParent()?.GetParent() is not Control panel) return 0;
+        StyleBox frame = panel.GetThemeStylebox("panel");
+        return _resultsColumn.CustomMinimumSize.X - frame.GetMargin(Side.Left) - frame.GetMargin(Side.Right);
+    }
+
+    // The room of the line above the list, in pixels: the Results column's (ResultsRoom) less the buttons beside the line
+    // that are on show and the spacing before each; History's at its widest count, so that the line keeps its lines when
+    // a scan ends and History counts one more. As LoadoutRow measures the room beside A and B (SimViewCompare.cs).
+    float ShowingRoom()
+    {
+        if (_showing.GetParent() is not Control top) return 0;
+        float room = ResultsRoom();
+        int gap = top.GetThemeConstant("separation");
+        foreach (Button button in new[] { _back, _columnsButton, _historyButton })
+            if (button.Visible)
+                room -= MathF.Ceiling(button.GetCombinedMinimumSize().X + (button == _historyButton ? HistoryMore() : 0)) + gap;
+        return MathF.Floor(room) - _showing.GetThemeStylebox("normal").GetMinimumSize().X;
+    }
+
+    // How much wider History's button can get than it is now: its count goes up to the scans History keeps.
+    float HistoryMore()
+    {
+        Font font = _historyButton.GetThemeFont("font");
+        int size = _historyButton.GetThemeFontSize("font_size");
+        float Wide(string words) => font.GetStringSize(words, HorizontalAlignment.Left, -1, size).X;
+        float widest = Enumerable.Range(0, SimHistory.Kept + 1).Max(scans => Wide(HistoryWords(scans)));
+        return Math.Max(0, widest - Wide(_historyButton.Text));
+    }
+
+    static string HistoryWords(int scans) => scans > 0 ? $"History ({scans})" : "History";
+
+    // A count as wide as a count of as many digits can be in the line's font: every digit the widest of its digits, which
+    // need not all be as wide. For the words a line is laid out by while its counts go up (ShownPart.Alike).
+    string WidestCount(int count)
+    {
+        Font font = _showing.GetThemeFont("font");
+        int size = _showing.GetThemeFontSize("font_size");
+        char widest = "0123456789".MaxBy(digit => font.GetStringSize(digit.ToString(), HorizontalAlignment.Left, -1, size).X);
+        return new string(widest, Math.Max(1, count).ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
     }
 
     // ---- the item picker: every item of the game that fits the slot ---------------------------------------
@@ -929,8 +1159,9 @@ sealed partial class SimView
         line.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect, Control.LayoutPresetMode.Minsize, _s.Px(6));
         row.AddChild(line);
         line.AddChild(_s.Picture(icon, 24));
-        Label label = _s.Text(name, tint);
-        label.ClipText = true;
+        // A long name (an item's, an area's) goes on to a second line instead of being cut (issue #59), and the row grows
+        // with it (Grows); the panel's list scrolls, so the panel itself keeps its size.
+        Label label = Whole(_s.Text(name, tint));
         label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         label.MouseFilter = Control.MouseFilterEnum.Ignore;
         line.AddChild(label);
@@ -940,7 +1171,27 @@ sealed partial class SimView
             note.MouseFilter = Control.MouseFilterEnum.Ignore;
             line.AddChild(note);
         }
+        Grows(row, line, 32);
         return row;
+    }
+
+    // A row of a panel's list is a button, which does not take the height of what it holds: it keeps the height it was
+    // made with (high, in the window's design pixels), as before, and grows by the lines its words take beyond their first,
+    // a name that went on to a second line, by Godot's wrap in a list that scrolls (so that the panel keeps its size) or
+    // laid out by the mod (LayOutBeside).
+    void Grows(Button row, Control lines, float high)
+    {
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(row) || !GodotObject.IsInstanceValid(lines)) return;
+            float more = 0;
+            foreach (Label label in lines.FindChildren("*", "Label", true, false).OfType<Label>())
+                if (label.IsVisibleInTree() && label.GetLineCount() > 1)
+                    more += (label.GetLineCount() - 1) * (label.GetLineHeight() + label.GetThemeConstant("line_spacing"));
+            float wanted = _s.Px(high) + MathF.Ceiling(more);
+            if (Math.Abs(row.CustomMinimumSize.Y - wanted) > 0.5f) row.CustomMinimumSize = new Vector2(row.CustomMinimumSize.X, wanted);
+        }
+        lines.MinimumSizeChanged += Fit;
     }
 
     // ---- middle: one line per fight ------------------------------------------------------------------------
@@ -951,12 +1202,14 @@ sealed partial class SimView
         Control column = _resultsColumn = _s.Column("Results, per hour", out VBoxContainer body, width);
         column.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
-        // What the table shows, and the way to the earlier scans.
+        // What the table shows, and the way to the earlier scans. The line is whole at every size, its lines laid out by
+        // the mod (FitShowing); the buttons beside it keep their own height when it takes two lines or more.
         var top = _s.Spaced(new HBoxContainer(), 6);
         _showing = _s.Text("", GameStyle.TextGrey, 12);
         _showing.ClipText = true;
         _showing.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _showing.MouseFilter = Control.MouseFilterEnum.Pass;
+        _showing.ThemeChanged += FitShowing;
         top.AddChild(_showing);
         _back = _s.GameButton("Back to now", "TexturedButton4x", 12);
         _back.TooltipText = "Leave this earlier scan and show the current results";
@@ -967,6 +1220,7 @@ sealed partial class SimView
         _historyButton.TooltipText = "Look at an earlier scan again, without simulating anything";
         _historyButton.Pressed += OpenHistory;
         top.AddChild(_historyButton);
+        foreach (Button button in new[] { _back, _columnsButton, _historyButton }) button.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         body.AddChild(top);
 
         var header = _s.Spaced(new HBoxContainer(), 6);
@@ -1055,19 +1309,9 @@ sealed partial class SimView
         _rows.GetParent<Control>().Visible = any;
         _sidewaysRow.Visible = any && _cellsWidth > _numbersWidth;
         _emptyBox.Visible = !any;
-        if (_state.Viewing is { } scan)
-        {
-            _showing.Text = $"Earlier scan, {Ago(scan.At)}:  {scan.Title}  ·  {scan.SetupLabel}";
-            _showing.TooltipText = $"{scan.At.ToLocalTime():d MMM yyyy, HH:mm}. These numbers are from then: your levels and equipment may have changed.";
-        }
-        else
-        {
-            _showing.Text = _state.PerStance ? $"Best stance for each fight, with: {_state.SetupLabel}" : "With: " + _state.SetupName;
-            _showing.TooltipText = "";
-        }
-        _showing.AddThemeColorOverride("font_color", _state.Viewing != null ? GameStyle.TextGold : GameStyle.TextGrey);
-        _back.Visible = _state.Viewing != null;
-        _historyButton.Text = _state.History.Count > 0 ? $"History ({_state.History.Count})" : "History";
+        // The buttons beside the line above the list first: the line's room is what they leave (ShowingRoom).
+        _back.Visible = _state.Viewing != null || _state.ShowingUpgrades;
+        _historyButton.Text = HistoryWords(_state.History.Count);
 
         bool otherSetups = _state.Results.Values.Any(r => r.SetupKey != _state.SetupKey);
         _empty.Text = _state.Running ? "Simulating..." : _state.Catalog.Count == 0
@@ -1075,8 +1319,25 @@ sealed partial class SimView
             : otherSetups ? "Nothing simulated with this equipment yet.\n\nPress Simulate to compare it with what you ran before."
             : _state.BestMode ? "Choose the skill you want to train and where on the left, then press Simulate.\n\nEvery fight is tried in each attack stance of your weapon, and the fights are ranked by what they give that skill."
             : "Choose where to fight and with which equipment on the left, then press Simulate.\n\nEvery fight is run with the game's own combat, on a hidden copy of your character. Nothing is saved.";
-        if (_state.ShownComparing) FillPairShowing(ordered);   // the wins of each setup, and the words when there is nothing
-        if (_state.ShowingUpgrades) FillUpgradeShowing(ordered);   // the fight the items are tried for, and how far it is
+        // The line above the list, its words made once: for the items tried for a fight (with how far it is), for two
+        // setups (the wins of each, and the words when there is nothing), or for one.
+        if (_state.ShowingUpgrades) FillUpgradeShowing(ordered);   // SimViewUpgrades.cs
+        else if (_state.ShownComparing) FillPairShowing(ordered);   // SimViewCompare.cs
+        else if (_state.Viewing is { } scan)
+        {
+            string Line(string ago) => $"Earlier scan, {ago}:  {scan.Title}{Dot}{scan.SetupLabel}";
+            string Two(string ago) => $"Earlier scan, {ago}:  {scan.Title}\n{scan.SetupLabel}";
+            ShowWords(new ShownPart(Line(Ago(scan.At)), Two(Ago(scan.At)), AgoWords(scan.At).Select(ago => (Line(ago), Two(ago))).ToArray()));
+            _showing.TooltipText = $"{scan.At.ToLocalTime():d MMM yyyy, HH:mm}. These numbers are from then: your levels and equipment may have changed.";
+        }
+        else
+        {
+            ShowWords(new ShownPart(_state.PerStance ? $"Best stance for each fight, with: {_state.SetupLabel}" : "With: " + _state.SetupName));
+            _showing.TooltipText = "";
+        }
+        // Its colour only when it changes: a colour set raises ThemeChanged, which lays the line out again (FitShowing).
+        Color colour = _state.Viewing != null ? GameStyle.TextGold : GameStyle.TextGrey;
+        if (_showing.GetThemeColor("font_color") != colour) _showing.AddThemeColorOverride("font_color", colour);
 
         // The last scans, one click away, while there is nothing else to look at.
         string recent = any || _state.Running ? "" : string.Join("|", _state.History.Take(3).Select(h => h.Id));
@@ -1113,9 +1374,9 @@ sealed partial class SimView
 
         line.AddChild(_s.Picture(_lookup.TargetIcon(result.Target), 20));
         Label name = _s.Text(result.Target.Name, LineFailed(result) ? GameStyle.TextDim : GameStyle.TextWhite);
-        name.ClipText = true;
         name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         name.MouseFilter = Control.MouseFilterEnum.Ignore;
+        ShortWithTip(name, row);
         line.AddChild(name);
         if (StanceText(result) is { Length: > 0 } stanceName)   // none in compare mode (SimViewCompare.cs)
         {
@@ -1132,6 +1393,34 @@ sealed partial class SimView
         line.AddChild(RowCells(result));
         return row;
     }
+
+    // A name on a line of the list is cut short with "..." where the line has no room for all of it, the house way inside
+    // the list (as the column names over it, SimViewColumns.FillHeader), and the line's tooltip then starts with the whole
+    // name, unless it does already (issue #59: a name of the game's data can be wider than a line at the smallest sizes).
+    // Measured again whenever the name's width changes; the line is in the list's scroll, so nothing else moves for it.
+    static void ShortWithTip(Label name, Control line)
+    {
+        name.ClipText = true;
+        name.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        string whole = name.Text, tip = line.TooltipText;
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(name) || !GodotObject.IsInstanceValid(line) || name.Size.X <= 0) return;
+            string wanted = !Shortened(name, whole) || tip.StartsWith(whole, StringComparison.Ordinal) ? tip : tip == "" ? whole : $"{whole}\n{tip}";
+            if (line.TooltipText != wanted) line.TooltipText = wanted;
+        }
+        name.Resized += Fit;
+        name.ThemeChanged += Fit;
+    }
+
+    // Whether a label that trims (TrimEllipsis) shows these words shortened. Godot shortens them as soon as they are wider
+    // than the room inside the label at all; the room is taken here in whole pixels, the lesser, so that words within a
+    // pixel of it count as shortened. With half a pixel to spare (turn 2 of issue #59) a name could end in "..." without
+    // the whole name in its line's tooltip; a tooltip that names a name in full that was not shortened costs nothing.
+    // ShortWithTip and the measure (DevFit) judge by this alone.
+    static bool Shortened(Label label, string words) =>
+        label.GetThemeFont("font").GetStringSize(words, HorizontalAlignment.Left, -1, label.GetThemeFontSize("font_size")).X
+        > MathF.Floor(label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X);
 
     // ---- right: everything about one fight -----------------------------------------------------------------
 
@@ -1152,11 +1441,13 @@ sealed partial class SimView
         body.AddChild(_fightNote);
         _fightButton = _s.GameButton("Fight", "TexturedButtonCancel8x", 18);
         _fightButton.CustomMinimumSize = new Vector2(0, _s.Px(46));
-        _fightButton.Icon = GameStyle.Icon("Combat");
+        _fightButton.Icon = _fightIcon = GameStyle.Icon("Combat");
         _fightButton.ExpandIcon = true;
         _fightButton.AddThemeConstantOverride("icon_max_width", _s.Px(26));
         _fightButton.AddThemeConstantOverride("h_separation", _s.Px(8));
         _fightButton.ClipText = true;
+        _fightButton.Resized += FitFightWords;
+        _fightButton.ThemeChanged += FitFightWords;
         _fightButton.Pressed += () => { if (_fightAs != null) _fight(_fightAs); };
         body.AddChild(_fightButton);
         // A slow breath of light, so the way out of the numbers and into the fight is easy to find.
@@ -1176,8 +1467,7 @@ sealed partial class SimView
         _fightNote.Visible = _fightTarget != null;
         if (_fightTarget != null && _fightAs != null)
         {
-            _fightButton.Text = "Fight " + _fightTarget.Name;
-            _fightButton.TooltipText = _fightTarget.IsDungeon ? $"Enter {_fightTarget.Name} now" : $"Start fighting {_fightTarget.Name} in {_fightTarget.AreaName} now";
+            FitFightWords();
             // What pressing it will and will not do, piece by piece: the same pieces the mod acts on.
             bool viewing = _state.Viewing != null, worn = !viewing && _state.IsWornSetup;
             _fightNote.Text = string.Join(" ", new[]
@@ -1191,6 +1481,43 @@ sealed partial class SimView
         }
         FillWear();
         FillUpgradeButton();   // for the same fight (SimViewUpgrades.cs)
+    }
+
+    // The Fight button's picture (the game's Combat icon), which a long name can leave out (FightFace).
+    Texture2D? _fightIcon;
+
+    // The Fight button's words are whole at every size (issue #59), and name the fight wherever they can: the button is the
+    // way into it, and Details' head, which names it too, can be scrolled away. It shows the first of its faces that fits,
+    // as the Spell box does (ShowWhole, Face): "Fight Black Slime" beside its picture, the same words without the picture
+    // (its 34 design pixels go to the words), and "Fight" beside its picture where even that does not fit, the word on the
+    // game's own enemy cards, its tooltip then starting with the whole words. A long enemy's or dungeon's name can do so at
+    // any size: 26 of the game's 167 names did not fit beside the picture at the default size (check-2 of issue #59). The
+    // button keeps the game's look, its font and its size; it asks for no width of its own (ClipText). Before it is laid
+    // out it has its whole words.
+    void FitFightWords()
+    {
+        if (!GodotObject.IsInstanceValid(_fightButton) || _fightTarget is not { } target) return;
+        string name = target.Name;
+#if DEVTOOLS
+        // cuts=long: a long name in the simulator's words only (DevLongOn).
+        if (_devFightName is { } standIn) name = standIn;
+#endif
+        string whole = "Fight " + name;
+        string tip = target.IsDungeon ? $"Enter {name} now" : $"Start fighting {name} in {target.AreaName} now";
+        var (words, picture) = FightFace(whole);
+        if (_fightButton.Text != words) _fightButton.Text = words;
+        if (_fightButton.Icon != picture) _fightButton.Icon = picture;
+        _fightButton.TooltipText = words == whole ? tip : $"{whole}\n{tip}";
+    }
+
+    // The first of the Fight button's faces that fits its room for words (its width less its margins), measured as the
+    // Spell box's words are (Margins, ChoiceWidth); "Fight" beside its picture when none does.
+    (string Words, Texture2D? Picture) FightFace(string whole)
+    {
+        float room = _fightButton.Size.X - Margins(_fightButton);
+        foreach (var face in new (string Words, Texture2D? Picture)[] { (whole, _fightIcon), (whole, null), ("Fight", _fightIcon) })
+            if (_fightButton.Size.X <= 0 || ChoiceWidth(_fightButton, face.Words, face.Picture != null) <= room + 0.5f) return face;
+        return ("Fight", _fightIcon);
     }
 
     void FillDetails()
@@ -1351,8 +1678,9 @@ sealed partial class SimView
         var rows = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, -2);
         var line = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, 6);
         if (icon != null) line.AddChild(_s.Picture(icon, 18));
-        Label label = _s.Text(name);
-        label.ClipText = true;
+        // A long name (a drop's, a column's) goes on to a second line beside its number instead of being cut (issue #59);
+        // Details scrolls, so the window keeps its size.
+        Label label = Whole(_s.Text(name));
         label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         line.AddChild(label);
         Label number = _s.Text(value, tint ?? GameStyle.TextWhite, 14, GameStyle.Bold);
@@ -1404,7 +1732,7 @@ sealed partial class SimView
         if (_train != null) _train.Disabled = _state.Running;
         if (_spell != null && GodotObject.IsInstanceValid(_spell)) _spell.Disabled = _state.Running;
         if (_stance != null && GodotObject.IsInstanceValid(_stance)) _stance.Disabled = _state.Running;
-        _where.Text = _state.ScopeLabel;
+        FitWhereWords();
         _progress.Value = _state.Total > 0 ? (double)_state.Done / _state.Total : 0;
         _progress.Modulate = _state.Running || _state.Done > 0 ? Colors.White : new Color(1, 1, 1, 0.35f);
         _status.Text = _state.Message != "" ? _state.Message

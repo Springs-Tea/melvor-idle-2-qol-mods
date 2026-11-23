@@ -439,37 +439,27 @@ public partial class CombatSimMod
         _ctx.Log("Dev: gear: " + DevPickerText());
         var views = DevGameViews();
         Rect2? grid = DevLogGameSlots(views);
-        DevShot(name);
-        if (grid is not { } rect)
-        {
-            if (views.Count > 0) _ctx.Log($"Dev: gear: crop-{name}-game.png not taken: none of the game's {views.Count} slot views is on show. Open the combat screen for it.");
-            return;
-        }
-        DevGameCrop(name, rect);
+        if (grid is not { } rect && views.Count > 0) _ctx.Log($"Dev: gear: crop-{name}-game.png not taken: none of the game's {views.Count} slot views is on show. Open the combat screen for it.");
+        // The game's grid from the very frame of the picture (issue #59: it was the frame before).
+        DevShot(name, grid is { } at ? (image, screen) => DevGameCrop(image, screen, name, at) : null);
     }
 
-    // crop-<name>-game.png: the game's equipment grid alone, with room around it for its tooltip.
-    void DevGameCrop(string name, Rect2 rect, float room = 12)
+    // crop-<name>-game.png: the game's equipment grid alone, with room around it for its tooltip, from the picture of shot-<name>.
+    void DevGameCrop(Image image, Transform2D screen, string name, Rect2 rect, float room = 12)
     {
-        void Capture()
+        try
         {
-            RenderingServer.FramePostDraw -= Capture;
-            try
-            {
-                using Image image = _ctx.Tree.Root.GetTexture().GetImage();
-                Rect2 frame = _ctx.Tree.Root.GetFinalTransform() * rect.Grow(room);
-                var whole = new Rect2I(0, 0, image.GetWidth(), image.GetHeight());
-                Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(whole);
-                if (part.Size.X <= 0 || part.Size.Y <= 0) { _ctx.Log($"Dev: gear: crop-{name}-game.png not taken: the grid is off the screen."); return; }
-                using Image crop = image.GetRegion(part);
-                crop.SavePng(System.IO.Path.Combine(_ctx.Directory, $"crop-{name}-game.png"));
-                bool covered = _window is { IsAlive: true, Visible: true } && _window.Root.GetGlobalRect().Intersects(rect);
-                _ctx.Log($"Dev: gear: crop-{name}-game.png is the game's equipment, {part.Position.X},{part.Position.Y} {part.Size.X}x{part.Size.Y}" +
-                         (covered ? "; THE SIMULATOR'S WINDOW LIES OVER IT: close the window first (\"close\")." : "; nothing of the simulator lies over it."));
-            }
-            catch (Exception e) { _ctx.Log($"Dev: gear: crop-{name}-game.png could not be taken: {e.Message}"); }
+            Rect2 frame = screen * rect.Grow(room);
+            var whole = new Rect2I(0, 0, image.GetWidth(), image.GetHeight());
+            Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(whole);
+            if (part.Size.X <= 0 || part.Size.Y <= 0) { _ctx.Log($"Dev: gear: crop-{name}-game.png not taken: the grid is off the screen."); return; }
+            using Image crop = image.GetRegion(part);
+            crop.SavePng(System.IO.Path.Combine(_ctx.Directory, $"crop-{name}-game.png"));
+            bool covered = _window is { IsAlive: true, Visible: true } && _window.Root.GetGlobalRect().Intersects(rect);
+            _ctx.Log($"Dev: gear: crop-{name}-game.png is the game's equipment, {part.Position.X},{part.Position.Y} {part.Size.X}x{part.Size.Y}, from the frame of shot-{name}.png" +
+                     (covered ? "; THE SIMULATOR'S WINDOW LIES OVER IT: close the window first (\"close\")." : "; nothing of the simulator lies over it."));
         }
-        RenderingServer.FramePostDraw += Capture;
+        catch (Exception e) { _ctx.Log($"Dev: gear: crop-{name}-game.png could not be taken: {e.Message}"); }
     }
 
     // hover=<slot>: the pointer onto the game's own slot view, as a player's pointer; the game shows its tooltip.
@@ -494,8 +484,7 @@ public partial class CombatSimMod
             Rect2 area = view.GetGlobalRect();
             if (TooltipOfView(view) is { } tip && tip.IsVisibleInTree()) area = area.Merge(tip.GetGlobalRect());
             DevLogGameSlots(new List<EquipmentSlotView> { view });
-            DevShot("hover");
-            DevGameCrop("hover", area);
+            DevShot("hover", (image, screen) => DevGameCrop(image, screen, "hover", area));
         };
     }
 

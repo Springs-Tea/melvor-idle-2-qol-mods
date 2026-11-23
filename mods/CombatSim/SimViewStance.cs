@@ -158,10 +158,11 @@ sealed partial class SimView
     }
 
     // How wide a choice's words are on the box, in its own font and size, with the picture beside them and the spacing
-    // Godot keeps between the two.
-    static float ChoiceWidth(OptionButton box, string words, bool picture) =>
+    // Godot keeps between the two. Also a button's words with its picture (cuts=log, CutProbe.cs): a button that sets no
+    // icon_max_width shows its picture at its own width.
+    static float ChoiceWidth(Button box, string words, bool picture) =>
         box.GetThemeFont("font").GetStringSize(words, HorizontalAlignment.Left, -1, box.GetThemeFontSize("font_size")).X
-        + (picture ? box.GetThemeConstant("icon_max_width") + Math.Max(0, box.GetThemeConstant("h_separation")) : 0);
+        + (picture ? (box.GetThemeConstant("icon_max_width") is > 0 and var most ? most : box.Icon?.GetWidth() ?? 0) + Math.Max(0, box.GetThemeConstant("h_separation")) : 0);
 
     // The Setup column gets no wider for a box, at any size (CombatSimMod.FullWidth). Godot's own fit to the longest choice
     // asks about 30 px more than the words (SimViewRanges.FitChoices), and the margins and arrow of the game's drop-down
@@ -181,7 +182,7 @@ sealed partial class SimView
             float longest = Enumerable.Range(0, box.ItemCount).Where(i => !box.IsItemSeparator(i))
                 .Select(i => font.GetStringSize(box.GetItemText(i), HorizontalAlignment.Left, -1, size).X + (box.GetItemIcon(i) != null ? picture : 0))
                 .DefaultIfEmpty(0).Max();
-            float room = _s.Px(SetupWidth - 20) - caption.GetCombinedMinimumSize().X - row.GetThemeConstant("separation");
+            float room = SetupRoom - caption.GetCombinedMinimumSize().X - row.GetThemeConstant("separation");
             box.CustomMinimumSize = new Vector2(Math.Max(0, Math.Min(MathF.Ceiling(longest + AroundText(box)), MathF.Floor(room))), 0);
         }
         Fit();
@@ -355,7 +356,7 @@ sealed partial class SimView
             Font font = box.GetThemeFont("font");
             float words = font.GetStringSize(box.Text, HorizontalAlignment.Left, -1, box.GetThemeFontSize("font_size")).X;
             float picture = box.Icon != null ? box.GetThemeConstant("icon_max_width") + Math.Max(0, box.GetThemeConstant("h_separation")) : 0;
-            float room = box.Size.X - AroundText(box) - picture, column = _s.Px(SetupWidth - 20);
+            float room = box.Size.X - AroundText(box) - picture, column = SetupRoom;
             Control row = (Control)box.GetParent();
             DevLog?.Invoke($"{head}: Setup: the caption '{_stanceCaption?.Text}' {_stanceCaption?.Size.X:0} px; the box {box.Size.X:0}x{box.Size.Y:0}, asks {box.GetCombinedMinimumSize().X:0} " +
                            $"(Godot's own fit would ask {DevGodotFit(box):0}); '{box.Text}' {words:0.#} wide in {room:0.#}: {(words > room + 0.01f ? "CUT" : "whole")}; " +
@@ -411,7 +412,8 @@ sealed partial class SimView
 
     // A label's words against the room it has: its widest line, in how many lines, and whole, or CUT where a line is wider
     // than the room (for a line that wraps, where one word alone is, which the wrap would break) or a line does not show in
-    // the label's height.
+    // the label's height. A label that trims is judged by Godot's own rule, as ShortWithTip judges it (Shortened): not
+    // whole as soon as a line is wider than its room in whole pixels.
     static (bool Whole, string Said) DevFit(Label label)
     {
         Font font = label.GetThemeFont("font");
@@ -419,11 +421,12 @@ sealed partial class SimView
         float Wide(string s) => font.GetStringSize(s, HorizontalAlignment.Left, -1, size).X;
         float room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
         bool wraps = label.AutowrapMode != TextServer.AutowrapMode.Off;
+        bool trims = !wraps && label.TextOverrunBehavior != TextServer.OverrunBehavior.NoTrimming;
         string[] given = label.Text.Split('\n');
         float widest = given.Select(Wide).DefaultIfEmpty(0).Max();
         float word = label.Text.Split(new[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(Wide).DefaultIfEmpty(0).Max();
         int lines = label.GetLineCount(), shown = label.GetVisibleLineCount();
-        bool whole = shown >= lines && (wraps ? word : widest) <= room + 0.5f;
+        bool whole = shown >= lines && (trims ? !given.Any(line => Shortened(label, line)) : (wraps ? word : widest) <= room + 0.5f);
         return (whole, $"'{label.Text.Replace("\n", " / ")}' {widest:0.#} wide in {room:0.#}, {lines} {(lines == 1 ? "line" : "lines")}" +
                        $"{(lines > given.Length ? ", wrapped" : "")}{(wraps ? "" : ", never wraps")}, {shown} shown: {(whole ? "whole" : "CUT")}");
     }
@@ -708,25 +711,29 @@ public partial class CombatSimMod
 
     // What the picture holds where something should be drawn: how many colours, and how many pixels stand out from the
     // most common one (the words and the frame of a drop-down, a picture). One colour, or almost nothing standing out, is
-    // nothing drawn there.
+    // nothing drawn there. A large part is read at a grid of about 40,000 of its pixels, not all of them: the whole window
+    // at its largest size is about two million engine calls a picture otherwise, while the maintainer plays (issue #59).
     static string DevDrawn(Image image, Transform2D screen, string what, Rect2? where)
     {
         if (where is not { } rect) return $"{what}: not on show";
         Rect2 frame = screen * rect;
         Rect2I part = new Rect2I((int)frame.Position.X, (int)frame.Position.Y, (int)frame.Size.X, (int)frame.Size.Y).Intersection(new Rect2I(0, 0, image.GetWidth(), image.GetHeight()));
         if (part.Size.X <= 0 || part.Size.Y <= 0) return $"{what}: off the picture";
+        int step = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(part.Size.X * (float)part.Size.Y / 40000f)));
         var counts = new Dictionary<int, int>();
-        for (int y = part.Position.Y; y < part.End.Y; y++)
-            for (int x = part.Position.X; x < part.End.X; x++)
+        int all = 0;
+        for (int y = part.Position.Y; y < part.End.Y; y += step)
+            for (int x = part.Position.X; x < part.End.X; x += step)
             {
                 Color c = image.GetPixel(x, y);
                 int key = ((int)(c.R * 31) << 10) | ((int)(c.G * 31) << 5) | (int)(c.B * 31);
                 counts[key] = counts.GetValueOrDefault(key) + 1;
+                all++;
             }
-        int all = part.Size.X * part.Size.Y, common = counts.Values.Max(), standing = all - common;
+        int common = counts.Values.Max(), standing = all - common;
         bool drawn = counts.Count > 8 && standing > all / 20;
-        return $"{what} at {part.Position.X},{part.Position.Y} {part.Size.X}x{part.Size.Y} px: {counts.Count} colours, {standing} of {all} pixels apart from the most common one: " +
-               (drawn ? "drawn" : "NOTHING DRAWN THERE");
+        return $"{what} at {part.Position.X},{part.Position.Y} {part.Size.X}x{part.Size.Y} px{(step > 1 ? $", every {step}th pixel each way" : "")}: {counts.Count} colours, " +
+               $"{standing} of {all} pixels apart from the most common one: " + (drawn ? "drawn" : "NOTHING DRAWN THERE");
     }
 }
 #endif

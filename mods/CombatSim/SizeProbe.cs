@@ -96,20 +96,24 @@ public partial class CombatSimMod
     // alone. The run request, size=log and fight.request (FightSetup.DevLayout) log this same line. The rule's sizes must
     // cover the window as it really is at every size (WidthAt, HeightAt), and at the largest size its bottom is at or above
     // the top of the bar. "Needs" is what the rule would need at full size to hold this window, its kept parts
-    // (KeptWidth, KeptHeight) as they are. "why" says which request logged it.
-    void DevLogWindow(string why)
+    // (KeptWidth, KeptHeight) as they are. "why" says which request logged it. Its verdict, for cuts=log (CutProbe.cs): "it
+    // fits, above the bottom bar by 265 px".
+    string DevLogWindow(string why)
     {
         GameWindow window = _window!;
         Vector2 size = window.Root.Size, screen = _ctx.Tree.Root.GetVisibleRect().Size;
         float scale = window.Style.Scale, wide = WidthAt(scale), high = HeightAt(scale);
         Rect2 frame = window.Root.GetGlobalRect();
         static float Needs(float length, float scale, float kept) => scale >= 1 ? length / scale : (length - kept) / scale + kept;
-        string fits = size.X > wide + 0.5f || size.Y > high + 0.5f ? "  LARGER THAN LargestScale ALLOWS" : ", it fits";
+        bool larger = size.X > wide + 0.5f || size.Y > high + 0.5f;
+        string fits = larger ? "  LARGER THAN LargestScale ALLOWS" : ", it fits";
+        string bottom = DevBottomBar(screen, out float barTop);
+        string bar = frame.End.Y <= barTop + 0.5f ? $"above the bottom bar by {Math.Max(0, barTop - frame.End.Y):0} px" : $"OVER THE BOTTOM BAR by {frame.End.Y - barTop:0} px";
         _ctx.Log($"Dev: window {size.X:0}x{size.Y:0} at size {scale:0.##} (chosen {_settings.Scale:0.##}, largest {LargestScale(FooterHeight()):0.##}), {size.X / scale:0}x{size.Y / scale:0} at full size; " +
                  $"LargestScale allows {wide:0.#}x{high:0.#} at this size{fits}; this window needs FullWidth {Needs(size.X, scale, KeptWidth):0.#} and FullHeight {Needs(size.Y, scale, KeptHeight):0.#} " +
-                 $"(now {FullWidth:0} and {FullHeight:0}); screen {screen.X:0}x{screen.Y:0}, {DevBottomBar(screen, out float barTop)}, window top at {frame.Position.Y:0}, window bottom at {frame.End.Y:0}, " +
-                 (frame.End.Y <= barTop + 0.5f ? $"above the bottom bar by {Math.Max(0, barTop - frame.End.Y):0} px" : $"OVER THE BOTTOM BAR by {frame.End.Y - barTop:0} px") +
-                 $"; Setup: {_view?.DevSetupShows(DevGameSpells()) ?? "(no view)"} ({why})");
+                 $"(now {FullWidth:0} and {FullHeight:0}); screen {screen.X:0}x{screen.Y:0}, {bottom}, window top at {frame.Position.Y:0}, window bottom at {frame.End.Y:0}, " +
+                 bar + $"; Setup: {_view?.DevSetupShows(DevGameSpells()) ?? "(no view)"} ({why})");
+        return (larger ? "LARGER THAN LargestScale ALLOWS" : "it fits") + ", " + bar;
     }
 
     // Where the game's bottom bar is, read from the bar itself: FooterHeight reads only its height, and the rule takes the

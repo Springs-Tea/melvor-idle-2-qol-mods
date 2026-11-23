@@ -160,7 +160,12 @@ sealed class ItemLines(Game game)
             string s => s,
             _ => null,
         };
-        return !string.IsNullOrWhiteSpace(text) ? text : (owner as INamespacedObject)?.Id.Split(':').Last() ?? owner.GetType().Name;
+        if (!string.IsNullOrWhiteSpace(text)) return text;
+        // An item upgrade has no name of its own in the game's data, only an id ("StuddedElkLeatherBootsU"): it is called
+        // by the item it makes, as the Item Encyclopedia's "Found in" calls it (EncyclopediaView.LineRow) and as a recipe
+        // is called by its product. Read by its name, so that a game without it only falls back to the id, as before.
+        if (owner.GetType().GetProperty("UpgradedItem")?.GetValue(owner) is Item made) return made.DisplayName.GetPluralText(1);
+        return (owner as INamespacedObject)?.Id.Split(':').Last() ?? owner.GetType().Name;
     }
 
     // The skill a recipe belongs to: asked from the skills themselves where they list their recipes, read

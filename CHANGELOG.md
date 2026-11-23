@@ -4,6 +4,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: nothing in the window is cut at any size any more. Long lines (the line above the list,
+  a "Found in" place, names in Details, History, Where and the earlier scans) go on to a second line; a name too
+  long for a line of the list ends in "..." with the whole name in its tooltip, and a long enemy name leaves
+  Fight without its picture, or with just "Fight", the whole words in its tooltip.
+- **Item Sources**: an item upgrade is named after the item it makes instead of by its id
+  ("StuddedElkLeatherBootsU").
 - **Combat Simulator**: Compare fights A and B with the same dice and takes the luck they met alike off the bar
   for green and red, so a smaller difference can be coloured when two setups fight alike; Details writes the
   lead with how far luck could move it ("A by 48% ± 47%").

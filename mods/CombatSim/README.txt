@@ -17,7 +17,13 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
   - Click the fold button again or the round chart button to return to the same tab, list,
     sort order and selected fight. The red X closes the window even when folded. A scan
     keeps running while the window is folded or closed. The window remembers its place,
-    size and whether you left it folded.
+    size and whether you left it folded. At the smaller sizes the line above the list, a place
+    under "Found in", a long name in Details, in the earlier scans under an empty list and in
+    the lists of History, Where and an item's slot go on to a second line instead of being
+    cut. A name too long for a line of the list ends in "..." with the whole name in the
+    line's tooltip. Where says "2 areas" when two long area names do not fit on it. A long
+    enemy or dungeon name, at any size, leaves Fight without its picture, or saying only
+    "Fight" where even that is too long. Their tooltips then start with the whole words.
   - Setup: where to fight, for how long, and whether supplies are unlimited or come from your
     bank. "Where" opens a list in which you tick one area, several, or none for everything
     (an area simulates every enemy in it, a dungeon is one fight).
@@ -86,9 +92,10 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     such as a weapon of another kind, names both stances in its tooltip and Details. Items
     whose requirements you do not meet are never tried; ticked in the panel, they are listed
     at the end with what they need in grey. Click a line for both numbers of every column and
-    every place the item comes from. Nothing is put on, and the items tried are not kept in
-    History. "Back to the fights" leaves them, and "Show upgrades" under Details brings them
-    back.
+    every place the item comes from (an enemy's area, or "Dungeon reward", on a small line
+    under the name where the two do not fit on one line, for every enemy of that heading).
+    Nothing is put on, and the items tried are not kept in History. "Back to the fights"
+    leaves them, and "Show upgrades" under Details brings them back.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.
