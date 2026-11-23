@@ -47,7 +47,13 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 A round button with a chart on it sits in the strip of round buttons on the right edge of the screen. It
 opens and closes the window. The window can be dragged from any empty spot and resized from its bottom
 right corner; it remembers its place and size. It stays above the game's bar along the bottom of the screen,
-and is never larger than the room above that bar.
+and is never larger than the room above that bar. At the smaller sizes a line too long for its room goes on to
+a second line instead of being cut: the line above the list, a place under **Found in**, a long name in
+Details, in the earlier scans under an empty list and in the lists of History, Where and an item's slot. A
+name too long for a line of the list ends in "..." and the line's tooltip starts with the whole name.
+**Where** says "2 areas" when two long area names do not fit on it, and its tooltip names them. A long enemy
+or dungeon name, at any size, leaves **Fight** without its picture, or saying only "Fight" where even that is
+too long; its tooltip then starts with the whole words.
 
 Click the button beside the red X to fold the window down to its title. Until you run a scan after loading
 your character, it says **Combat Simulator**. During a scan it counts the finished fights,
@@ -475,8 +481,10 @@ tried so far stay.
   an item the game would not equip) says why in gold beside its name instead of numbers, and a fight that
   failed in red.
 - **Details.** Click a line: every column with both numbers ("13,815 with it, 12,100 now") and where the item
-  comes from, place by place, as the Item Encyclopedia lists it. Fight under it is still the selected fight
-  with what you have on: Find upgrades never puts anything on.
+  comes from, place by place, as the Item Encyclopedia lists it. Where an enemy and its area do not fit on one
+  line, the area (for a dungeon "Dungeon reward") goes on a small grey line under the name, for every enemy
+  under that heading. Fight under it is still the selected fight with what you have on: Find upgrades never
+  puts anything on.
 - **Back to the fights**, over the list, leaves the items; the fight they were tried for stays selected. The
   button under Details then says **Show upgrades** and brings them back, while the search runs and after it,
   as long as the setup on the left is the one they were tried on. Over the items, Find upgrades opens the

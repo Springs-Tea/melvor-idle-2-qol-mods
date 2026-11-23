@@ -354,14 +354,21 @@ sealed partial class SimView
     }
 
     // In place of "With: ...": the fight, the setup the items go on, and how far the search is; in grey, as the current
-    // list's line.
+    // list's line. Where they do not fit on one line, how far the search is goes on a line of its own (ShowWords). Laid out
+    // by its widest words from the first item tried to "Stopped: ..." or "2 items tried, yesterday 03:27", every count as
+    // wide as its digits can be (WidestCount), the line keeps its lines from the start of the search to its end.
     void FillUpgradeShowing(List<SimResult> lines)
     {
         UpgradeSearch u = _state.Upgrades!;
         string stance = u.Target.StanceName != "" ? $" ({u.Target.StanceName})" : "";
-        string how = u.Running ? $"{u.Answered} of {u.Asked} items tried"
-            : u.Stopped ? $"Stopped: {u.Answered} of {u.Asked} items tried" : $"{u.Asked} items tried, {Ago(u.At)}";
-        _showing.Text = $"Upgrades for {u.Target.Name}{stance}, with: {u.SetupLabel}  ·  {how}";
+        static string Trying(string answered, string asked) => $"{answered} of {asked} items tried";
+        static string Stopped(string answered, string asked) => "Stopped: " + Trying(answered, asked);
+        static string Tried(string asked, string ago) => $"{asked} items tried, {ago}";
+        string how = u.Running ? Trying($"{u.Answered}", $"{u.Asked}") : u.Stopped ? Stopped($"{u.Answered}", $"{u.Asked}") : Tried($"{u.Asked}", Ago(u.At));
+        string what = $"Upgrades for {u.Target.Name}{stance}, with: {u.SetupLabel}", most = WidestCount(u.Asked);
+        var widest = new[] { Trying(most, most), Stopped(most, most) }
+            .Concat(AgoWords(u.Running ? DateTime.UtcNow : u.At).Select(ago => Tried(most, ago)));
+        ShowWords(new ShownPart(what + Dot + how, what + "\n" + how, widest.Select(words => (what + Dot + words, what + "\n" + words)).ToArray()));
         // What is left, by the estimate the panel gave: "About 1 min left."
         string left = u.Running ? $"\n{Capital(SearchEstimate(Math.Max(1, u.Asked - u.Answered + (u.Baseline == null ? 1 : 0)), u.Options.Hours))} left." : "";
         string now = u.Baseline is not { } b ? "The setup as it is: not simulated yet."
@@ -372,8 +379,6 @@ sealed partial class SimView
         _showing.TooltipText = $"Tried: {u.Chosen}, one item at a time on top of {u.SetupLabel}, against {u.Target.Name}{stance},\n" +
                                $"each from the same moment of your character and with the same luck as the setup as it is.\n" +
                                (cannot > 0 ? $"Also listed: {cannot} you cannot wear yet, which are not tried.\n" : "") + now + left;
-        _showing.AddThemeColorOverride("font_color", GameStyle.TextGrey);
-        _back.Visible = true;
         if (lines.Count > 0) return;
         _empty.Text = u.Running ? "Trying the setup as it is, then each item you chose, one at a time..."
             : u.Stopped && u.Answered == 0 ? "Stopped before the first item was tried: nothing to list.\n\nFind upgrades, under Details, starts again."
@@ -410,9 +415,10 @@ sealed partial class SimView
         row.AddChild(box);
         box.AddChild(_s.Picture(t?.Icon, 20));
         Label name = _s.Text(t?.ItemName ?? "", UsableTry(line) != null ? GameStyle.TextWhite : GameStyle.TextDim);
-        name.ClipText = true;
         name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         name.MouseFilter = Control.MouseFilterEnum.Ignore;
+        // "..." where the line has no room for it; the line's tooltip starts with the item's name already (UpgradeTip).
+        ShortWithTip(name, row);
         box.AddChild(name);
         if (WhyNoNumbers(t, line) is { } why)
         {
@@ -633,7 +639,9 @@ sealed partial class SimView
             var box = _s.Spaced(new VBoxContainer(), 2);
             _details.AddChild(box);
             int shown = Math.Min(members.Count, Math.Min(ItemLines.MaxPerGroup, ItemLines.MaxLines - written));
-            foreach (ItemLine line in members.Take(shown)) box.AddChild(SourceRow(line, chances, icon));
+            // The rows of the heading that can part at their dot take one form together (FitParted).
+            var parted = new List<PartedRow>();
+            foreach (ItemLine line in members.Take(shown)) box.AddChild(SourceRow(line, chances, icon, parted));
             written += shown;
             if (members.Count > shown) box.AddChild(_s.Text($"and {members.Count - shown} more", GameStyle.TextDim, 12));
         }
@@ -647,21 +655,44 @@ sealed partial class SimView
         ["MagicSpell"] = "Magic", ["Imbuement"] = "MagicImbuements", ["ArtisanRecipe"] = "SkillIcon",
     };
 
-    // "[icon] Name                     5-10   22%"
-    Control SourceRow(ItemLine line, bool chances, Texture2D? groupIcon)
+    // "[icon] Name  ·  where              5-10   22%"
+    // Whole at every size (issue #59): where the name and the place after its dot do not fit on one line, the name keeps
+    // the row and the place goes on a small grey line under it, as the Item Encyclopedia's "Found in" has an enemy's areas
+    // (EncyclopediaView.LineRow and Small), and so do the other rows of its heading (FitParted); a name still too wide
+    // wraps on (Whole). The words are Item Sources' own (ItemLines.Describe), whole in the tooltip.
+    Control SourceRow(ItemLine line, bool chances, Texture2D? groupIcon, List<PartedRow> heading)
     {
         var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         panel.AddThemeStyleboxOverride("panel", _s.StatLine());
+        var rows = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass }, 2);
+        panel.AddChild(rows);
         var top = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass }, 6);
-        panel.AddChild(top);
+        rows.AddChild(top);
         top.AddChild(_s.Picture(line.Icon ?? groupIcon, 20));
-        Label what = _s.Text(line.Name);
-        what.ClipText = true;
-        what.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        Label what = Whole(_s.Text(line.Name));
         what.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         what.TooltipText = line.Name;
         what.MouseFilter = Control.MouseFilterEnum.Pass;
         top.AddChild(what);
+        Label? where = null;
+        if (Parted(line) is (string name, string place))
+        {
+            // Under the name: past the picture and the gap after it, as the Encyclopedia's small line is.
+            var under = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Pass, Visible = false };
+            under.AddThemeConstantOverride("margin_left", _s.Px(20) + top.GetThemeConstant("separation"));
+            where = Whole(_s.Text(place, GameStyle.TextGrey, 12));
+            where.TooltipText = line.Name;
+            where.MouseFilter = Control.MouseFilterEnum.Pass;
+            under.AddChild(where);
+            rows.AddChild(under);
+            heading.Add(new PartedRow(line, what, under, name));
+            what.Resized += () => FitParted(heading);
+            what.ThemeChanged += () => FitParted(heading);
+        }
+#if DEVTOOLS
+        _devSourceRows.RemoveAll(r => !GodotObject.IsInstanceValid(r.Name));
+        _devSourceRows.Add((line, what, where));
+#endif
         if (line.Quantity != "") top.AddChild(_s.Text(line.Quantity, GameStyle.TextGrey, 13));
         if (chances)
         {
@@ -677,6 +708,38 @@ sealed partial class SimView
             top.AddChild(chance);
         }
         return panel;
+    }
+
+    // A "Found in" row that can part at its dot: its line, the label of its name, the small line under it, and the name alone.
+    sealed record PartedRow(ItemLine Line, Label Name, Control Under, string Alone);
+
+    // One form for every row of a heading that can part, as the Item Encyclopedia gives every enemy row of its "Found in"
+    // the same: the place after the dot on the row while every one of them fits there, and on a small grey line under the
+    // name on every one as soon as one does not. Measured again whenever a row's width changes; the rows are in Details,
+    // which scrolls, so nothing else moves for it.
+    static void FitParted(List<PartedRow> rows)
+    {
+        rows.RemoveAll(r => !GodotObject.IsInstanceValid(r.Name) || !GodotObject.IsInstanceValid(r.Under));
+        if (rows.Count == 0 || rows.Any(r => r.Name.Size.X <= 0)) return;
+        static bool Fits(PartedRow r) =>
+            r.Name.GetThemeFont("font").GetStringSize(r.Line.Name, HorizontalAlignment.Left, -1, r.Name.GetThemeFontSize("font_size")).X
+            <= r.Name.Size.X - r.Name.GetThemeStylebox("normal").GetMinimumSize().X;
+        bool one = rows.All(Fits);
+        foreach (PartedRow r in rows)
+        {
+            string words = one ? r.Line.Name : r.Alone;
+            if (r.Name.Text != words) r.Name.Text = words;
+            if (r.Under.Visible == one) r.Under.Visible = !one;
+        }
+    }
+
+    // An enemy's or a dungeon's line in two parts at its dot, "Black Slime" and "Slime Forest", "Hobgolbin Camp" and
+    // "Dungeon reward" (the words after the dot start with a capital on a line of their own); null for any other line,
+    // which has no dot.
+    static (string Name, string Place)? Parted(ItemLine line)
+    {
+        int dot = line.Group == "Combat" ? line.Name.IndexOf(Dot, StringComparison.Ordinal) : -1;
+        return dot > 0 && dot + Dot.Length < line.Name.Length ? (line.Name[..dot], Capital(line.Name[(dot + Dot.Length)..])) : null;
     }
 
 #if DEVTOOLS
@@ -804,7 +867,9 @@ sealed partial class SimView
         DevLog?.Invoke($"{head}: the list {(_state.ShowingUpgrades ? "is on show" : "is NOT on show")} (shown {_state.UpgradesShown}, earlier scan {_state.Viewing?.Id ?? "-"}); " +
                        (u == null ? "no search" : $"search {u.Id} for {u.Target.Name} [{u.Target.Key}] with {u.SetupLabel}, chosen {u.Chosen}: {u.Answered} of {u.Asked} items, {u.Tries.Count(t => !t.Tried)} listed without trying, " +
                                                   $"{(u.Running ? "running" : u.Stopped ? "stopped" : "done")}; the setup as it is {(u.Baseline == null ? "not yet" : u.Baseline.Failed ? "FAILED" : $"xp {u.Baseline.XpPerHour:N0}, kills {u.Baseline.KillsPerHour:N0}")}"));
-        DevLog?.Invoke($"{head}: above the list '{_showing.Text}' ({_showing.Size.X:0} px wide, its words {_showing.GetThemeFont("font").GetStringSize(_showing.Text, HorizontalAlignment.Left, -1, _showing.GetThemeFontSize("font_size")).X:0}); " +
+        // Its words by their widest line: two lines where they do not fit on one (ShowWords).
+        float showingWords = _showing.Text.Split('\n').Max(line => _showing.GetThemeFont("font").GetStringSize(line, HorizontalAlignment.Left, -1, _showing.GetThemeFontSize("font_size")).X);
+        DevLog?.Invoke($"{head}: above the list '{_showing.Text.Replace("\n", " | ")}' ({_showing.Size.X:0} px wide, its words {showingWords:0}, in {_showing.GetLineCount()} {(_showing.GetLineCount() == 1 ? "line" : "lines")}); " +
                        $"its tooltip '{_showing.TooltipText.Replace("\n", " | ")}'; the empty list says '{(_emptyBox.Visible ? _empty.Text.Replace("\n", " | ") : "-")}'");
         DevLog?.Invoke($"{head}: '{_back.Text}' {(_back.Visible ? "shown" : "hidden")}; " +
                        $"the button '{_upgradeButton.Text}' {(_upgradeButton.Visible ? "shown" : "hidden")}, {(_upgradeButton.Disabled ? "greyed" : "can be pressed")}, {_upgradeButton.Size.X:0}x{_upgradeButton.Size.Y:0}; " +

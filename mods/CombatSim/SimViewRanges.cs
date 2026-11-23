@@ -85,7 +85,8 @@ sealed partial class SimView
     // in a window laid out that way), its arrow, and the h_separation Godot keeps between the text and the arrow.
     static float AroundText(OptionButton box) => Margins(box) + Arrow(box);
 
-    static float Margins(OptionButton box)
+    // Also a button's, for its words (cuts=log, CutProbe.cs).
+    static float Margins(Button box)
     {
         bool mirrored = box.IsInsideTree() && box.IsLayoutRtl();
         float widest = 0;

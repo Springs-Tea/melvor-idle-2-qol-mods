@@ -96,7 +96,7 @@ likeliest source is on top.
 | **Combat** | An enemy drops it, or a dungeon gives it as its reward. After the enemy's name is the area it lives in; `+1` means one more area has it too. |
 | **A skill's name** (Thieving, Hunting, Smithing...) | A target, an animal or a recipe of that skill gives or uses it. The line is that target or recipe. |
 | **Opening** | It is inside a chest or another openable item. |
-| **Shop**, **Quests**, **Upgrading** | A shop purchase, a quest reward, an item upgrade. |
+| **Shop**, **Quests**, **Item Upgrade** | A shop purchase, a quest reward, an item upgrade. |
 | `1-5` or `x2` in the middle | How many at a time: a range, or a fixed number. Nothing there means one. |
 | `6.41%`, `1 in 2,000`, `always` on the right | The chance each time (per kill, per pick, per chest). The column is only there when something in the list is not certain. |
 | `Combat  (15)` | The group has fifteen lines; the first eight are shown, then "and 7 more". |

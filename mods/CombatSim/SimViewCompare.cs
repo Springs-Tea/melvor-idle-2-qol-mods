@@ -110,7 +110,7 @@ sealed partial class SimView
         void Fit()
         {
             if (!GodotObject.IsInstanceValid(loadout) || !GodotObject.IsInstanceValid(a) || !GodotObject.IsInstanceValid(b)) return;
-            float room = _s.Px(SetupWidth - 20) - a.GetCombinedMinimumSize().X - b.GetCombinedMinimumSize().X - 2 * row.GetThemeConstant("separation");
+            float room = SetupRoom - a.GetCombinedMinimumSize().X - b.GetCombinedMinimumSize().X - 2 * row.GetThemeConstant("separation");
             float asks = MathF.Ceiling(Longest(loadout).Width + AroundText(loadout));
             loadout.CustomMinimumSize = new Vector2(Math.Max(0, Math.Min(asks, MathF.Floor(room))), 0);
         }
@@ -398,8 +398,8 @@ sealed partial class SimView
     string StanceText(SimResult line) => _state.ShownComparing ? "" : line.Target.StanceName;
 
     // Before the list is filled: the header's cells for the kind of list on show (an earlier scan of two setups is
-    // compared whatever the box says, and one of one setup is not), the line above it, and in Best for each setup's best
-    // fight.
+    // compared whatever the box says, and one of one setup is not), and in Best for each setup's best fight. Over a list
+    // of two setups the line above it is one or two lines, whole as every list's (ShowWords).
     void MatchCompare(List<SimResult> lines)
     {
         if (_headerComparing != _state.ShownComparing)
@@ -409,11 +409,6 @@ sealed partial class SimView
             FillHeader();
             _tableSignature = "";
         }
-        // Over a list of two setups the line above it can be two, each cut with "..." where it is long (the whole is in
-        // its tooltip); the buttons beside it keep their own height. With one setup all is as it was.
-        _showing.TextOverrunBehavior = _state.ShownComparing ? TextServer.OverrunBehavior.TrimEllipsis : TextServer.OverrunBehavior.NoTrimming;
-        foreach (Button button in new[] { _back, _columnsButton, _historyButton })
-            button.SizeFlagsVertical = _state.ShownComparing ? Control.SizeFlags.ShrinkCenter : Control.SizeFlags.Fill;
         _bestA = _bestB = null;
         if (!_state.ShownComparing || !_state.ShownBest) return;
         _bestA = lines.Select(l => Usable(_state.Pair(l).A)).OfType<SimResult>().MaxBy(_state.Xp)?.Target.FightKey;
@@ -461,18 +456,20 @@ sealed partial class SimView
     // The tooltip names the two setups, and in Best for says the best of each in whole sentences.
     void FillPairShowing(List<SimResult> lines)
     {
-        string count = PairCount(lines);
-        string what = count != "" ? count : $"A: {_state.ShownLabelA}  ·  B: {_state.ShownLabelB}";
+        // The counts, or before them the two setups' names, parted at their dot where they do not fit on one line; each
+        // part of the line laid out by its widest words while a scan goes on (ShowWords).
+        ShownPart what = PairCount(lines) ?? new ShownPart($"A: {_state.ShownLabelA}{Dot}B: {_state.ShownLabelB}", $"A: {_state.ShownLabelA}\nB: {_state.ShownLabelB}", Array.Empty<(string, string)>());
         string setups = $"A: {_state.ShownLabelA}\nB: {_state.ShownLabelB}" + (_state.ShownBest ? BestWords(lines) : "");
         if (_state.Viewing is { } scan)
         {
-            _showing.Text = $"Earlier scan, {Ago(scan.At)}:  {scan.Title}\n{what}";
+            string Line(string ago) => $"Earlier scan, {ago}:  {scan.Title}";
+            ShowWords(new ShownPart(Line(Ago(scan.At)), Line(Ago(scan.At)), AgoWords(scan.At).Select(ago => (Line(ago), Line(ago))).ToArray()), what);
             _showing.TooltipText = $"{scan.At.ToLocalTime():d MMM yyyy, HH:mm}. These numbers are from then: your levels and equipment may have changed.\n{setups}";
         }
         else
         {
-            string best = _state.ShownBest ? BestLine(lines) : "";
-            _showing.Text = best == "" ? what : what + "\n" + best;
+            if (_state.ShownBest && BestLine(lines) is { } best) ShowWords(what, best);
+            else ShowWords(what);
             _showing.TooltipText = setups;
         }
         if (lines.Count > 0 || _state.Running || _state.Catalog.Count == 0) return;
@@ -481,11 +478,13 @@ sealed partial class SimView
             : "Nothing simulated with these two setups yet.\n\nPress Simulate: every fight is run with A and with B, from the same moment of your character and with the same dice.";
     }
 
-    // "XP: A is better in 7 of 12 fights, B in 4, the same in 1", by the name over the column; "" when no fight has a
-    // number with both setups.
-    string PairCount(List<SimResult> lines)
+    // "XP: A is better in 7 of 12 fights, B in 4, the same in 1", by the name over the column; null when no fight has a
+    // number with both setups. Laid out by its widest words while the scan goes on: every part there, every count with as
+    // many digits as the fights the list can have, each digit the widest (WidestCount), so that it keeps its lines from
+    // the first result to the end of the scan and the list under it does not move.
+    ShownPart? PairCount(List<SimResult> lines)
     {
-        if (CountedColumn() is not { } c) return "";
+        if (CountedColumn() is not { } c) return null;
         int a = 0, b = 0, same = 0, luck = 0, n = 0;
         foreach (SimResult line in lines)
         {
@@ -500,25 +499,40 @@ sealed partial class SimView
                 default: if (Ahead(c.Better, v.VA, v.VB)) a++; else b++; break;
             }
         }
-        if (n == 0) return "";
-        string fights = n == 1 ? "fight" : "fights";
+        if (n == 0) return null;
+        // The fights the list can have: an earlier scan's are on it already; a scan of the current setups has the chosen ones.
+        string most = WidestCount(_state.Viewing != null ? lines.Count : Math.Max(lines.Count, _state.InScope.Count()));
+        var (one, parted) = CountWords(c, $"{a}", $"{b}", same > 0 ? $"{same}" : null, luck > 0 ? $"{luck}" : null, $"{n}", n != 1);
+        return new ShownPart(one, parted, new[] { CountWords(c, most, most, most, most, most, true) });
+    }
+
+    // The counts in words, on one line and parted after A's: "XP: A is better in 7 of 12 fights," over "B in 4, the same in
+    // 1, could be luck in 2".
+    (string One, string Parted) CountWords(SimColumn c, string a, string b, string? same, string? luck, string n, bool fights)
+    {
         bool neither = c.Better == Better.Neither;
-        var parts = new List<string>
-        {
-            neither ? $"more with A in {a} of {n} {fights}" : $"A is better in {a} of {n} {fights}",
-            neither ? $"with B in {b}" : $"B in {b}",
-        };
-        if (same > 0) parts.Add($"the same in {same}");
-        if (luck > 0) parts.Add($"could be luck in {luck}");
-        return TitleOf(c) + ": " + string.Join(", ", parts);
+        string first = TitleOf(c) + ": " + (neither ? $"more with A in {a} of {n} {(fights ? "fights" : "fight")}" : $"A is better in {a} of {n} {(fights ? "fights" : "fight")}");
+        var rest = new List<string> { neither ? $"with B in {b}" : $"B in {b}" };
+        if (same != null) rest.Add($"the same in {same}");
+        if (luck != null) rest.Add($"could be luck in {luck}");
+        return ($"{first}, {string.Join(", ", rest)}", $"{first},\n{string.Join(", ", rest)}");
     }
 
     // "Best with A: Black Slime, A ×5.5  ·  Best with B: Rainbow Slime, A ×3.5": where each setup gets the most XP
-    // of the skill trained, and which setup is better there, in the words of the XP column's first cell. "" when neither
-    // setup has a result.
-    string BestLine(List<SimResult> lines)
+    // of the skill trained, and which setup is better there, in the words of the XP column's first cell; null when neither
+    // setup has a result. Parted at its dot like the setups' names ("Best with A: ..." over "Best with B: ..."), one alone
+    // after its colon, and laid out by its widest words while a scan goes on: the widest name of the fights the list can
+    // have (WidestName) with the widest words of a lead (WidestLead), so that it keeps its lines and the list under it does
+    // not move (issue #59).
+    ShownPart? BestLine(List<SimResult> lines)
     {
-        if (ColumnOf("xp") is not { } xp) return "";
+        if (ColumnOf("xp") is not { } xp) return null;
+        string name = WidestName(lines), lead = WidestLead();
+        (string, string)[] alike =
+        {
+            ($"Best with A: {name}{lead}{Dot}Best with B: {name}{lead}", $"Best with A: {name}{lead}\nBest with B: {name}{lead}"),
+            ($"Best with A and B: {name}{lead}", $"Best with A and B:\n{name}{lead}"),
+        };
         string? There(string? fight)
         {
             if (lines.FirstOrDefault(l => l.Target.FightKey == fight) is not { } line) return null;
@@ -531,9 +545,54 @@ sealed partial class SimView
             };
             return line.Target.Name + said;
         }
-        if (_bestA != null && _bestA == _bestB) return There(_bestA) is { } both ? "Best with A and B: " + both : "";
-        return string.Join("  ·  ", new[] { ("A", There(_bestA)), ("B", There(_bestB)) }
-            .Where(s => s.Item2 != null).Select(s => $"Best with {s.Item1}: {s.Item2}"));
+        if (_bestA != null && _bestA == _bestB)
+            return There(_bestA) is { } both ? new ShownPart("Best with A and B: " + both, "Best with A and B:\n" + both, alike) : null;
+        var sides = new[] { ("A", There(_bestA)), ("B", There(_bestB)) }.Where(s => s.Item2 != null).Select(s => (Side: s.Item1, Words: s.Item2!)).ToList();
+        if (sides.Count == 0) return null;
+        if (sides.Count == 1) return new ShownPart($"Best with {sides[0].Side}: {sides[0].Words}", $"Best with {sides[0].Side}:\n{sides[0].Words}", alike);
+        var each = sides.Select(s => $"Best with {s.Side}: {s.Words}").ToList();
+        return new ShownPart(string.Join(Dot, each), string.Join("\n", each), alike);
+    }
+
+    // The widest name of the fights the list can have, in the line's font: an earlier scan's own lines, otherwise the
+    // fights chosen as well. Worked out again only when the fights to choose from or the size change.
+    (string Key, string Name) _widestName = ("", "");
+
+    string WidestName(List<SimResult> lines)
+    {
+        IEnumerable<string> names = lines.Select(l => l.Target.Name);
+        string key = $"{_s.Scale}#{_state.Viewing?.Id}#{_state.Catalog.Count}#{string.Join(",", _state.ScopeAreas.Order(StringComparer.Ordinal))}";
+        if (_state.Viewing == null) names = names.Concat(_state.InScope.Select(t => t.Name));
+        else key += "#" + lines.Count;
+        if (_widestName.Key == key) return _widestName.Name;
+        Font font = _showing.GetThemeFont("font");
+        int size = _showing.GetThemeFontSize("font_size");
+        string widest = names.DefaultIfEmpty("").MaxBy(n => font.GetStringSize(n, HorizontalAlignment.Left, -1, size).X)!;
+        _widestName = (key, widest);
+        return widest;
+    }
+
+    // The widest words a lead can take after a fight's name in the best line, as Lead and BestLine write them: ", A by
+    // 0.99%, could be luck", ", B ×999+", ", the same"..., every digit the widest of the line's font (WidestCount). They
+    // depend on the line's font and size only: worked out once a size, as WidestName is.
+    (float Scale, string Words) _widestLead = (0, "");
+
+    string WidestLead()
+    {
+        if (_widestLead.Scale == _s.Scale && _widestLead.Words != "") return _widestLead.Words;
+        string d = WidestCount(1), dd = WidestCount(10), ddd = WidestCount(100);
+        var leads = new List<string> { ", the same" };
+        foreach (string side in new[] { "A", "B" })
+            foreach (string lead in new[] { side + " is better", $"{side} ×{d}.{d}", $"{side} ×{ddd}", $"{side} ×999+", $"{side} by {ddd}%", $"{side} by {d}.{d}%",
+                                            $"{side} by {d}.{dd}%", $"{side} by <0.01%", $"{side} +{ddd}%", $"{side} +{d}.{d}%", $"{side} +{d}.{dd}%", $"{side} +<0.01%" })
+                foreach (string luck in new[] { "", ", could be luck" })
+                    leads.Add($", {lead}{luck}");
+        Font font = _showing.GetThemeFont("font");
+        int size = _showing.GetThemeFontSize("font_size");
+        string widest = leads.MaxBy(words => font.GetStringSize(words, HorizontalAlignment.Left, -1, size).X)!;
+        // Kept only once the line has the window's font, which it has inside the window.
+        if (_showing.IsInsideTree()) _widestLead = (_s.Scale, widest);
+        return widest;
     }
 
     // "Best with A: Scarecrow (Stab), 13,815 Ranged XP an hour. There: A by 23%", a line for each setup.
@@ -843,7 +902,7 @@ sealed partial class SimView
         {
             Font font = _loadout.GetThemeFont("font");
             float text = font.GetStringSize(_loadout.Text, HorizontalAlignment.Left, -1, _loadout.GetThemeFontSize("font_size")).X, room = _loadout.Size.X - AroundText(_loadout);
-            float column = _s.Px(SetupWidth - 20);
+            float column = SetupRoom;
             DevLog?.Invoke($"{head}: Setup: A {_sideA.Size.X:0}x{_sideA.Size.Y:0} ({(_sideA.ButtonPressed ? "down" : "up")}, asks {_sideA.GetCombinedMinimumSize().X:0}), " +
                            $"B {_sideB.Size.X:0}x{_sideB.Size.Y:0} ({(_sideB.ButtonPressed ? "down" : "up")}, asks {_sideB.GetCombinedMinimumSize().X:0}), " +
                            $"the loadout {_loadout.Size.X:0}x{_loadout.Size.Y:0} asks {_loadout.GetCombinedMinimumSize().X:0} (its longest '{Longest(_loadout).Text}' {Longest(_loadout).Width:0.#} " +
