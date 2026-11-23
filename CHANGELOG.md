@@ -4,6 +4,10 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: Find upgrades judges each item against your setup as Compare judges B against A, with the
+  luck the two met alike taken off, so a small real gain from an item that fights like your setup can turn
+  green; where the same dice decide a change, Details gives it with its ± ("+14%" over "± 9.1%"). Details' small
+  lines part at their "·" and never part a ± from its number.
 - **Combat Simulator**: nothing in the window is cut at any size any more. Long lines (the line above the list,
   a "Found in" place, names in Details, History, Where and the earlier scans) go on to a second line; a name too
   long for a line of the list ends in "..." with the whole name in its tooltip, and a long enemy name leaves

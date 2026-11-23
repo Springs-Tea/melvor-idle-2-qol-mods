@@ -217,7 +217,8 @@ sealed partial class SimView
     /// <summary>
     /// Development: the panel's requests (CombatSimMod.DevUpgradesCommand). "slot=" and "from=" click a tick whose name has
     /// those words, "cannot" the tick of the items that cannot be worn yet, "search=" types into the search box, "clear"
-    /// unticks everything and empties the box, "go" presses Simulate, "panel" says what the panel shows.
+    /// unticks everything and empties the box, "go" presses Simulate (after upgrades=go=&lt;most&gt; has read the count back,
+    /// <see cref="DevChoiceCount"/>), "panel" says what the panel shows.
     /// </summary>
     public string DevUpgradeChoice(string what)
     {
@@ -255,6 +256,18 @@ sealed partial class SimView
         if (found.Tick == null) return $"{what}: no tick called {name} among the {(slot ? "slots" : "kinds of source")} ({string.Join(", ", _choiceTicks.Where(t => t.Slot == slot).Select(t => t.Name))})";
         found.Tick.ButtonPressed = !found.Tick.ButtonPressed;   // its own Toggled, as a click
         return $"{what}: '{found.Tick.Text}' {(found.Tick.ButtonPressed ? "ticked" : "unticked")}; {DevChoicePanel()}";
+    }
+
+    /// <summary>
+    /// Development: how many items the open panel's own line says a press tries, read back from its words ("3 items  ·  4
+    /// fights  ·  about 5s", "41 items: at most 40 a search..."); null when the panel is not open or its line gives no count.
+    /// </summary>
+    public int? DevChoiceCount()
+    {
+        if (_pickerKind != UpgradePanel || _choiceSummary is not { } line || !GodotObject.IsInstanceValid(line)) return null;
+        string text = line.Text;
+        int digits = text.TakeWhile(char.IsAsciiDigit).Count();
+        return digits > 0 && text[digits..].StartsWith(" item", StringComparison.Ordinal) && int.TryParse(text[..digits], out int n) ? n : null;
     }
 
     string DevChoicePanel()

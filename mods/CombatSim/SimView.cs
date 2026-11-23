@@ -1688,16 +1688,64 @@ sealed partial class SimView
         line.AddChild(number);
         rows.AddChild(line);
         // Under the whole line: a long note must not squeeze the name.
-        if (note != null)
-        {
-            Label small = _s.Text(note, GameStyle.TextGrey, 11);
-            small.HorizontalAlignment = HorizontalAlignment.Right;
-            // Wrapped, not cut: cut, a note that is too long lost its beginning, being right-aligned.
-            small.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            rows.AddChild(small);
-        }
+        if (note != null) rows.AddChild(SmallLine(note));
         panel.AddChild(rows);
         return panel;
+    }
+
+    // A space that does not break (U+00A0): it ties a ± to its number in a small line (SmallLine). Written as its code, so
+    // that no editor or later change can turn it into a plain space unseen: no build would notice, only a picture would.
+    const char Tie = '\u00A0';
+
+    // The small grey line under a number of Details: Stat's, and Compare's under its two numbers (PairRow). Wrapped, not
+    // cut: cut, a note that is too long lost its beginning, being right-aligned. Whole at every size, and parted where it
+    // reads best (issue #63): on one line where it fits, otherwise at its dots, "15,288 with it, 15,369 now" over "could be
+    // luck, ± 1.2%", as OneOrTwo parts a head, with as many parts to a line as fit; a part still too wide wraps on (Whole).
+    // A ± is tied to its number, so no line ends in "±" with the number under it, as Godot's own wrap left it at size 1.1
+    // (check-1 of issue #63). Laid out again whenever its width or its theme changes, with one measure for each part, so a
+    // passing width while the window is built costs little; Details scrolls, so the window keeps its size.
+    Label SmallLine(string note)
+    {
+        string words = note.Replace("± ", "±" + Tie);
+        Label small = Whole(_s.Text(words, GameStyle.TextGrey, 11));
+        small.HorizontalAlignment = HorizontalAlignment.Right;
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(small) || small.Size.X <= 0) return;
+            Font font = small.GetThemeFont("font");
+            int size = small.GetThemeFontSize("font_size");
+            float room = small.Size.X - small.GetThemeStylebox("normal").GetMinimumSize().X;
+            string laid = string.Join("\n", SmallLines(words, s => font.GetStringSize(s, HorizontalAlignment.Left, -1, size).X, room));
+            if (small.Text != laid) small.Text = laid;
+        }
+        small.Resized += Fit;
+        small.ThemeChanged += Fit;
+#if DEVTOOLS
+        _devSmallLines.RemoveAll(l => !GodotObject.IsInstanceValid(l.Label));
+        _devSmallLines.Add((small, words));
+#endif
+        return small;
+    }
+
+    // The lines of a small line in this room: each line it has of its own as it is where it fits (FitsIn, a pixel to spare),
+    // otherwise parted at its dots with as many parts to a line as fit. A part too wide alone is a line of its own, which
+    // the label wraps on.
+    static IEnumerable<string> SmallLines(string words, Func<string, float> wide, float room) =>
+        words.Split('\n').SelectMany(line => room <= 0 || FitsIn(wide(line), room) ? new[] { line } : AtDots(line, wide, room));
+
+    static IEnumerable<string> AtDots(string line, Func<string, float> wide, float room)
+    {
+        string current = "";
+        foreach (string part in line.Split(Dot))
+        {
+            if (current != "" && !FitsIn(wide(current + Dot + part), room))
+            {
+                yield return current;
+                current = part;
+            }
+            else current = current == "" ? part : current + Dot + part;
+        }
+        yield return current;
     }
 
     // ---- keeping it current --------------------------------------------------------------------------------
@@ -1899,13 +1947,20 @@ sealed partial class SimView
             if (!GodotObject.IsInstanceValid(label) || label.Size.X <= 0) return;
             float room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
             float wide = label.GetThemeFont("font").GetStringSize(oneLine, HorizontalAlignment.Left, -1, label.GetThemeFontSize("font_size")).X;
-            string fits = wide <= room ? oneLine : twoLines;
+            string fits = FitsIn(wide, room) ? oneLine : twoLines;
             if (label.Text != fits) label.Text = fits;
         }
         label.Resized += Fit;
         label.ThemeChanged += Fit;
         return label;
     }
+
+    // Whether words this wide go on one line in this room, with a pixel to spare, as the list's numbers and first cells are
+    // measured (PairNumber, BetterWidth). Godot's label may wrap at a width of whole pixels, or add its widths up a hair
+    // otherwise, so words within a pixel of the room could break at their last space where the mod kept them on one line
+    // (review of turn 2 of issue #63; Shortened has the same reason). Parting a pixel early costs nothing. For OneOrTwo and
+    // SmallLine alike, so the two cannot drift apart.
+    static bool FitsIn(float wide, float room) => MathF.Ceiling(wide) + 1 <= room;
 
     Button Toggle(string text, ButtonGroup? group, string tip)
     {

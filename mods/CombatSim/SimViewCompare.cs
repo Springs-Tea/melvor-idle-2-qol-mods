@@ -682,12 +682,20 @@ sealed partial class SimView
         SimResult? ra = Usable(a), rb = Usable(b);
         if (ra == null && rb == null) return;
 
+        // The numbers judged, by the names their lines show, for the foot.
+        var judged = new List<(SimColumn Column, string Name)>();
+        void Row(SimColumn c, string? name = null, Texture2D? icon = null)
+        {
+            _details.AddChild(PairRow(c, ra, rb, name, icon));
+            judged.Add((c, name ?? c.Name));
+        }
+
         _details.AddChild(_s.Section("Per hour"));
         _details.AddChild(PairCaption());
         foreach (string column in new[] { "kills", "runs" })
-            if (ColumnOf(column) is { } c && (column != "runs" || any.Target.IsDungeon)) _details.AddChild(PairRow(c, ra, rb));
-        _details.AddChild(PairRow(CombatXp, ra, rb));
-        if (ColumnOf("gold") is { } gold) _details.AddChild(PairRow(gold, ra, rb));
+            if (ColumnOf(column) is { } c && (column != "runs" || any.Target.IsDungeon)) Row(c);
+        Row(CombatXp);
+        if (ColumnOf("gold") is { } gold) Row(gold);
 
         var skills = new[] { ra, rb }.OfType<SimResult>().SelectMany(r => r.Xp.Keys).Distinct()
             .OrderByDescending(id => new[] { ra, rb }.OfType<SimResult>().Max(r => r.PerHour(r.Xp.GetValueOrDefault(id)))).ToList();
@@ -698,13 +706,13 @@ sealed partial class SimView
             {
                 if (ColumnOf(SimColumns.SkillPrefix + id) is not { } c) continue;
                 var (skill, icon) = _lookup.Skill(id);
-                _details.AddChild(PairRow(c, ra, rb, skill, icon));
+                Row(c, skill, icon);
             }
         }
 
         _details.AddChild(_s.Section("Survival"));
         foreach (string column in new[] { "deaths", "lowHp", "damageTaken", "healed", "foodPerKill" })
-            if (ColumnOf(column) is { } c) _details.AddChild(PairRow(column == "deaths" ? DeathsAsDetails(c) : c, ra, rb));
+            if (ColumnOf(column) is { } c) Row(column == "deaths" ? DeathsAsDetails(c) : c);
 
         var used = new[] { ra, rb }.OfType<SimResult>().SelectMany(r => r.Used).DistinctBy(u => u.Id).ToList();
         if (used.Count > 0)
@@ -717,10 +725,20 @@ sealed partial class SimView
         string time = ra != null && rb != null && Math.Abs(ra.Hours - rb.Hours) < 1e-9 ? $"{Clock(ra.Hours * 3600)} of fighting simulated with each setup"
             : string.Join(", ", new[] { ("A", ra), ("B", rb) }.Where(s => s.Item2 != null).Select(s => $"{Clock(s.Item2!.Hours * 3600)} with {s.Item1}")) + " of fighting simulated";
         bool ranged = ra?.Spread != null && rb?.Spread != null;
-        // Both ways a number is judged (SimRanges.Judge), the second only where A and B met the same dice (issue #57).
-        string rule = "Green and red only where the two 95% ranges do not overlap" +
-                      (ra != null && rb != null && SimRanges.SameDice(ra, rb) ? ", or with the same dice where the lead is larger than its ±" : "");
-        Label foot = Wrapped($"{time}. " + (ranged ? rule + "; grey could be luck." : "Made before the ranges were counted: simulate again for them.") +
+        // Both ways a number is judged (SimRanges.Judge), the second only where A and B met the same dice (issue #57); and
+        // the lines above that were judged without a range, by name (issue #63: Lowest hitpoints is coloured wherever the
+        // two differ, which the rule's sentence alone did not say). "Green beside red": a verdict colours the two sides as a
+        // pair (SideTint), one green and the other red, which a line's own colours never do: Deaths "none" green on both
+        // sides, a red Lowest hitpoints on both, a red supply used beside a dim one (DeathsAsDetails, UsedColumn), so the
+        // rule is true of every colour above it (review of turn 2). No "grey could be luck": a grey line says so itself
+        // (PairRow), as in Find upgrades' foot, and the small lines under the numbers are grey too.
+        string rule = "Green beside red only where the two 95% ranges do not overlap" +
+                      (ra != null && rb != null && SimRanges.SameDice(ra, rb) ? ", or with the same dice where the lead is larger than its ±." : ".") +
+                      (ra != null && rb != null
+                          ? NoRange(judged.Where(j => PairVerdict(j.Column, (ra, rb)) is Verdict.Better or Verdict.Worse && !JudgedByLuck(j.Column, ra, rb)).Select(j => j.Name),
+                              "green beside red")
+                          : "");
+        Label foot = Wrapped($"{time}. " + (ranged ? rule : "Made before the ranges were counted: simulate again for them.") +
             (viewing ? "" : " Untick Compare for the loot of the setup on the left, item by item."), 250, GameStyle.TextDim, 11);
         foot.HorizontalAlignment = HorizontalAlignment.Center;
         _details.AddChild(new Control { CustomMinimumSize = new Vector2(0, _s.Px(4)), MouseFilter = Control.MouseFilterEnum.Ignore });
@@ -767,14 +785,8 @@ sealed partial class SimView
         panel.AddThemeStyleboxOverride("panel", _s.StatLine());
         var rows = _s.Spaced(new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore }, -2);
         rows.AddChild(PairLine(name ?? c.Name, icon, (a != null ? c.Text(a) : "-", tintA), (b != null ? c.Text(b) : "-", tintB), 14, GameStyle.Bold));
-        if (notes.Count > 0)
-        {
-            // Wrapped, not cut, as Stat's own note.
-            Label small = _s.Text(string.Join("  ·  ", notes), GameStyle.TextGrey, 11);
-            small.HorizontalAlignment = HorizontalAlignment.Right;
-            small.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            rows.AddChild(small);
-        }
+        // Wrapped, not cut, and parted at its dot, as Stat's own note (SmallLine).
+        if (notes.Count > 0) rows.AddChild(SmallLine(string.Join(Dot, notes)));
         panel.AddChild(rows);
         return panel;
     }

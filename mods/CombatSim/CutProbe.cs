@@ -461,6 +461,7 @@ sealed partial class SimView
         int found = _devSourceRows.Count(r => GodotObject.IsInstanceValid(r.Name) && r.Name.IsVisibleInTree());
         Part("Details' panels", shown.Where(c => c != detailsHead && !Outside(c)).SelectMany(c => DevWordsUnder(c)), right, "Details has no panel",
             found > 0 ? $", {found} 'Found in' rows among them" : ", no 'Found in' row");
+        DevSmallLines(head);
 
         // Fight, the words above it, and the buttons over it.
         Control detailsBody = _fightButton.GetParent<Control>();
@@ -486,6 +487,115 @@ sealed partial class SimView
         DevLog?.Invoke($"{head}: not measured by cuts=log: text fields and their placeholders (the search boxes), buttons with a picture and no words " +
                        "(the slots, the X, the fold button, the arrows), tooltips, the folded window's title strip, the enemy cards, Fight's own window " +
                        "(fight.request) and the game's own windows; a panel only while it is open (picker=, then cuts=close).");
+    }
+
+    // Every small line under a number of Details as SmallLine made it: the label, and its words before they were laid out.
+    readonly List<(Label Label, string Words)> _devSmallLines = new();
+
+    /// <summary>Development: a label's words on one line of the log, its spaces that do not break as plain ones (SmallLine).</summary>
+    static string DevPlain(string text) => text.Replace(Tie, ' ').Replace("\n", " / ");
+
+    /// <summary>
+    /// Development (cuts=log, issue #63): Details' small lines (SmallLine) as Godot drew them, read from each label itself: a
+    /// row per line of its characters (Label.GetCharacterBounds), checked against the number of lines Godot counts. For each
+    /// that takes more than one row, where it breaks, each line the mod laid out judged by its own rows: where the mod parted
+    /// it (at its dots, or a line of its own words), a part alone too wide for the room that wraps on (wider than FitsIn
+    /// lets a line be), or Godot BROKE IT WHERE THE MOD DID NOT PART IT (a laid line the mod measured as fitting). One label
+    /// can have both, and one too wide does not hide one broken beside it (review of turn 2). And ± PARTED FROM ITS NUMBER
+    /// wherever a row ends in a ±. A small line on one row is counted.
+    /// </summary>
+    void DevSmallLines(string head)
+    {
+        var shown = _devSmallLines.Where(s => GodotObject.IsInstanceValid(s.Label) && !s.Label.IsQueuedForDeletion() && s.Label.IsVisibleInTree()).ToList();
+        if (shown.Count == 0)
+        {
+            DevLog?.Invoke($"{head}: Details' small lines: none on show");
+            return;
+        }
+        Font font = shown[0].Label.GetThemeFont("font");
+        int one = 0, own = 0, atDots = 0, tooWide = 0, broken = 0, parted = 0, unread = 0;
+        var said = new List<string>();
+        foreach (var (label, words) in shown)
+        {
+            string[] laid = label.Text.Split('\n');
+            Font its = label.GetThemeFont("font");
+            int size = label.GetThemeFontSize("font_size");
+            float room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
+            List<List<string>>? rows = DevDrawnLines(label);
+            if (rows == null)
+            {
+                unread++;
+                said.Add($"'{DevPlain(label.Text)}': ITS LINES COULD NOT BE READ (Godot counts {label.GetLineCount()})");
+                continue;
+            }
+            var drawn = rows.SelectMany(r => r).ToList();
+            bool apart = drawn.Any(l => l.EndsWith('±'));
+            if (apart) parted++;
+            if (drawn.Count == 1 && !apart) { one++; continue; }
+            // Each laid line by its own rows: drawn on more than one, it wrapped on where the mod knew it too wide, and was
+            // broken by Godot where the mod measured it as fitting.
+            var wrappedOn = new List<string>();
+            var brokenAt = new List<string>();
+            for (int i = 0; i < laid.Length; i++)
+                if (rows[i].Count > 1)
+                    (FitsIn(its.GetStringSize(laid[i], HorizontalAlignment.Left, -1, size).X, room) ? brokenAt : wrappedOn).Add(laid[i]);
+            var how = new List<string>();
+            if (brokenAt.Count > 0)
+            {
+                broken++;
+                how.Add($"BROKEN WHERE THE MOD DID NOT PART IT ('{DevPlain(string.Join("\n", brokenAt))}' of '{DevPlain(label.Text)}')");
+            }
+            if (wrappedOn.Count > 0)
+            {
+                tooWide++;
+                how.Add($"wrapped on where a part alone is wider than its {room:0.#} px ('{DevPlain(string.Join("\n", wrappedOn))}')");
+            }
+            if (how.Count == 0 && label.Text == words) { own++; how.Add("lines of its own words"); }
+            else if (how.Count == 0) { atDots++; how.Add("parted at its dots"); }
+            said.Add($"'{string.Join("' / '", drawn.Select(l => l.Replace(Tie, ' ')))}' ({drawn.Count} lines, {string.Join("; ", how)}" +
+                     $"{(apart ? "; ± PARTED FROM ITS NUMBER" : "")}; {label.Size.X:0} px wide)");
+        }
+        DevLog?.Invoke($"{head}: Details' small lines: {shown.Count} on show, {one} on one line, {own} in lines of their own words, {atDots} parted at their dots, " +
+                       $"{tooWide} wrapped on where a part alone is too wide, " +
+                       $"{(broken == 0 ? "none broken by Godot where the mod did not part them" : $"{broken} BROKEN WHERE THE MOD DID NOT PART THEM")}, " +
+                       $"{(parted == 0 ? "no ± apart from its number" : $"{parted} with a ± PARTED FROM ITS NUMBER")}" +
+                       (unread > 0 ? $", {unread} whose lines could not be read" : "") +
+                       $"; the font {(font.HasChar(Tie) ? "has" : "HAS NO")} space that does not break, text server '{TextServerManager.GetPrimaryInterface()?.GetName()}'");
+        if (said.Count > 0) DevChunks($"{head}: Details' small lines in more than one line", said);
+    }
+
+    // A label's rows as drawn, for each line of its text: its characters by the row they are drawn in
+    // (Label.GetCharacterBounds), a "\n" of its text ending a line; null where the rows do not come to the number of lines
+    // Godot counts, which it then cannot tell.
+    static List<List<string>>? DevDrawnLines(Label label)
+    {
+        string text = label.Text;
+        float apart = label.GetThemeFont("font").GetHeight(label.GetThemeFontSize("font_size")) / 2;
+        var lines = new List<List<string>> { new() };
+        var row = new System.Text.StringBuilder();
+        float? at = null;
+        void EndRow()
+        {
+            lines[^1].Add(row.ToString().Trim(' ', Tie));
+            row.Clear();
+        }
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                EndRow();
+                lines.Add(new List<string>());
+                at = null;
+                continue;
+            }
+            Rect2 box = label.GetCharacterBounds(i);
+            bool drawn = box.Size.X > 0 || box.Size.Y > 0;
+            if (drawn && at is { } y && Math.Abs(box.Position.Y - y) > apart) EndRow();
+            if (drawn) at = box.Position.Y;
+            row.Append(text[i]);
+        }
+        EndRow();
+        return lines.Sum(l => l.Count) == label.GetLineCount() ? lines : null;
     }
 
     /// <summary>Development (cuts=close): the panel open beside the window closed again, as its X closes it.</summary>

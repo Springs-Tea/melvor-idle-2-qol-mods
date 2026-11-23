@@ -35,8 +35,9 @@ readonly record struct SimRange(double Value, double Low, double High, bool Even
 }
 
 /// <summary>
-/// A rate of two fights of a compare (issue #57), A's less B's: their <see cref="Difference"/>; the halves of the two own
-/// ranges; the <see cref="Share"/> of their luck that is left in the difference, measured from <see cref="Parts"/> parts
+/// A rate of two fights with the same dice, the one less the other (issue #57: A's less B's of a compare; issue #63: an
+/// item's of Find upgrades less the setup as it is's): their <see cref="Difference"/>; the halves of the two own ranges;
+/// the <see cref="Share"/> of their luck that is left in the difference, measured from <see cref="Parts"/> parts
 /// (SimParts.Apart); and how far luck could have put them apart, <see cref="Reach"/>. Apart is better or worse only beyond
 /// it (SimRanges.Apart).
 /// </summary>
@@ -58,8 +59,8 @@ enum Verdict
     /// <summary>Under half a percent apart.</summary>
     Same,
     /// <summary>
-    /// The two ranges overlap, or for two fights of a compare the difference is within the reach of luck
-    /// (<see cref="SimLuck"/>): a longer fight, or other dice, could turn it round.
+    /// The two ranges overlap, or for two fights with the same dice (a compare, an item of Find upgrades) the difference is
+    /// within the reach of luck (<see cref="SimLuck"/>): a longer fight, or other dice, could turn it round.
     /// </summary>
     Luck,
     Better,
@@ -93,15 +94,17 @@ sealed class SimSpread
     /// <summary>
     /// Compare (issue #57): how much of the luck of this fight and of each of the other setup's fights of the same enemy,
     /// which were fought with the same dice, is left in the difference of their rates (SimEngine.Pair). Kept with the fight
-    /// of the two that ended last. Null in a scan of one setup and in scans made before.
+    /// of the two that ended last. Find upgrades (issue #63) gives an item's result the entry of the setup as it is the same
+    /// way; its results never go into a history file. Null in a scan of one setup and in scans made before.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<SimApart>? Apart;
 }
 
 /// <summary>
-/// Two fights of a compare (issue #57): how much of their luck is left in the difference of their rates
-/// (SimParts.Apart), which lowers the bar for "better" by the luck they met alike (SimRanges.Apart).
+/// Two fights with the same dice (issue #57: A and B of a compare; issue #63: an item of Find upgrades and the setup as it
+/// is): how much of their luck is left in the difference of their rates (SimParts.Apart), which lowers the bar for
+/// "better" by the luck they met alike (SimRanges.Apart).
 /// </summary>
 sealed class SimApart
 {
@@ -142,9 +145,10 @@ sealed class SimApart
 /// (<see cref="Basis"/>).
 /// </para>
 /// <para>
-/// Two fights of a compare (issue #57) were fought with the same dice, kept in step. Luck they met alike cannot put one
-/// ahead of the other, so A against B is judged as strictly as two ranges side by side, less the luck they shared: apart
-/// when their difference is more than the two own halves added, times the share of their luck that is left in the
+/// Two fights of a compare (issue #57) were fought with the same dice, kept in step, and so are an item of Find upgrades
+/// and the setup as it is (issue #63). Luck they met alike cannot put one ahead of the other, so A against B, or the item
+/// against the setup as it is, is judged as strictly as two ranges side by side, less the luck they shared: apart when
+/// their difference is more than the two own halves added, times the share of their luck that is left in the
 /// difference (<see cref="Apart(SimResult, SimResult, SimRate)"/>, SimParts.Apart). That share is measured from the two
 /// fights and could come out low by chance alone, so it is first raised by its own noise (<see cref="Noise"/>): two
 /// fights that met nothing alike are coloured by luck as often as by two ranges side by side, and the rule never greys
@@ -413,15 +417,19 @@ static class SimRanges
     // ---- comparing two setups ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// The simulator's one rule for "is this number better than that one" (issue #5), for "Compared with" and for
-    /// two setups side by side (issue #2). Under half a percent apart: the same. With a range on both: better or
-    /// worse only when the ranges do not overlap, otherwise it could be luck. A result without ranges (a scan made
-    /// before them, a number that has none) keeps the rule of before: apart is better or worse.
+    /// The simulator's one rule for "is this number better than that one" (issue #5), for "Compared with", for two
+    /// setups side by side (issue #2) and for an item of Find upgrades against the setup as it is (issue #4). Under half
+    /// a percent apart: the same. With a range on both: better or worse only when the ranges do not overlap, otherwise it
+    /// could be luck. A result without ranges (a scan made before them, a number that has none) keeps the rule of before:
+    /// apart is better or worse.
     /// </summary>
     public static Verdict Judge(double mine, double theirs, SimRange? myRange, SimRange? theirRange, Better better) =>
         Judge(mine, theirs, myRange is { } a && theirRange is { } b && a.Overlaps(b), better);
 
-    /// <summary>The same rule for two fights of a compare: it could be luck while the difference is within the reach of luck.</summary>
+    /// <summary>
+    /// The same rule for two fights with the same dice (a compare, an item of Find upgrades and the setup as it is): it
+    /// could be luck while the difference is within the reach of luck.
+    /// </summary>
     public static Verdict Judge(double mine, double theirs, SimLuck luck, Better better) =>
         Judge(mine, theirs, Math.Abs(luck.Difference) <= luck.Reach, better);
 
@@ -439,9 +447,10 @@ static class SimRanges
     }
 
     /// <summary>
-    /// <see cref="Judge(double, double, SimRange?, SimRange?, Better)"/> for one rate of two results, as "Compared with"
-    /// and two setups side by side use it: for two fights of a compare by the reach of luck between them
-    /// (<see cref="Apart(SimResult, SimResult, SimRate)"/>), otherwise by the ranges <see cref="Basis"/> gives.
+    /// <see cref="Judge(double, double, SimRange?, SimRange?, Better)"/> for one rate of two results, as "Compared with",
+    /// two setups side by side and Find upgrades use it: for two fights with the same dice that were paired (a compare, an
+    /// item and the setup as it is) by the reach of luck between them (<see cref="Apart(SimResult, SimResult, SimRate)"/>),
+    /// otherwise by the ranges <see cref="Basis"/> gives.
     /// </summary>
     public static Verdict Judge(SimResult mine, SimResult theirs, SimRate? rate, double myValue, double theirValue, Better better)
     {
@@ -455,16 +464,17 @@ static class SimRanges
     static readonly ConditionalWeakTable<SimResult, Dictionary<(SimResult Theirs, SimRate Rate), SimLuck?>> s_apart = new();
 
     /// <summary>
-    /// A rate of two fights of a compare (issue #57), mine less theirs, and the reach of luck between them
+    /// A rate of two fights with the same dice that were paired (SimEngine.Pair: A and B of a compare, issue #57; an item
+    /// of Find upgrades and the setup as it is, issue #63), mine less theirs, and the reach of luck between them
     /// (<see cref="SimLuck.Reach"/>): the two own halves added, the bar of two ranges side by side, times the share of their
     /// luck that is left in their difference (<see cref="SimApart.Left"/>) raised by its own noise (<see cref="Noise"/>),
     /// never more than 1. The luck they met alike lowers the bar; with nothing met alike it is lowered so seldom and by so
     /// little that luck is coloured as often as by the bar of before. Null where the two are judged by their own ranges as
-    /// before (<see cref="Basis"/>): two results that were not fought with the same dice (a scan of one setup, Find
-    /// upgrades, a scan made before), fights that lasted other times (Go on until, From bank) or whose dice could not be
-    /// kept in step to the end, and the rates that Basis does not judge by their own ranges either: a count that some part
-    /// of either had none of, too rare for the parts alone (Garwood's range), and a quantity one of them had none of,
-    /// judged by the counts behind it or as a real 0.
+    /// before (<see cref="Basis"/>): two results that were not paired (a scan of one setup against another, two items of
+    /// one search, an item against a fight with dice of its own, a scan made before), fights that lasted other times (Go on
+    /// until, From bank) or whose dice could not be kept in step to the end, and the rates that Basis does not judge by
+    /// their own ranges either: a count that some part of either had none of, too rare for the parts alone (Garwood's
+    /// range), and a quantity one of them had none of, judged by the counts behind it or as a real 0.
     /// </summary>
     public static SimLuck? Apart(SimResult mine, SimResult theirs, SimRate rate)
     {
@@ -527,13 +537,16 @@ static class SimRanges
             && shares.Length > (int)rate.Per && shares[(int)rate.Per] is { } share && double.IsFinite(share) && share >= 0
             ? (share, entry.Parts) : null;
 
-    // The entry r keeps of other when r ended after it (SimEngine.Pair): a fight of the other setup against the same enemy,
+    // The entry r keeps of other when r ended after it (SimEngine.Pair): a fight of the other side against the same enemy,
     // told from the rest by its stance and its real time; null when r keeps none.
     static SimApart? Entry(SimResult r, SimResult other) =>
         r.Spread?.Apart is { } list && r.SetupKey != other.SetupKey && r.Target.FightKey == other.Target.FightKey
             ? list.FirstOrDefault(x => x != null && x.Ms == other.RealMilliseconds && x.Stance == other.Target.StanceId) : null;
 
-    /// <summary>Whether two results were fought with the same dice as A and B of one compare, and paired (SimEngine.Pair).</summary>
+    /// <summary>
+    /// Whether two results were fought with the same dice and paired (SimEngine.Pair): A and B of one compare, or an item of
+    /// Find upgrades and the setup as it is of its search.
+    /// </summary>
     public static bool SameDice(SimResult a, SimResult b) =>
         !a.Failed && !b.Failed && (Entry(a, b) ?? Entry(b, a)) != null;
 
@@ -662,7 +675,8 @@ static class SimRanges
     /// <summary>
     /// A lead and its ± (issue #57), both by <see cref="Percent(double)"/>, so that the larger never reads as the same as
     /// the smaller: where the two come out alike but are not the same number ("A by 64% ± 64%" for a lead of 64.4% over a
-    /// ± of 64.1%), both get one more figure, and two where one is not enough. For Details and "Compared with" alike.
+    /// ± of 64.1%), both get one more figure, and two where one is not enough. For Details and "Compared with" alike, and
+    /// for an item's change in Find upgrades (issue #63).
     /// </summary>
     internal static (string Lead, string Reach) Percents(double lead, double reach)
     {

@@ -81,21 +81,27 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     runs and about how long, at most 40 items a press. The choice is kept. Each item is one
     fight from the same moment of your character, one at a time, in the background like a
     scan (Stop, or Cancel on the left, stops it). Every item is fought with the same luck as
-    the setup as it is, so a difference comes from the item, not from the dice.
-    Every column of the list says what the item changes: "+14%", "-23%", "×2.5", "+7,300"
-    where there was none, "+1,200" more Net gold; green better, red worse, grey where it could
-    be luck, "no better" for the same. Only words stay the item's own: Safe or Risky, the best
-    drop, a first death where one of the two never dies. Click a column's name to put the
-    largest gains on top. "Comes from" is Item Sources' answer, or "In your bank" when you
-    have one. A two-handed weapon takes the shield off and a shield the two-handed weapon, as
-    a pick in the slot does. An item that fought in another stance than the setup as it is,
-    such as a weapon of another kind, names both stances in its tooltip and Details. Items
-    whose requirements you do not meet are never tried; ticked in the panel, they are listed
-    at the end with what they need in grey. Click a line for both numbers of every column and
-    every place the item comes from (an enemy's area, or "Dungeon reward", on a small line
-    under the name where the two do not fit on one line, for every enemy of that heading).
-    Nothing is put on, and the items tried are not kept in History. "Back to the fights"
-    leaves them, and "Show upgrades" under Details brings them back.
+    the setup as it is, so a difference comes from the item, not from the dice. Every column
+    of the list says what the item changes: "+14%", "-23%", "×2.5", "+7,300" where there was
+    none, "+1,200" more Net gold; green better, red worse, grey where it could be luck, "no
+    better" for the same. That is judged as Compare judges B against A, the item against the
+    setup as it is: the share of the luck they met alike is measured at the same kills, so an
+    item that changes how fast you kill (a weapon of another speed, boots that add damage)
+    shares less of it. Only words stay the item's own: Safe or Risky, the best drop, a first
+    death where one of the two never dies. Click a column's name to put the largest gains on
+    top. "Comes from" is Item Sources' answer, or "In your bank" when you have one. A
+    two-handed weapon takes the shield off and a shield the two-handed weapon, as a pick in
+    the slot does. An item that fought in another stance than the setup as it is, such as a
+    weapon of another kind, names both stances in its tooltip and Details. Items whose
+    requirements you do not meet are never tried; ticked in the panel, they are listed at the
+    end with what they need in grey. Click a line for both numbers of every column, with how
+    far luck could move the change where the same dice decided it ("± 9.1%" under "+14%";
+    "+150%" where the list says "×2.5"), and every place the item comes from (an enemy's area,
+    or "Dungeon reward", on a small line under the name where the two do not fit on one line,
+    for every enemy of that heading). Put the pointer on a line for the ranges of its numbers
+    and, where the same dice decided, each change with its ±. Nothing is put on, and the items
+    tried are not kept in History. "Back to the fights" leaves them, and "Show upgrades" under
+    Details brings them back.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.

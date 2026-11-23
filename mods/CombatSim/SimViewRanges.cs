@@ -232,8 +232,8 @@ sealed partial class SimView
         var lines = new List<string>();
         foreach (Node line in _details.GetChildren().Where(n => !n.IsQueuedForDeletion()))
         {
-            var words = line.FindChildren("*", "Label", true, false).OfType<Label>().Select(l => l.Text.Replace("\n", " / ")).Where(t => t != "").ToList();
-            if (line is Label alone) words.Insert(0, alone.Text);
+            var words = line.FindChildren("*", "Label", true, false).OfType<Label>().Select(l => DevPlain(l.Text)).Where(t => t != "").ToList();
+            if (line is Label alone) words.Insert(0, DevPlain(alone.Text));
             if (words.Count > 0) lines.Add(string.Join(" ~ ", words));
         }
         DevChunks("Dev: ranges: details", lines);
@@ -300,28 +300,40 @@ sealed partial class SimView
             foreach (SimColumn column in BaseShown())
             {
                 if (column.Value(r) is not { } mine || column.Value(other) is not { } theirs || !double.IsFinite(mine) || !double.IsFinite(theirs)) continue;
-                string why = "no rate";
-                if (column.Rate?.Invoke() is { } rate && SimRanges.Apart(r, other, rate) is { } luck)
-                {
-                    why = $"RULE SAME DICE: |d| {Fmt(Math.Abs(luck.Difference))} against a bar of {Fmt(luck.Reach)}, {SimRanges.DevBar(luck, Fmt)}";
-                    // A change and a ± that SimRanges.Percent alone would write alike, which SimRanges.Percents tells apart.
-                    string alike = column.Percent && theirs > 0 ? SimRanges.Percent(Math.Abs(mine / theirs - 1)) : "";
-                    if (alike != "" && alike == SimRanges.Percent(luck.Reach / theirs)) why += $"; BOTH READ '{alike}' BY PERCENT ALONE";
-                }
-                else if (column.Rate?.Invoke() is { } asBefore)
-                {
-                    var (a, b, realZero) = SimRanges.Basis(r, other, asBefore);
-                    bool behind = a != null && b != null && (a != SimRanges.Of(r, asBefore) || b != SimRanges.Of(other, asBefore));
-                    string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
-                    why = $"RULE AS BEFORE ({SimRanges.DevWhy(r, other, asBefore).Or("-")}): " +
-                          (realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}");
-                }
+                string why = DevRuleOf(column, r, other, mine, theirs, column.Percent);
                 string drawn = lines.TryGetValue(NameOf(column), out var line)
                     ? line.Text == null ? "in The same" : $"shows '{line.Text}'" + (line.Note != null ? $" over '{line.Note}'" : "") : "not shown";
                 said.Add($"{NameOf(column)} {column.Text(r)} vs {column.Text(other)} {Judge(column, r, other)}, {drawn} ({why})");
             }
             DevLog?.Invoke($"Dev: ranges: compared with {other.SetupLabel}: {string.Join("; ", said)}");
         }
+    }
+
+    // Development: what a verdict of the window between two results went by, for "Compared with" (DevCompared) and Find
+    // upgrades (issue #63, DevLogUpgrades): with the same dice, the difference against the bar (SimRanges.Apart, DevBar),
+    // and BOTH READ where SimRanges.Percent alone would write the change, a share of theirs when it is in percent, and its ±
+    // alike, which SimRanges.Percents tells apart; otherwise the step of the rule that left them to their own ranges
+    // (SimRanges.DevWhy) and the two ranges, the counts behind a quantity one of them had none of, or a real 0
+    // (SimRanges.Basis).
+    string DevRuleOf(SimColumn column, SimResult r, SimResult other, double mine, double theirs, bool percent)
+    {
+        string why = "no rate";
+        if (column.Rate?.Invoke() is { } rate && SimRanges.Apart(r, other, rate) is { } luck)
+        {
+            why = $"RULE SAME DICE: |d| {Fmt(Math.Abs(luck.Difference))} against a bar of {Fmt(luck.Reach)}, {SimRanges.DevBar(luck, Fmt)}";
+            // A change and a ± that SimRanges.Percent alone would write alike, which SimRanges.Percents tells apart.
+            string alike = percent && theirs > 0 ? SimRanges.Percent(Math.Abs(mine / theirs - 1)) : "";
+            if (alike != "" && alike == SimRanges.Percent(luck.Reach / theirs)) why += $"; BOTH READ '{alike}' BY PERCENT ALONE";
+        }
+        else if (column.Rate?.Invoke() is { } asBefore)
+        {
+            var (a, b, realZero) = SimRanges.Basis(r, other, asBefore);
+            bool behind = a != null && b != null && (a != SimRanges.Of(r, asBefore) || b != SimRanges.Of(other, asBefore));
+            string Ends(SimRange? x) => x is { } e ? $"{Fmt(e.Low)} to {Fmt(e.High)}" : "none";
+            why = $"RULE AS BEFORE ({SimRanges.DevWhy(r, other, asBefore).Or("-")}): " +
+                  (realZero ? "a real 0" : a == null || b == null ? "no ranges" : $"{(behind ? "the counts behind it " : "")}{Ends(a)} against {Ends(b)}");
+        }
+        return why;
     }
 #endif
 }

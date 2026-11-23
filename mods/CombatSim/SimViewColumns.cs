@@ -585,12 +585,13 @@ sealed partial class SimView
     // written by SimRanges.Percents, as Details writes a lead and its ±: "+4.6%" over "± 4.7%" where Change alone would
     // write "+5%", and "+64.4%" over "± 64.1%" where both would read 64%, so the larger of the two never shows as the
     // smaller or as the same. The change is null where the number is this setup's own: the small line then has the
-    // difference with it in the column's format, "+1,234 ± 2,000". After "could be luck" where it is that.
-    (string? Change, string? Note) SameDiceNote(SimColumn column, double mine, double theirs, SimLuck reach, string? luck)
+    // difference with it in the column's format, "+1,234 ± 2,000". After "could be luck" where it is that. Find upgrades
+    // (issue #63) says itself whether its change is in percent (an item's Net gold is, against a number as it is above 0).
+    (string? Change, string? Note) SameDiceNote(SimColumn column, double mine, double theirs, SimLuck reach, string? luck, bool? percent = null)
     {
         string sign = mine >= theirs ? "+" : "-", plus;
         string? change = null;
-        if (column.Percent && theirs > 0)
+        if ((percent ?? column.Percent) && theirs > 0)
         {
             var (lead, of) = SimRanges.Percents(Math.Abs(mine / theirs - 1), reach.Reach / theirs);
             (change, plus) = (sign + lead, "± " + of);
@@ -613,6 +614,29 @@ sealed partial class SimView
         column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)
             ? SimRanges.Judge(r, other, column.Rate?.Invoke(), mine, theirs, column.Better)
             : Verdict.Differs;
+
+    /// <summary>
+    /// Whether <see cref="Judge"/> between the two went by luck: the same dice (SimRanges.Apart) or two ranges
+    /// (SimRanges.Basis, the counts behind a quantity one of them had none of included). False for a number without a range
+    /// (Lowest hitpoints, Max hit, Safe, the best drop, a first death), a number that is the worst there is, a real 0 and a
+    /// scan made before the ranges: SimRanges.Judge makes those green or red wherever the two differ.
+    /// </summary>
+    static bool JudgedByLuck(SimColumn column, SimResult r, SimResult other) =>
+        column.Rate?.Invoke() is { } rate && column.Value(r) is { } mine && column.Value(other) is { } theirs && double.IsFinite(mine) && double.IsFinite(theirs)
+        && (SimRanges.Apart(r, other, rate) != null || SimRanges.Basis(r, other, rate) is (not null, not null, _));
+
+    // After a foot's sentence of the rule (Compare's Details, an item's in Find upgrades): the lines above it that are green
+    // or red and were judged without a range (not JudgedByLuck: a number that has none, one that is the worst there is, a
+    // real 0), by the names they show, so that the foot is true of every colour above it (issue #63). Not "has no range": a
+    // real 0 and the worst there is have one (review of turn 2). Listed as "Compared with" lists the columns that are the
+    // same ("The same: ..."), so a name with words of its own ("Safe or risky") reads as one name. In the foot's own words
+    // for its colours: " Judged without a range, green or red wherever the two differ: Lowest hitpoints, Safe or risky.";
+    // nothing when there is none.
+    static string NoRange(IEnumerable<string> names, string colours)
+    {
+        var list = names.Distinct().ToList();
+        return list.Count == 0 ? "" : $" Judged without a range, {colours} wherever the two differ: {string.Join(", ", list)}.";
+    }
 
     // Green when better, red when worse; grey when it could be luck; white for the same, or a number neither way better.
     static Color Tint(Verdict verdict) => verdict switch
