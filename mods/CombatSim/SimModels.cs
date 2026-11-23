@@ -32,7 +32,16 @@ sealed class SimOptions
     public Dictionary<string, string> Overrides = new();
     /// <summary>The spell to cast; null is the one that is selected already.</summary>
     public string? SpellId;
-    /// <summary>Identifies this equipment setup, and names it for people.</summary>
+    /// <summary>
+    /// The attack stance chosen in the Stance box of Fights (issue #51), for a fight whose target names none (a line of
+    /// Best for names its own); null is the one the game has selected for the weapon. Its name is for the notes.
+    /// </summary>
+    public string? StanceId;
+    public string StanceName = "";
+    /// <summary>
+    /// Identifies this equipment setup (its stance included), and names it for people: the loadout, the changes and the
+    /// spell. The stance chosen is named apart (<see cref="StanceName"/>, SimText.WithStance).
+    /// </summary>
     public string SetupKey = "", SetupLabel = "";
     /// <summary>
     /// Simulate longer (issue #5), with unlimited supplies only: after <see cref="Hours"/> the fight goes on, a part
@@ -104,6 +113,36 @@ sealed class SimResult
     public string? Setup;
     public int? MaxEnemyHit;
     public double? AutoEatHp;
+    /// <summary>
+    /// The attack stance the copy fought in, as the game names it, and its id: read from the copy when the fight is over
+    /// (SimEngine.ReadStance, issue #51), or the one it was put in when that could not be read. Null in scans made before
+    /// the stance was kept, and when the game could not say.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Stance, StanceId;
+    /// <summary>
+    /// The copy was put in a stance that was asked for: the one its line names (Best for), or the one chosen in the Stance
+    /// box of Fights. False: it fought in the one the game had selected for the weapon. Not written when false.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool StanceChosen;
+    /// <summary>
+    /// The name of a stance that was asked for and that the weapon the copy wore does not have (a weapon of another kind
+    /// tried in Find upgrades): it fought in the one the game had selected for that weapon instead. Null otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? StanceMissing;
+    // A scan made before the stance was kept: only a line of Best for names one, the one it was fought in.
+    bool StanceFromLine => Stance == null && StanceMissing == null && Target.StanceId != null;
+    /// <summary>The stance to name for it: the one it fought in, or in a scan made before that was kept, the one its line names; "" when neither is known.</summary>
+    [JsonIgnore] public string StanceShown => Stance ?? (StanceFromLine ? Target.StanceName : "");
+    /// <summary>The id of <see cref="StanceShown"/>; null when it is not known.</summary>
+    [JsonIgnore] public string? StanceIdShown => Stance != null ? StanceId : StanceFromLine ? Target.StanceId : null;
+    /// <summary>
+    /// It fought in a stance that was asked for, by its line (Best for) or in the Stance box: Fight switches to it. A line
+    /// of Best for in a scan made before the stance was kept is taken to have fought in its own. False: as the game has it.
+    /// </summary>
+    [JsonIgnore] public bool StanceAsAsked => StanceChosen || StanceFromLine;
     /// <summary>Safe: no death, and no hit reaches the auto-eat point. Null when that cannot be told.</summary>
     [JsonIgnore] public bool? Safe => Deaths > 0 ? false : MaxEnemyHit is { } hit && AutoEatHp is { } eat ? hit < eat : null;
 #if DEVTOOLS
@@ -200,6 +239,12 @@ sealed class Scan
 
 static class SimText
 {
+    /// <summary>
+    /// A setup's name with the stance chosen for it in Fights (issue #51), as its spell is named in it: "Loadout 1, Fire
+    /// Strike, Defensive stance". The name alone when none was chosen.
+    /// </summary>
+    public static string WithStance(string label, string stanceName) => stanceName == "" ? label : $"{label}, {stanceName} stance";
+
     /// <summary>"3s", "5m", "5m 3s", "2h", "2h 10m".</summary>
     public static string Clock(double seconds)
     {

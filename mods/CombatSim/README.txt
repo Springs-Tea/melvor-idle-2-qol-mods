@@ -35,18 +35,25 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     casts spells, choose which one to fight with. A two-handed weapon fills both hands, as on
     the game's equipment screen: an item picked for the Offhand takes it off, and taking it
     off empties both hands.
+  - Stance, in Fights: the attack stances of the weapon in the slots, in the game's names and
+    with its pictures. The first choice is the stance the game has selected for that weapon, as
+    before: "As now: Accurate" with the loadout you wear and a weapon of the kind you hold, "As
+    the game has it" otherwise. A stance chosen is a setup of its own, as a spell is, with its
+    own luck. A weapon of another kind brings its own stances; a stance it does not have goes
+    back to the first choice. Best for has no Stance box: it tries every stance.
   - Compare, at the end of the Equipment heading: two setups, A and B. The A and B buttons in
-    front of the loadout choose which one the loadout, the slots and the spell show and
-    change; the first time, B is a copy of A. One press of Simulate runs every fight with
-    both, from the same moment of your character. Each column of the list becomes three:
-    under its name which setup is better and by how much ("A by 23%", "A ×4" from twice as
-    much up; for Healed, Items and Sim time which has more, "A +12%"), then the number with
-    A and with B. The better side is green and the worse red, grey where it could be luck.
-    Click a column's name for the fights where the choice matters most; the line above the
-    list counts the fights each setup wins in the column it is sorted by, and in Best for
-    says where each setup does best. Details shows the fight with both setups side by side.
-    Fight is for the setup on the left. A and B last until the game is closed or another
-    character is opened.
+    front of the loadout choose which one the loadout, the slots, the stance (in Fights) and
+    the spell show and change; the first time, B is a copy of A. One press of Simulate runs
+    every fight with both, from the same moment of your character. Each column of the list
+    becomes three: under its name which setup is better and by how much ("A by 23%", "A ×4"
+    from twice as much up; for Healed, Items and Sim time which has more, "A +12%"), then the
+    number with A and with B. The better side is green and the worse red, grey where it could
+    be luck. Click a column's name for the fights where the choice matters most; the line above
+    the list counts the fights each setup wins in the column it is sorted by, and in Best for
+    says where each setup does best. Details shows the fight with both setups side by side,
+    each with its stance ("as the game has it" where both fought in the same one and only one
+    chose it). Fight is for the setup on the left. A and B last until the game is closed or
+    another character is opened.
   - Find upgrades, the button over "Wear this setup first", opens a panel where you choose
     which items to try against the selected fight, one slot at a time, on top of the setup on
     the left: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop,
@@ -62,20 +69,23 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     drop, a first death where one of the two never dies. Click a column's name to put the
     largest gains on top. "Comes from" is Item Sources' answer, or "In your bank" when you
     have one. A two-handed weapon takes the shield off and a shield the two-handed weapon, as
-    a pick in the slot does. Items whose requirements you do not meet are never tried; ticked
-    in the panel, they are listed at the end with what they need in grey. Click a line for
-    both numbers of every column and every place the item comes from. Nothing is put on, and
-    the items tried are not kept in History. "Back to the fights" leaves them, and "Show
-    upgrades" under Details brings them back.
+    a pick in the slot does. An item that fought in another stance than the setup as it is,
+    such as a weapon of another kind, names both stances in its tooltip and Details. Items
+    whose requirements you do not meet are never tried; ticked in the panel, they are listed
+    at the end with what they need in grey. Click a line for both numbers of every column and
+    every place the item comes from. Nothing is put on, and the items tried are not kept in
+    History. "Back to the fights" leaves them, and "Show upgrades" under Details brings them
+    back.
   - Results: one line per fight, per hour: kills, combat XP, gold, food eaten, food per kill,
     deaths, and the lowest your hitpoints got. Click a column to sort: the first click puts the
     best fights on top (the most XP, but the fewest deaths), the next turns the order around.
     A small arrow after the column's name shows which way: down for the most first.
   - Ranges: every rate comes with its 95% range, which holds the true number 95 times in 100.
-    Put the pointer on a line for the range of each of its numbers ("Kills ± 7.9%", and
-    "Deaths up to 3.69": no deaths in an hour is not "never"). In Details the range of each
-    rate is on the small line under it. Scans made before the ranges were counted have none.
-    A rare drop that did not come in the time simulated is in no range: when an enemy's gold
+    Put the pointer on a line for the stance it was fought in ("Stance: Accurate, as the game
+    has it" when you did not choose it) and the range of each of its numbers ("Kills ± 7.9%",
+    and "Deaths up to 3.69": no deaths in an hour is not "never"). In Details the range of each
+    rate is on the small line under it. Scans made before the ranges were counted have none. A
+    rare drop that did not come in the time simulated is in no range: when an enemy's gold
     hangs on one, simulate it for 12 hours.
   - Columns, over the list, chooses which numbers it shows and in which order, out of 43 in
     groups (offence, defence, supplies, economy, experience, dungeons, time): runes, ammo and
@@ -86,14 +96,17 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     width: when the numbers need more room, a bar under them moves them sideways, a column at
     a time, under the enemy's name. "-" means no number: nothing was killed, the fight is not
     a dungeon, or an earlier scan did not record it.
-  - Details: per skill XP, loot item by item, what was used (food, ammo, runes, prayer points),
-    damage taken, time of the first death, food and healing per kill, and how many kills the
-    food in your bank is enough for. When the same fight was simulated with other equipment,
-    the difference is shown for every column of the list, green where it is better, red
-    where it is worse, but only when the two ranges do not overlap: otherwise it is grey and
-    says "could be luck". XP in a skill one setup does not train at all, like Magic with a
-    sword, is a real 0: any XP in it is better. The columns in which both are the same share
-    one line.
+  - Details: under the setup, the attack stance the fight was fought in, with the game's
+    picture of it ("as the game has it" when none was chosen); per skill XP, loot item by item,
+    what was used (food, ammo, runes, prayer points), damage taken, time of the first death,
+    food and healing per kill, and how many kills the food in your bank is enough for. When the
+    same fight was simulated with other equipment or another stance, the difference is shown
+    for every column of the list, green where it is better, red where it is worse, but only
+    when the two ranges do not overlap: otherwise it is grey and says "could be luck". The
+    other setup's stance is under its name when it tells the two apart: another stance, or the
+    same one chosen on one side only. XP in a skill one setup does not train at all, like Magic
+    with a sword, is a real 0: any XP in it is better. The columns in which both are the same
+    share one line.
   - Best for: pick the skill you want to train and the areas to look in. Every fight is tried
     in each attack stance of your weapon and the fights are ranked by what they give that
     skill, with the best stance named on each line.
@@ -108,8 +121,9 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     to open its scan in the simulator. Opening the menu never simulates anything. Untick the
     box at the bottom of History to hide the tags.
   - Fight: the red button under the details starts the selected fight in the game (and
-    switches to the stance and the spell of that result; with Compare ticked, the result of
-    the setup on the left, and the text above it says which). Your equipment is left as it is,
+    switches to the spell of that result, and to its stance when one was asked for: a Best
+    for line's, or the one chosen in the Stance box; with Compare ticked, the result of the
+    setup on the left, and the text above it says which). Your equipment is left as it is,
     unless you tick "Wear this setup first" above the button. It is off until you tick it.
     Ticked, Fight first puts on what the result was simulated with, through the game's own
     actions: it changes to that loadout (which comes with the food, prayers, attack stance

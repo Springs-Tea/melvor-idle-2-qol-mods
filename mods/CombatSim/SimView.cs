@@ -57,6 +57,16 @@ sealed partial class SimState
     public List<GearSlot> Gear = new();
     /// <summary>The attack stances of the weapon in <see cref="Gear"/>.</summary>
     public List<(string Id, string Name)> Stances = new();
+    /// <summary>
+    /// The stance chosen in the Stance box of Fights (issue #51), one of <see cref="Stances"/>; "" is "As the game has it",
+    /// the one the game has selected for the weapon. Best for tries every stance and does not use it.
+    /// </summary>
+    public string StanceId = "";
+    /// <summary>
+    /// The stance "As the game has it" stands for, when the game can tell: the one it has selected now for the weapon of
+    /// the setup, which is the loadout worn and a weapon of the kind worn. Null otherwise.
+    /// </summary>
+    public (string Id, string Name)? StanceNow;
     /// <summary>The spells that weapon can cast; empty when it casts none.</summary>
     public List<SpellChoice> Spells = new();
     /// <summary>The spell to fight with; "" is the one the loadout has selected.</summary>
@@ -163,10 +173,26 @@ sealed partial class SimState
     }
 
     public string SetupKey => KeyWith(Overrides);
-    /// <summary>The key of this loadout and spell with these changes: a pick in a slot's picker (Find upgrades tries them).</summary>
-    public string KeyWith(IReadOnlyDictionary<string, string> overrides) =>
+    /// <summary>The key of this loadout, spell and stance with these changes: a pick in a slot's picker (Find upgrades tries them).</summary>
+    public string KeyWith(IReadOnlyDictionary<string, string> overrides) => GearKey(overrides) + StanceKey(ChosenStance);
+    // Without the stance: what SimSetup.BaseKey keeps, the tab on show adding the stance (KeyOf).
+    string GearKey(IReadOnlyDictionary<string, string> overrides) =>
         LoadoutId + ";" + string.Join(",", overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => o.Key + "=" + o.Value))
         + (SpellId == "" ? "" : ";spell=" + SpellId);
+    // A stance chosen makes a setup of its own, as a spell does; "As the game has it" keeps the key it always had.
+    static string StanceKey((string Id, string Name)? stance) => stance is { } chosen ? ";stance=" + chosen.Id : "";
+
+    /// <summary>
+    /// The stance a run of Fights fights the setup on the left in (issue #51): the one chosen in its Stance box. Null with
+    /// "As the game has it", and in Best for, which tries every stance.
+    /// </summary>
+    public (string Id, string Name)? ChosenStance => ChosenOf(StanceId, Stances);
+
+    (string Id, string Name)? ChosenOf(string stanceId, IEnumerable<(string Id, string Name)> stances) =>
+        BestMode || stanceId == "" ? null : stances.FirstOrDefault(s => s.Id == stanceId) is { Id: not null } stance ? stance : null;
+
+    /// <summary>The setup on the left, named with its stance when one is chosen: "Loadout 1, Defensive stance".</summary>
+    public string SetupName => SimText.WithStance(SetupLabel, ChosenStance?.Name ?? "");
     public string SetupLabel
     {
         get
@@ -194,6 +220,8 @@ interface ISimLookup
     Texture2D? TargetIcon(SimTarget target);
     Texture2D? AreaIcon(string areaId);
     Texture2D? AmountIcon(Amount amount);
+    /// <summary>The game's own picture of an attack stance, by its id; null when the game has none.</summary>
+    Texture2D? StanceIcon(string stanceId);
     (string Name, Texture2D? Icon) Skill(string id);
     /// <summary>Every item of the game that fits the slot.</summary>
     List<GearChoice> ChoicesFor(GearSlot slot);
@@ -222,7 +250,8 @@ sealed partial class SimView
     readonly Action<SimTarget> _fight;
     Button _fightButton = null!, _modeFights = null!, _modeBest = null!;
     Label _fightNote = null!;
-    SimTarget? _fightTarget;
+    // The selected line's fight, and the same as Fight starts it: with the stance chosen for its result (FightAs).
+    SimTarget? _fightTarget, _fightAs;
 
     OptionButton _duration = null!, _loadout = null!;
     OptionButton? _train, _spell;
@@ -347,6 +376,9 @@ sealed partial class SimView
 
         _gearHolder = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         body.AddChild(_gearHolder);
+        // In Fights, the stance to fight in over the spell, both of the weapon in the slots (SimViewStance.cs).
+        _stanceHolder = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Pass };
+        body.AddChild(_stanceHolder);
         _spellHolder = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Pass };
         body.AddChild(_spellHolder);
         _reset = _s.GameButton("Undo changes", "TexturedButton4x", 12);
@@ -386,7 +418,7 @@ sealed partial class SimView
         _reset.Visible = _state.Overrides.Count > 0;
         _food.Text = _state.FoodLine;
         _food.AddThemeColorOverride("font_color", _state.FoodMissing ? Bad : GameStyle.TextGrey);
-        FillSpells();
+        FillChoices();   // the Stance and the Spell box (SimViewStance.cs)
         if (_state.Gear.Count == 0) return;
 
         int minColumn = _state.Gear.Min(g => g.Column), minRow = _state.Gear.Min(g => g.Row);
@@ -410,11 +442,12 @@ sealed partial class SimView
     {
         foreach (Node old in _spellHolder.GetChildren()) old.QueueFree();
         _spell = null;
+        _spellCaption = null;
         _spellHolder.Visible = _state.Spells.Count > 0;
         if (_state.Spells.Count == 0) return;
 
         var row = _s.Spaced(new HBoxContainer(), 8);
-        row.AddChild(Caption("Spell"));
+        row.AddChild(_spellCaption = Caption("Spell"));
         OptionButton spell = _spell = _s.Dropdown();
         spell.ClipText = true;
         spell.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -1021,7 +1054,7 @@ sealed partial class SimView
         }
         else
         {
-            _showing.Text = _state.PerStance ? $"Best stance for each fight, with: {_state.SetupLabel}" : "With: " + _state.SetupLabel;
+            _showing.Text = _state.PerStance ? $"Best stance for each fight, with: {_state.SetupLabel}" : "With: " + _state.SetupName;
             _showing.TooltipText = "";
         }
         _showing.AddThemeColorOverride("font_color", _state.Viewing != null ? GameStyle.TextGold : GameStyle.TextGrey);
@@ -1116,7 +1149,7 @@ sealed partial class SimView
         _fightButton.AddThemeConstantOverride("icon_max_width", _s.Px(26));
         _fightButton.AddThemeConstantOverride("h_separation", _s.Px(8));
         _fightButton.ClipText = true;
-        _fightButton.Pressed += () => { if (_fightTarget != null) _fight(_fightTarget); };
+        _fightButton.Pressed += () => { if (_fightAs != null) _fight(_fightAs); };
         body.AddChild(_fightButton);
         // A slow breath of light, so the way out of the numbers and into the fight is easy to find.
         Tween glow = _fightButton.CreateTween().SetLoops();
@@ -1130,9 +1163,10 @@ sealed partial class SimView
     {
         // The button follows the selection even when the list itself did not change.
         _fightTarget = r is { Failed: false } ? r.Target : null;
+        _fightAs = r is { Failed: false } ? FightAs(r) : null;
         _fightButton.Visible = _fightTarget != null;
         _fightNote.Visible = _fightTarget != null;
-        if (_fightTarget != null)
+        if (_fightTarget != null && _fightAs != null)
         {
             _fightButton.Text = "Fight " + _fightTarget.Name;
             _fightButton.TooltipText = _fightTarget.IsDungeon ? $"Enter {_fightTarget.Name} now" : $"Start fighting {_fightTarget.Name} in {_fightTarget.AreaName} now";
@@ -1142,7 +1176,7 @@ sealed partial class SimView
             {
                 viewing ? "These numbers are from an earlier scan." : "",
                 worn ? "" : "Starts with what you are wearing now, not the equipment simulated here.",
-                _fightTarget.StanceName != "" ? $"Switches to the {_fightTarget.StanceName} stance, if your weapon has it." : "",
+                _fightAs.StanceName != "" ? $"Switches to the {_fightAs.StanceName} stance, if your weapon has it." : "",
                 worn && _state.SpellId != "" ? $"Selects {_state.Spells.FirstOrDefault(s => s.Id == _state.SpellId)?.Name ?? "the spell"}." : "",
             }.Where(t => t != ""));
             _fightNote.Visible = _fightNote.Text != "";
@@ -1173,17 +1207,15 @@ sealed partial class SimView
             return;
         }
 
-        // Who, where, with what.
+        // Who, where, with what: every line whole (Whole).
         var head = _s.Spaced(new HBoxContainer(), 10);
-        head.AddChild(_s.Picture(_lookup.TargetIcon(r.Target), 44));
+        head.AddChild(HeadPicture(_lookup.TargetIcon(r.Target)));
         var title = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 0);
-        Label name = _s.Text(r.Target.Name, GameStyle.TextWhite, 16, GameStyle.Bold);
-        name.ClipText = true;
-        title.AddChild(name);
-        title.AddChild(_s.Text(r.Target.IsDungeon ? r.Target.CategoryName : $"{r.Target.AreaName}  ·  Level {r.Target.CombatLevel}", GameStyle.TextGrey, 12));
-        Label with = _s.Text(r.Target.StanceName == "" ? r.SetupLabel : $"{r.Target.StanceName}  ·  {r.SetupLabel}", GameStyle.TextDim, 12);
-        with.ClipText = true;
-        title.AddChild(with);
+        title.AddChild(Whole(_s.Text(r.Target.Name, GameStyle.TextWhite, 16, GameStyle.Bold)));
+        title.AddChild(Whole(_s.Text(r.Target.IsDungeon ? r.Target.CategoryName : $"{r.Target.AreaName}  ·  Level {r.Target.CombatLevel}", GameStyle.TextGrey, 12)));
+        title.AddChild(Whole(_s.Text(r.SetupLabel, GameStyle.TextDim, 12)));
+        // Under the setup's name, the stance it was fought in (SimViewStance.cs).
+        if (StanceLine(r) is { } stance) title.AddChild(stance);
         head.AddChild(title);
         _details.AddChild(head);
 
@@ -1213,11 +1245,12 @@ sealed partial class SimView
             foreach (SimResult other in others.OrderByDescending(o => o.XpPerHour).Take(4))
             {
                 // The other setup's name on a line of its own: it can be long.
-                Label versus = _s.Text(other.SetupLabel, GameStyle.TextGrey, 12);
-                versus.ClipText = true;
+                Label versus = Whole(_s.Text(other.SetupLabel, GameStyle.TextGrey, 12));
                 versus.TooltipText = other.SetupLabel;
                 versus.MouseFilter = Control.MouseFilterEnum.Pass;
                 _details.AddChild(versus);
+                // When the stance tells the two apart: its stance under its name, as this one's is under the name above.
+                if (StanceAgainst(r, other) is { } otherStance) _details.AddChild(otherStance);
                 // The columns of the list, each the way it is better.
                 foreach (Control line in Compared(r, other)) _details.AddChild(line);
             }
@@ -1354,6 +1387,7 @@ sealed partial class SimView
         _sure.Disabled = _state.Running || !_state.Unlimited;
         if (_train != null) _train.Disabled = _state.Running;
         if (_spell != null && GodotObject.IsInstanceValid(_spell)) _spell.Disabled = _state.Running;
+        if (_stance != null && GodotObject.IsInstanceValid(_stance)) _stance.Disabled = _state.Running;
         _where.Text = _state.ScopeLabel;
         _progress.Value = _state.Total > 0 ? (double)_state.Done / _state.Total : 0;
         _progress.Modulate = _state.Running || _state.Done > 0 ? Colors.White : new Color(1, 1, 1, 0.35f);
@@ -1389,7 +1423,7 @@ sealed partial class SimView
         if (slotName.StartsWith("spell=", StringComparison.Ordinal))
         {
             _state.SpellId = _state.Spells.FirstOrDefault(s => s.Name.Contains(slotName[6..], StringComparison.OrdinalIgnoreCase))?.Id ?? "";
-            FillSpells();
+            FillChoices();
             Refresh();
             return;
         }
@@ -1411,6 +1445,44 @@ sealed partial class SimView
         label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         label.CustomMinimumSize = new Vector2(_s.Px(width), 0);
         label.MouseFilter = Control.MouseFilterEnum.Ignore;
+        return label;
+    }
+
+    // The picture of a Details head: at the top, beside the name, however many lines the head grows to (Compare's six, a
+    // line that takes two), as the Item Encyclopedia's Details head keeps its picture at the top (EncyclopediaView.PlainHead).
+    TextureRect HeadPicture(Texture2D? texture)
+    {
+        TextureRect picture = _s.Picture(texture, 44);
+        picture.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
+        return picture;
+    }
+
+    // A line of a Details head, or a setup's name under "Compared with": whole at every size of the window, never cut.
+    // Words that do not fit go on to a second line, as Wrapped's do; it asks for no width of its own, so beside the head's
+    // picture it takes the room that is left.
+    static Label Whole(Label label)
+    {
+        label.ClipText = false;
+        label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        return label;
+    }
+
+    // A Whole line whose words go on one line when they fit the room it has, and otherwise on two lines parted where they
+    // read best, as given ("Weapon" over "in place of Iron Sword"), rather than wherever the room ends; a second line that
+    // is still too wide wraps on. Measured again whenever its width or its theme changes, as FitBeside measures a box.
+    static Label OneOrTwo(Label label, string oneLine, string twoLines)
+    {
+        Whole(label).Text = oneLine;
+        void Fit()
+        {
+            if (!GodotObject.IsInstanceValid(label) || label.Size.X <= 0) return;
+            float room = label.Size.X - label.GetThemeStylebox("normal").GetMinimumSize().X;
+            float wide = label.GetThemeFont("font").GetStringSize(oneLine, HorizontalAlignment.Left, -1, label.GetThemeFontSize("font_size")).X;
+            string fits = wide <= room ? oneLine : twoLines;
+            if (label.Text != fits) label.Text = fits;
+        }
+        label.Resized += Fit;
+        label.ThemeChanged += Fit;
         return label;
     }
 

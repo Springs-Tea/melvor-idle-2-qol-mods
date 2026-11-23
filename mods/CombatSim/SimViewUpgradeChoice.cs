@@ -48,7 +48,7 @@ sealed partial class SimView
 
         string stance = target.StanceName != "" ? $" ({target.StanceName})" : "";
         string length = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Label;
-        column.AddChild(Wrapped($"For {target.Name}{stance}, on top of {_state.SetupLabel}. Each item is one fight of {length}, " +
+        column.AddChild(Wrapped($"For {target.Name}{stance}, on top of {_state.SetupName}. Each item is one fight of {length}, " +
                                 "from the same moment of your character and with the same luck as the setup as it is.", width - 30, GameStyle.TextGrey, 12));
 
         var search = _choiceSearch = new LineEdit { PlaceholderText = "Search items...", ClearButtonEnabled = true, Text = choice.Search };

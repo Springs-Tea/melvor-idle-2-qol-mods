@@ -127,15 +127,19 @@ sealed partial class SimView
     SimRange? RangeOf(SimColumn column, SimResult r) =>
         column.Rate?.Invoke() is { } rate && column.Value(r) is { } value && double.IsFinite(value) ? SimRanges.Of(r, rate) : null;
 
-    // The tooltip of a line: the range of each number of the list, three to a line, in the list's order, by the
-    // names over the list; then the note of the run. The numbers themselves are on the line already.
+    // The tooltip of a line: the stance it was fought in (issue #51, SimViewStance.cs), then the range of each number of
+    // the list, three to a line, in the list's order, by the names over the list; then the note of the run. The numbers
+    // themselves are on the line already.
+    //   Stance: Accurate, as the game has it
     //   95% ranges
     //   Kills ± 7.9%  ·  XP ± 6.3%  ·  Gold ± 14%
     //   Food ± 15%  ·  Food/kill ± 18%  ·  Deaths up to 3.69
     string RowTip(SimResult r)
     {
         if (_state.ShownComparing) return PairTip(r);   // both setups (SimViewCompare.cs)
-        var lines = RangeLines(r, "95% ranges");
+        var lines = new List<string>();
+        if (StanceTipLine(r) is { } stance) lines.Add(stance);
+        lines.AddRange(RangeLines(r, "95% ranges"));
         if (r.Note != "") lines.Add(r.Note);
         return string.Join("\n", lines);
     }

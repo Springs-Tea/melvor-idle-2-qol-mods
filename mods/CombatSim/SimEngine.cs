@@ -139,6 +139,8 @@ sealed class SimEngine
         // Two scans of the same setup start from the same snapshot only when nothing changed in between.
         _log($"Dev: snapshot {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(save), 0, 8)}, {save.Length:N0} bytes");
         Volatile.Write(ref _devGearLogged, 0);
+        Volatile.Write(ref _devStanceLogged, 0);
+        Volatile.Write(ref _devStanceMissingLogged, 0);
 #endif
         Task.Run(() =>
         {
@@ -355,7 +357,16 @@ sealed class SimEngine
             if (Interlocked.Exchange(ref _shownLogged, 1) == 0) _log($"{target.Name}: {differs.Log}");
         }
         result.WearNote = string.Join(" ", notes);
-        if (target.StanceId != null) Stand(combat, target, notes);
+        // The stance its line names (Best for), or else the one chosen in the Stance box of Fights (issue #51). Put on, it is
+        // the result's until the stance read at the end says otherwise (ReadStance): a stance that cannot be read is not
+        // lost for Fight. Not put on, the result names it as missing, and fights as the game has it.
+        if ((target.StanceId ?? options.StanceId) is { } stanceId)
+        {
+            string stanceName = target.StanceId != null ? target.StanceName : options.StanceName;
+            result.StanceChosen = Stand(combat, stanceId, stanceName, notes);
+            if (result.StanceChosen) (result.StanceId, result.Stance) = (stanceId, stanceName);
+            else result.StanceMissing = stanceName;
+        }
         Cast(combat, bank, options, notes);
         // "Never runs out" has to hold from the first bite: food that is selected but down to a handful.
         Item? eaten = combat.Food.SelectedFood?.Item;
@@ -473,6 +484,7 @@ sealed class SimEngine
         if (notes.Count > 0) result.Note = string.Join(" ", notes);
 #if DEVTOOLS
         string devGear = DevGear(sim, combat, options, result, null);
+        var devStance = DevStance(combat);
 #endif
 
         long total = (long)(options.Hours * 3600 * TicksPerSecond);
@@ -531,6 +543,10 @@ sealed class SimEngine
         }
 
         result.Hours = ticks / (3600.0 * TicksPerSecond);
+        ReadStance(combat, result);
+#if DEVTOOLS
+        DevStanceLog(target, options, result, devStance, DevStance(combat));
+#endif
         foreach (var skill in sim.LeveledEntities)
             if (xpBefore.TryGetValue(skill.Id, out double before) && skill.Experience.Xp - before > 0)
                 result.Xp[skill.Id] = skill.Experience.Xp - before;
@@ -705,14 +721,72 @@ sealed class SimEngine
     }
 #endif
 
-    // Selects one of the attack stances of the weapon that is worn (they decide which skills get the XP).
-    static void Stand(CombatEntity combat, SimTarget target, List<string> notes)
+    // Selects one of the attack stances of the weapon that is worn (they decide which skills get the XP). True when the
+    // copy is in it; otherwise the note says so, and it fights in the one the game has selected for the weapon.
+    static bool Stand(CombatEntity combat, string stanceId, string stanceName, List<string> notes)
     {
         WeaponType? weapon = (combat.Equipment.CurrentWeapon ?? combat.Equipment.DefaultWeapon)?.Weapon?.Type;
-        AttackStance? stance = weapon?.Stances.FirstOrDefault(s => s.Id == target.StanceId);
-        if (weapon == null || stance == null) { notes.Add($"The stance {target.StanceName} is not available with this weapon."); return; }
+        AttackStance? stance = weapon?.Stances.FirstOrDefault(s => s.Id == stanceId);
+        if (weapon == null || stance == null) { notes.Add($"The stance {stanceName} is not available with this weapon."); return false; }
         combat.Player.SetSelectedStance(weapon, stance);
+        return true;
     }
+
+    int _stanceLogged;
+
+    // The stance the copy fought in, for the result to name (issue #51): the one the game's combat used at the end of the
+    // fight, read the way the enemy cards read it (CardSetup.Describe). The stance is an extra: when it cannot be read,
+    // one line in the log, and the result keeps the stance it was put in (Fight), or goes without one.
+    void ReadStance(CombatEntity combat, SimResult result)
+    {
+        try
+        {
+            if (FoughtIn(combat) is not { } stance) return;
+            result.StanceId = stance.Id;
+            result.Stance = stance.DisplayName.Text;
+        }
+        catch (Exception e)
+        {
+            if (Interlocked.Exchange(ref _stanceLogged, 1) == 0) _log("The stance of a fight could not be read (the game was updated?): " + e.Message);
+        }
+    }
+
+    // Its own method, never inlined: a game update that removed it fails when it is called, inside the try.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static AttackStance? FoughtIn(CombatEntity combat) => combat.Player.Stats.AttackStance.Value;
+
+#if DEVTOOLS
+    int _devStanceLogged, _devStanceMissingLogged;
+
+    // Development: the copy's stance in the two ways the game has it, the stat its combat uses (CharacterStats.AttackStance)
+    // and the one selected for its weapon (PlayerComponent.GetSelectedStance), to see that they agree.
+    static (string? Stat, string? Selected, string Words) DevStance(CombatEntity combat)
+    {
+        try
+        {
+            WeaponType? weapon = (combat.Equipment.CurrentWeapon ?? combat.Equipment.DefaultWeapon)?.Weapon?.Type;
+            string? stat = FoughtIn(combat)?.Id, selected = weapon == null ? null : combat.Player.GetSelectedStance(weapon)?.Id;
+            return (stat, selected, $"stat {stat ?? "-"}, selected for {weapon?.Id ?? "no weapon"} {selected ?? "-"}");
+        }
+        catch (Exception e) { return (null, null, "not readable: " + e.Message); }
+    }
+
+    // Development: what the stance of a fight was asked to be and what the copy fought in, when its fight began and when it
+    // ended. Logged for the first fight of a run, for the first one whose weapon did not have the stance asked for, and for
+    // every fight where these do not agree.
+    void DevStanceLog(SimTarget target, SimOptions options, SimResult result,
+        (string? Stat, string? Selected, string Words) atStart, (string? Stat, string? Selected, string Words) atEnd)
+    {
+        string? asked = target.StanceId ?? options.StanceId;
+        bool agree = atStart.Stat == atEnd.Stat && atEnd.Stat == atEnd.Selected && atEnd.Stat == result.StanceId
+                     && (!result.StanceChosen || asked == result.StanceId);
+        bool firstMissing = result.StanceMissing != null && Interlocked.Exchange(ref _devStanceMissingLogged, 1) == 0;
+        if (agree && !firstMissing && Interlocked.Exchange(ref _devStanceLogged, 1) != 0) return;
+        _log($"Dev: stance of the copy for {result.Key}: asked {asked ?? "none"} ({(target.StanceId != null ? "by its line" : options.StanceId != null ? "in the Stance box" : "as the game has it")}), " +
+             $"put on {result.StanceChosen}{(result.StanceMissing != null ? $" (the weapon has no {result.StanceMissing})" : "")}; when the fight began {atStart.Words}; when it ended {atEnd.Words}; " +
+             $"the result says {result.StanceId ?? "-"} '{result.Stance ?? "-"}'{(result.StanceAsAsked ? "" : ", as the game has it")}. {(agree ? "THEY AGREE." : "THEY DO NOT AGREE.")}");
+    }
+#endif
 
     // Selects the spell to fight with. With unlimited supplies the copy is handed its runes, so a spell the
     // character cannot pay for right now can still be tried.

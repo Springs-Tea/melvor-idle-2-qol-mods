@@ -121,7 +121,7 @@ sealed partial class SimView
             : "";
         _upgradeButton.Disabled = off != "";
         string stance = target.StanceName != "" ? $" in the {target.StanceName} stance" : "";
-        string what = $"Choose items to try against {target.Name}{stance}, on top of {_state.SetupLabel}:\n" +
+        string what = $"Choose items to try against {target.Name}{stance}, on top of {_state.SetupName}:\n" +
                       "by slot, by where they come from, or by name. Each is one fight; the panel says how many\n" +
                       $"and about how long before anything runs. At most {UpgradeSearch.MaxItems} a search. Nothing is put on.";
         _upgradeButton.TooltipText = off != "" ? TipLines(off) + "\n\n" + what : what;
@@ -488,8 +488,9 @@ sealed partial class SimView
     static string NotMet(UpgradeTry t, string its) =>
         t.Needs != "" ? $"You do not meet {its} requirements: {t.Needs}." : $"You do not meet {its} requirements.";
 
-    // The tooltip of a line: the item, its slot and what it goes on in place of, what you have of it, then why it has no
-    // numbers or the note of its fight, and the 95% ranges of its numbers.
+    // The tooltip of a line: the item, its slot and what it goes on in place of, what you have of it, the stance it fought
+    // in when that is not the one of the setup as it is, then why it has no numbers or the note of its fight, and the 95%
+    // ranges of its numbers.
     string UpgradeTip(UpgradeTry t, SimResult line)
     {
         var said = new List<string>
@@ -502,11 +503,19 @@ sealed partial class SimView
         if (!t.Tried) said.Add(TipLines(NotMet(t, "its") + " The game does not let the copy wear it, so it is not tried."));
         else
         {
+            if (OtherStance(line, _state.Upgrades?.Baseline) is { } stance) said.Add(stance);
             if (line.Note != "") said.Add(TipLines(line.Note));
             if (UsableTry(line) is { } r) said.AddRange(RangeLines(r, "95% ranges with it"));
         }
         return string.Join("\n", said);
     }
+
+    // An item that is a weapon of another kind fights in another stance than the setup as it is (issue #51): the stance it
+    // fought in, and the setup's. Null when it is the same one, before the setup as it is has a result, or when the item's
+    // result does not know its stance.
+    static string? OtherStance(SimResult line, SimResult? now) =>
+        now == null || line.StanceShown == "" || SameStance(line, now) ? null
+        : StanceTipLine(line) + (now.StanceShown != "" ? $"\nThe setup as it is: {StanceWords(now)}" : "");
 
     // ---- right: the line clicked ----------------------------------------------------------------------------
 
@@ -527,26 +536,29 @@ sealed partial class SimView
         _detailsSignature = signature;
         foreach (Node old in _details.GetChildren()) old.QueueFree();
 
-        // What, where it goes, and for which fight: the head of a fight's Details, with the item's picture.
+        // What, where it goes, and for which fight: the head of a fight's Details, with the item's picture. Every line whole:
+        // an item's name, what it goes on in place of and the setup's name with its stance can be long, and a line that
+        // does not fit parts at its dot, the slot over what the item goes on in place of, the fight over the setup (OneOrTwo).
         var head = _s.Spaced(new HBoxContainer(), 10);
-        head.AddChild(_s.Picture(t.Icon, 44));
+        head.AddChild(HeadPicture(t.Icon));
         var title = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 0);
-        Label name = _s.Text(t.ItemName, GameStyle.TextWhite, 16, GameStyle.Bold);
-        name.ClipText = true;
-        title.AddChild(name);
+        title.AddChild(Whole(_s.Text(t.ItemName, GameStyle.TextWhite, 16, GameStyle.Bold)));
         string stance = u.Target.StanceName != "" ? $"{u.Target.StanceName}  ·  " : "";
-        foreach (var (words, tint) in new[]
+        foreach (var (first, then, tint) in new[]
                  {
-                     (t.Tried ? $"{t.SlotName}  ·  {t.InPlaceOf}" : $"{t.SlotName} slot", GameStyle.TextGrey),
-                     ($"{u.Target.Name}  ·  {stance}{u.SetupLabel}", GameStyle.TextDim),
+                     (t.SlotName, t.Tried ? t.InPlaceOf : "", GameStyle.TextGrey),
+                     (u.Target.Name, stance + u.SetupLabel, GameStyle.TextDim),
                  })
         {
-            Label small = _s.Text(words, tint, 12);
-            small.ClipText = true;
+            string words = then == "" ? $"{first} slot" : $"{first}  ·  {then}";
+            Label small = then == "" ? Whole(_s.Text(words, tint, 12)) : OneOrTwo(_s.Text("", tint, 12), words, $"{first}\n{then}");
             small.TooltipText = words;
             small.MouseFilter = Control.MouseFilterEnum.Pass;
             title.AddChild(small);
         }
+        // Under the setup, the stance the item fought in when it is not the setup's own: a weapon of another kind (issue #51).
+        bool otherStance = t.Tried && OtherStance(line, u.Baseline) != null;
+        if (otherStance && StanceLine(line, fight: false) is { } itsStance) title.AddChild(itsStance);
         head.AddChild(title);
         _details.AddChild(head);
 
@@ -561,13 +573,15 @@ sealed partial class SimView
         if (trial != null && now != null)
         {
             _details.AddChild(_s.Section("Compared with"));
-            Label versus = _s.Text($"The setup as it is: {u.SetupLabel}", GameStyle.TextGrey, 12);
-            versus.ClipText = true;
+            // Its name, with its stance, under the words when the two do not fit on one line (OneOrTwo).
+            Label versus = OneOrTwo(_s.Text("", GameStyle.TextGrey, 12), $"The setup as it is: {u.SetupLabel}", $"The setup as it is:\n{u.SetupLabel}");
             // Its numbers here are the search's own fight of it, not its line in the list of fights.
             versus.TooltipText = versus.Text + "\nFought again for this search, with the same luck as every item: its numbers can differ\n" +
                                  "a little from its line in the list of fights, which had dice of its own.";
             versus.MouseFilter = Control.MouseFilterEnum.Pass;
             _details.AddChild(versus);
+            // Its stance under its name, as the item's is under the item's, when the two fought in different ones.
+            if (otherStance && StanceLine(now, fight: false) is { } nowStance) _details.AddChild(nowStance);
             foreach (SimColumn c in BaseShown())
             {
                 if (GainOf(c, line) is not { } g) continue;

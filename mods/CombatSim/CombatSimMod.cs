@@ -166,7 +166,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Overrides.Clear();
         _state.ForgetCompare();
         ForgetUpgrades();   // SimUpgrades.cs: the items tried, and where items come from, were the character's before
-        _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.Message = _state.FightReport = "";
+        _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.StanceId = _state.Message = _state.FightReport = "";
         _wearShown = null;   // FightSetup.cs: the words on show were for the character before
         _history.Close();
         _historyRead = false;
@@ -297,6 +297,25 @@ public partial class CombatSimMod : IMod, ISimLookup
         weapon ??= _combat.Equipment.DefaultWeapon?.Weapon?.Type;
         _state.Stances.Clear();
         if (weapon != null) _state.Stances.AddRange(weapon.Stances.Select(s => (s.Id, s.DisplayName.Text)));
+        // The stance chosen in Fights follows the weapon (issue #51): one that a weapon of another kind does not have goes
+        // back to "As the game has it", as a spell the weapon cannot cast does below. With one stance there is no choice.
+        if (_state.Stances.Count < 2 || _state.Stances.All(s => s.Id != _state.StanceId)) _state.StanceId = "";
+        // What "As the game has it" stands for, as the Spell box's "As now: ..." does: the stance the game has selected for
+        // the weapon, when the setup is the loadout worn with a weapon of the kind worn. Another loadout keeps a stance of
+        // its own, which cannot be read.
+        _state.StanceNow = null;
+        if (weapon != null && _state.LoadoutId == worn && weapon.Id == WornWeaponKind()?.Id)
+        {
+            try
+            {
+                if (SelectedStance(_combat, weapon) is { } now && _state.Stances.Any(s => s.Id == now.Id))
+                    _state.StanceNow = (now.Id, now.DisplayName.Text);
+            }
+            catch (Exception e)
+            {
+                if (_reported.Add("stance now")) _ctx.Log("The attack stance selected now could not be read (the game was updated?): " + e.Message);
+            }
+        }
 
         // So do the spells: a weapon casts those of its elements, of the books that are unlocked.
         _state.Spells.Clear();
@@ -339,6 +358,32 @@ public partial class CombatSimMod : IMod, ISimLookup
     Texture2D? ISimLookup.TargetIcon(SimTarget target) => _targetIcons.GetValueOrDefault(target.FightKey);
 
     Texture2D? ISimLookup.AreaIcon(string areaId) => _areaIcons.GetValueOrDefault(areaId);
+
+    // The game's own picture of a stance (AttackStance.Icon, as its combat screen's stance buttons show it), by its id in
+    // the game's data: also for a stance of an earlier scan's weapon. Without it the stance is named in words alone.
+    Texture2D? ISimLookup.StanceIcon(string stanceId)
+    {
+        if (_game == null) return null;
+        try { return StanceOf(_game, stanceId)?.Icon; }
+        catch (Exception e)
+        {
+            if (_reported.Add("stance icon")) _ctx.Log("The pictures of the attack stances could not be read (the game was updated?): " + e.Message);
+            return null;
+        }
+    }
+
+    // Its own method, never inlined: a game update that moved the stances fails when it is called, inside the try.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static AttackStance? StanceOf(Game game, string stanceId) =>
+        game.Data.GetDataRegistryOutput<AttackStance>().TryGetObjectById(stanceId, out AttackStance? stance) ? stance : null;
+
+    // The kind of weapon the character holds now, bare hands included, as Fight reads it to switch the stance.
+    WeaponType? WornWeaponKind() => _combat == null ? null : (_combat.Equipment.CurrentWeapon ?? _combat.Equipment.DefaultWeapon)?.Weapon?.Type;
+
+    // The stance the game has selected for a kind of weapon (PlayerComponent.GetSelectedStance). Its own method, never
+    // inlined, for the same reason as StanceOf.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static AttackStance? SelectedStance(CombatEntity? combat, WeaponType weapon) => combat?.Player.GetSelectedStance(weapon);
 
     Texture2D? ISimLookup.AmountIcon(Amount amount)
     {
@@ -536,6 +581,11 @@ public partial class CombatSimMod : IMod, ISimLookup
     // 780 at 0.9, which is 787 px that shrink with the window and 72 that do not (907 and 867 at full size). With
     // the Spell box, one drop-down more, and the rounding of every length at the sizes between, 100 of the 895 are
     // counted as keeping their size.
+    //
+    // Fights with the Stance and the Spell box (issue #51) stays under that at every size: its Stance box is one row of a
+    // caption beside a drop-down, where Best for has Train's caption over its drop-down (one caption and one spacing more,
+    // with the same drop-down's margins), and its line above Simulate is one line where Best for's is two. Neither box
+    // makes the Setup column wider (SimViewStance.FitBeside).
     const float FullWidth = 1414, FullHeight = 895, KeptHeight = 100;
 
     float LargestScale(float footer)
@@ -571,6 +621,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     SimOptions RunOptions(SimSetup? setup = null)
     {
         SimSetup with = setup ?? _state.OnLeft;
+        // In Fights the stance chosen for the setup (issue #51); none in Best for, whose lines name their own.
+        (string Id, string Name)? stance = _state.ChosenOf(with);
         return new()
         {
             Hours = SimState.Durations[Math.Clamp(_state.Duration, 0, SimState.Durations.Length - 1)].Hours,
@@ -578,8 +630,10 @@ public partial class CombatSimMod : IMod, ISimLookup
             LoadoutId = with.LoadoutId == "" ? null : with.LoadoutId,
             Overrides = new Dictionary<string, string>(with.Overrides),
             SpellId = with.SpellId == "" ? null : with.SpellId,
-            SetupKey = with.Key,
-            SetupLabel = with.Label,
+            StanceId = stance?.Id,
+            StanceName = stance?.Name ?? "",
+            SetupKey = _state.KeyOf(with),
+            SetupLabel = with.BaseLabel,
             // "Go on until": the longest duration is as far as a fight goes on; never From bank (SimEngine.Fight).
             Sure = _state.Unlimited ? _state.Sure / 100 : 0,
             SureSizes = SimState.SureSizes.Where(size => size > 0).Select(size => size / 100).ToArray(),
@@ -622,15 +676,16 @@ public partial class CombatSimMod : IMod, ISimLookup
                 Where = _state.ScopeLabel,
                 Hours = options.Hours,
                 Unlimited = options.UnlimitedSupplies,
+                // A scan names its setups with the stance chosen for them, so History tells them apart (issue #51).
                 SetupKey = options.SetupKey,
-                SetupLabel = options.SetupLabel,
+                SetupLabel = SimText.WithStance(options.SetupLabel, options.StanceName),
                 SetupKeyB = b?.SetupKey,
-                SetupLabelB = b?.SetupLabel,
+                SetupLabelB = b == null ? null : SimText.WithStance(b.SetupLabel, b.StanceName),
                 Asked = jobs.Count,
             };
             _ctx.Log($"Simulating {jobs.Count} fights, {options.Hours:0.##} h each" +
                      (options.Sure > 0 ? $" or on until {SimRanges.Size(_state.Sure)} sure ({options.MostHours:0.##} h at most)" : "") +
-                     $", supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {(b == null ? options.SetupLabel : $"A {options.SetupLabel} and B {b.SetupLabel}")}, " +
+                     $", supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {(b == null ? _run.SetupLabel : $"A {_run.SetupLabel} and B {_run.SetupLabelB}")}, " +
                      $"{Math.Min(_state.Workers, jobs.Count)} at a time.");
             _runClock.Restart();
         }
@@ -639,7 +694,8 @@ public partial class CombatSimMod : IMod, ISimLookup
 
     // The real thing: start the selected fight in the game, the way its own area menu does. Equipment is
     // left as it is unless "Wear this setup first" is ticked (FightSetup.cs); the stance the result was
-    // simulated with is selected when the weapon has it.
+    // simulated with is selected when the weapon has it, and only when it was asked for: the target of a Best for
+    // line names it, and SimView.FightAs names the one chosen in the Stance box of Fights (issue #51).
     void Fight(SimTarget target)
     {
         if (_combat == null) return;
@@ -843,8 +899,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     // of the window. Made: the ids of the scans the request's own runs put into History, the only ones it takes out
     // again; PlayerMade: those of the player's own runs that ended meanwhile, which stay.
     sealed record DevSession((string? Folder, List<Scan> Scans) History, Dictionary<string, SimResult> Results, int Done, int Total,
-        string Message, string LoadoutId, Dictionary<string, string> Overrides, string SpellId, string? Selected, bool Pinned, Scan? Viewing,
-        string SortKey, bool SortDescending, (bool On, bool ShowingB, SimSetup Other) Compare)
+        string Message, string LoadoutId, Dictionary<string, string> Overrides, string SpellId, string StanceId, string? Selected, bool Pinned,
+        Scan? Viewing, string SortKey, bool SortDescending, (bool On, bool ShowingB, SimSetup Other) Compare)
     {
         public readonly List<string> Made = new(), PlayerMade = new();
     }
@@ -873,6 +929,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     void DevRequests()
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
+        // The pictures of stance=shot are taken first: nothing else changes the window, nor is it built again, meanwhile.
+        if (DevStanceShooting()) return;
         if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1
             && _run == null && !_state.Running && !_engine.Running) DevPutBack();
         if (_devCommands.Count == 0 && File.Exists(request))
@@ -883,7 +941,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 // As Open reads it, so that what is kept is what the player has, not an empty list.
                 ReadHistory();
                 _devSession = new DevSession(_history.DevKeep(), new Dictionary<string, SimResult>(_state.Results), _state.Done, _state.Total,
-                    _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.Selected,
+                    _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.StanceId, _state.Selected,
                     _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending, (_state.Compare, _state.ShowingB, _state.Other));
                 DevKeepUpgrades();   // SimUpgrades.cs
             }
@@ -952,6 +1010,11 @@ public partial class CombatSimMod : IMod, ISimLookup
             BuildGear();
             _state.SpellId = parts.Length > 7 ? _state.Spells.FirstOrDefault(s => s.Name.Contains(parts[7].Trim(), StringComparison.OrdinalIgnoreCase))?.Id ?? "" : "";
             _ctx.Log("Dev: spells = " + string.Join(", ", _state.Spells.Select(s => s.Book + "/" + s.Name)) + "; chosen = " + _state.SpellId);
+            // ...|<spell>|<part of a stance's name>: the stance of Fights (issue #51); empty or none, As the game has it.
+            // The stance= line chooses one in the box itself, as the player's click does.
+            _state.StanceId = parts.Length > 8 && parts[8].Trim() != ""
+                ? _state.Stances.FirstOrDefault(s => s.Name.Contains(parts[8].Trim(), StringComparison.OrdinalIgnoreCase)).Id ?? "" : "";
+            _ctx.Log("Dev: stances = " + string.Join(", ", _state.Stances.Select(s => $"{s.Name} ({s.Id})")) + "; chosen = " + (_state.StanceId == "" ? "as the game has it" : _state.StanceId));
             _devPicker = parts.Length > 5 ? parts[5].Trim() : null;
             _ctx.Log("Dev: loadouts = " + string.Join(" / ", _state.Loadouts.Select(l => l.Name)) + "; gear = " +
                      string.Join(", ", _state.Gear.Select(g => $"{g.SlotName}:{(g.ItemId == null ? "-" : g.ItemName)}{(g.Changed ? "*" : "")}")));
@@ -1015,6 +1078,11 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   compare=<loadout>|<slot=item id>|<spell>, compare=off, side=a|b, wear=on|off   compare mode (SimCompare.cs)
     //   upgrades=<enemy>, upgrades=slot=|from=|search=|cannot|clear|go|panel, upgrades=stop|back|line=<item>|hover=<item>|log
     //                 Find upgrades and its panel (SimUpgrades.cs)
+    //   stance=<part of a stance's name>, stance=#2, stance=game, stance=log, stance=view#2, stance=shot   the Stance box
+    //                 of Fights (issue #51, DevStance): a choice in it as the player's click makes it (#2: the second stance
+    //                 under As the game has it; game: As the game has it); log only logs; view#2 shows the second scan of
+    //                 History; shot takes the pictures of the box, of its list and of Details' stance line, and reads their
+    //                 pixels back
     // A line that is none of these and has no "|" ends the request. After its last line, DevPutBack.
     bool DevWindowCommand(string command)
     {
@@ -1049,6 +1117,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 else if (command.StartsWith("side=", StringComparison.Ordinal)) DevSide(command[5..].Trim());
                 else if (command.StartsWith("wear=", StringComparison.Ordinal)) DevTickWear(command[5..].Trim());
                 else if (command.StartsWith("upgrades=", StringComparison.Ordinal)) DevUpgradesCommand(command[9..].Trim());
+                else if (command.StartsWith("stance=", StringComparison.Ordinal)) DevStance(command[7..].Trim());
                 else if (!DevGearCommand(command)) return false;   // pick=, picker=, gear=, hover=, raw= (CombatSimGear.cs)
                 break;
         }
@@ -1160,7 +1229,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.ShowEnemyCards = _settings.ShowEnemyCards;
         _state.Columns = SimColumns.Read(_settings.Columns);
         ReadUpgradeChoice();
-        _ctx.Log($"Dev: the choice of Find upgrades put back to {DevChoice(_state.UpgradeChoice)}, as settings.json has it.");
+        // The tab too, which stance=best and stance=fights click (SimViewStance.cs).
+        _ctx.Log($"Dev: the choice of Find upgrades put back to {DevChoice(_state.UpgradeChoice)}, and the tab to {(_state.BestMode ? "Best for" : "Fights")}, as settings.json has it.");
         _state.WearSetup = _settings.WearSetupFirst;
         _state.Workers = _settings.Workers > 0 ? Math.Min(_settings.Workers, 8) : SimEngine.DefaultWorkers;
         if (_window is { IsAlive: true } window)
@@ -1177,7 +1247,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     void PutBackWindow(DevSession session, string history)
     {
         int results = _state.Results.Count;
-        string setup = _state.SetupLabel, compare = DevCompareState();
+        string setup = _state.SetupName, compare = DevCompareState(), stance = _state.StanceId == "" ? "as the game has it" : _state.StanceId;
         _state.Results.Clear();
         foreach (var (key, result) in session.Results) _state.Results[key] = result;
         (_state.Done, _state.Total, _state.Message, _state.Current) = (session.Done, session.Total, session.Message, "");
@@ -1185,6 +1255,7 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Overrides.Clear();
         foreach (var (slot, item) in session.Overrides) _state.Overrides[slot] = item;
         _state.SpellId = session.SpellId;
+        _state.StanceId = session.StanceId;
         _state.Selected = session.Selected;
         _state.Pinned = session.Pinned;
         _state.Viewing = session.Viewing != null && _history.Scans.Contains(session.Viewing) ? session.Viewing : null;
@@ -1194,7 +1265,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         string upgrades = DevPutBackUpgrades();   // SimUpgrades.cs
         BuildGear();
         _ctx.Log($"Dev: also put back: {history}. Current results: {results} put back to the {_state.Results.Count} from before. " +
-                 $"Setup: {setup} put back to {_state.SetupLabel}; selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}. " +
+                 $"Setup: {setup} put back to {_state.SetupName}; stance {stance} put back to {(_state.StanceId == "" ? "as the game has it" : _state.StanceId)}; " +
+                 $"selected {_state.Selected ?? "-"}, sorted by {_state.SortKey}, list {_state.Viewing?.Title ?? "current"}. " +
                  $"Compare: {compare}; put back to {DevCompareState()}. Upgrades: {upgrades}.");
     }
 

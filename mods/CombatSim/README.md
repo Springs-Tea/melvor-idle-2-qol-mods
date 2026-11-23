@@ -28,7 +28,7 @@ hidden game and runs the game's own combat on it. Nothing the copy does is ever 
 - [Reading the results](#reading-the-results)
 - [Choosing the columns](#choosing-the-columns)
 - [Choosing where](#choosing-where)
-- [Trying other equipment and spells](#trying-other-equipment-and-spells)
+- [Trying other equipment, stances and spells](#trying-other-equipment-stances-and-spells)
 - [Comparing two setups](#comparing-two-setups)
 - [What to get next: "Find upgrades"](#what-to-get-next-find-upgrades)
 - [Finding where to train: "Best for"](#finding-where-to-train-best-for)
@@ -102,9 +102,10 @@ better. Fights with the same number, like all those that eat no food, stand with
 next to a name is the enemy's combat level; a dungeon says `Dungeon` and is simulated as a whole, run after
 run.
 
-Put the pointer on a line for the 95% range of each of its numbers, three to a line in the order of the list:
-**Kills ± 7.9%**, **Gold ± 14%**, **Deaths up to 3.69**. See
-[How far to trust the numbers](#how-far-to-trust-the-numbers).
+Put the pointer on a line for the attack stance it was fought in, **Stance: Accurate, as the game has it**
+(only **Stance: Accurate** when you chose it, or on a line of Best for), and for the 95% range of each of its
+numbers, three to a line in the order of the list: **Kills ± 7.9%**, **Gold ± 14%**, **Deaths up to 3.69**.
+See [How far to trust the numbers](#how-far-to-trust-the-numbers).
 
 A `-` means there is no number. A fight that killed nothing has no Food/kill: that counts as the worst there
 is, so it is last on the first click and first on the second. A number that is missing, because the fight is
@@ -112,20 +113,27 @@ not a dungeon or because an earlier scan did not record it, stands at the bottom
 
 The **Details** of a line, from top to bottom:
 
-- **Compared with**: only when the same fight was simulated with other equipment or another spell. Each
-  other setup gets a line for every column of the list, saying how much better or worse *this* setup is, in
-  percent. When the other setup's number is 0 there is no percent: the line shows this setup's own number
-  and `vs 0`. Low HP, Safe, First death, Net gold and Best drop always show this setup's own number. Green
-  is better and red is worse, the way the column says: more XP is better, fewer deaths and less food are
-  better. Green and red only when the two ranges do not overlap: where they do, the line is grey and says
-  **could be luck**, because a longer fight could turn it round. That holds for a 0 too: no deaths against
-  one death an hour, or no food against two pieces, could be luck; no damage taken against steady damage
-  all through the other fight is not. A skill a setup gains no XP in while it gains XP in others, like Magic
-  with a sword, is a real 0: that setup does not train the skill, no longer fight would turn it round, and
-  any XP in it is better. A number for which neither is better (Healed, Items, Sim time) has no colour.
+- **Under the name**: where the fight is, the setup, and under it the attack stance the fight was fought in,
+  with the game's picture of it: *Defensive stance* when it was asked for, and
+  *Accurate stance, as the game has it* when it was the one the game had selected for the weapon. Put the
+  pointer on the stance for why it was that one: chosen in the
+  [Stance box](#trying-other-equipment-stances-and-spells), the stance of a Best for line, or the game's.
+- **Compared with**: only when the same fight was simulated with other equipment, another stance or another
+  spell. When the stance tells the two setups apart, the other one's stance is under its name, the way this
+  one's is under the name above: another stance, or the same one chosen on one side and as the game has it on
+  the other. Each other setup gets a line for every column of the list, saying how much better or worse *this*
+  setup is, in percent. When the other setup's number is 0 there is no percent: the line shows this setup's
+  own number and `vs 0`. Low HP, Safe, First death, Net gold and Best drop always show this setup's own
+  number. Green is better and red is worse, the way the column says: more XP is better, fewer deaths and less
+  food are better. Green and red only when the two ranges do not overlap: where they do, the line is grey and
+  says **could be luck**, because a longer fight could turn it round. That holds for a 0 too: no deaths
+  against one death an hour, or no food against two pieces, could be luck; no damage taken against steady
+  damage all through the other fight is not. A skill a setup gains no XP in while it gains XP in others, like
+  Magic with a sword, is a real 0: that setup does not train the skill, no longer fight would turn it round,
+  and any XP in it is better. A number for which neither is better (Healed, Items, Sim time) has no colour.
   The columns in which the two setups are less than half a percent apart share one line at the end,
-  **The same: ...**, and a number one of them does not have (`-`) is left out. A scan made before the
-  ranges were counted is compared as before: half a percent apart or more is better or worse.
+  **The same: ...**, and a number one of them does not have (`-`) is left out. A scan made before the ranges
+  were counted is compared as before: half a percent apart or more is better or worse.
 - **Per hour**: kills (and how long one takes), dungeon runs, combat XP, and gold split into coins and loot.
 - **Experience**: XP per hour for each skill that gained any.
 - **Survival**: deaths and when the first one came, the lowest hitpoints, damage taken, and how much of it
@@ -258,7 +266,7 @@ fights you have ticked: an area is one fight per enemy in it, a dungeon is one f
 
 "Fights" and "Best for" each remember their own choice of areas.
 
-## Trying other equipment and spells
+## Trying other equipment, stances and spells
 
 **Loadouts.** The box under Equipment lists your saved loadouts. Simulate a fight with one, switch to
 another, simulate again: Details compares the two. To run two setups at once and see every fight with both,
@@ -286,6 +294,23 @@ copy ever wears something other than the slots show, the result says so.
   <img src="../../docs/img/combat-simulator-compare.png" alt="A changed weapon, compared" width="600">
 </p>
 
+**Stances.** In Fights, a "Stance" box under the slots lists the attack stances of the weapon in the slots, in
+the game's own names and with its pictures of them. The first choice fights in the stance the game has
+selected for that weapon, as before: it says which, **As now: Accurate**, when the slots show the loadout you
+wear with a weapon of the kind you hold, and **As the game has it** otherwise (another loadout keeps a stance
+of its own). Choosing a stance makes it a setup of its own, as a spell does: "With: Loadout 1, Defensive
+stance" above the list, and Details compares it with the other stances you simulated. Choosing the stance you
+are in already is a setup of its own too, with its own luck: Details then says which of the two was chosen and
+which was as the game has it. Swap in a weapon of another kind, a bow for a sword, and the box offers the
+bow's stances; a stance the new weapon does not have goes back to the first choice. A weapon with a single
+stance has no box, and neither has Best for, which tries every stance.
+
+<p>
+  <img src="../../docs/img/combat-simulator-stance-list.png" alt="The Stance box's list: As now: Crush, then Slash, Block and Crush with the game's pictures" width="185">
+  &nbsp;
+  <img src="../../docs/img/combat-simulator-stance.png" alt="Compare in Fights: the Stance box under the slots, and Details naming Crush stance under A and Block stance under B" width="600">
+</p>
+
 **Spells.** When the weapon of the setup casts spells, a "Spell" box appears under the slots with the spells
 that weapon can cast. Choosing one makes it a setup of its own, so two spells are compared the same way two
 weapons are.
@@ -297,10 +322,11 @@ weapons are.
 > Which of my two setups is better, and where?
 
 Tick **Compare**, at the end of the Equipment heading. Two buttons, **A** and **B**, appear in front of the
-loadout: the one that is down is the setup that the loadout, the slots and the spell under them show and
-change. The first time, B is a copy of A: press B, then choose another loadout, click a slot to swap an item
-in, or choose another spell. Press A to see A again. Put the pointer on A or B for the whole name of its
-setup.
+loadout: the one that is down is the setup that the loadout, the slots, the stance (in Fights) and the spell
+under them show and change. The first time, B is a copy of A: press B, then choose another loadout, click a
+slot to swap an item in, or choose another spell, or in Fights another stance. Each setup keeps its own
+stance, of its own weapon; Best for tries every stance of both. Press A to see A again. Put the pointer on A
+or B for the whole name of its setup.
 
 One press of **Simulate** runs every fight with A and with B, from the same moment of your character. The line
 above Simulate says how many fights that is for the two together and about how long it takes. While A and B
@@ -318,7 +344,9 @@ because it could be luck. **the same** is less than half a percent apart. Low HP
 and Best drop say only which is better, and so does a number against 0. Neither is better for Healed, Items
 and Sim time: there the first cell says which setup has more, **A +12%**. A `-` means that setup has no result
 or no number for the fight. The three cells of a column move sideways together, and are in sight together.
-Put the pointer on a line for the stance of each setup and the 95% ranges of both.
+Put the pointer on a line for the stance each setup fought in and the 95% ranges of both. Details names each
+setup's stance under its name, with *as the game has it* when both fought in the same stance but only one of
+them chose it.
 
 Click a column's name to put the fights where the choice matters most on top: those where one setup is
 clearly better, the furthest apart first, then those that could be luck, then those that are the same. Click
@@ -385,8 +413,12 @@ tried so far stay.
   differ a little from its line in the list of fights, which had dice of its own. An item goes on the way a
   pick in that slot's item picker puts it on: a two-handed weapon takes the shield off too, and a shield takes
   the two-handed weapon off, which leaves the Weapon slot empty. The tooltip of a line says what the item went
-  on in place of. In Best for, every item is fought in the stance of the line you selected when its weapon has
-  that stance; when it does not, the game's own stance for it is used, and the line's tooltip says so.
+  on in place of. In Best for, every item is fought in the stance of the line you selected, and in Fights in
+  the stance chosen in the Stance box, when its weapon has that stance; when it does not, the game's own
+  stance for it is used. An item that fought in another stance than the setup as it is, such as a weapon of
+  another kind, says so: its line's tooltip names both stances,
+  **Stance: Accurate, as the game has it (no Defensive with this weapon)**, and its Details name its stance
+  under the setup, and the setup's under "The setup as it is".
 - **What it adds.** Every column you chose for the list says what the item changes in it, in the words of
   Compare: **+14%** is 14% more with it, **-23%** 23% less, **×2.5** two and a half times as much, **+7,300**
   that much where there was none, and for Net gold how much more or less, **+1,200**. Green is better and red
@@ -428,7 +460,7 @@ tried: for a new weapon and a new shield together, pick one in its slot and pres
 want to train (or all combat XP) and where to look. Every fight is run once in each attack stance of your
 weapon, because the stance decides which skills get the XP, and each line shows the stance that trains your
 skill best. The other stances of a fight are listed in its Details. A weapon with a single stance is simply
-run once.
+run once. Best for has no Stance box: the stance chosen in Fights waits there for when you come back.
 
 ![Best for Magic](../../docs/img/combat-simulator-best.png)
 
@@ -485,9 +517,9 @@ The biggest hit is the most the game says that enemy's attacks can deal, or a bi
 really happened in the scan. Food counts as the scan had it: in a From bank scan, food that runs out makes it
 Risky; Unlimited never runs out.
 
-Put the pointer on a tag for when the scan was made, how long it was, and the hit and the auto-eat point in
-numbers. Click it to open that scan in the simulator, with the enemy selected and its area ticked for the
-next Simulate. Opening the menu never simulates anything.
+Put the pointer on a tag for when the scan was made, how long it was and in which stance, and the hit and the
+auto-eat point in numbers. Click it to open that scan in the simulator, with the enemy selected and its area
+ticked for the next Simulate. Opening the menu never simulates anything.
 
 To hide the tags, untick **Show on enemy cards in the combat areas menu** at the bottom of History.
 
@@ -495,8 +527,10 @@ To hide the tags, untick **Show on enemy cards in the combat areas menu** at the
 
 The red button under the details starts the selected fight in the game, the way the game's own area menu
 does, and closes the window. The small text above it says exactly what else it will do: switch to the stance
-of that result, and select the spell when the result was simulated with what you are wearing. With Compare
-ticked it is for the setup on the left, and the text says which one that is.
+of that result when one was asked for (the stance of a Best for line, or the one chosen in the Stance box; a
+result made As the game has it leaves your stance as it is), and select the spell when the result was
+simulated with what you are wearing. With Compare ticked it is for the setup on the left, and the text says
+which one that is.
 
 **Wear this setup first**, the tick box above the button, is off until you tick it, and stays as you leave
 it. Unticked, Fight never changes your equipment: if you simulated other items, you still have to put them on.
@@ -560,6 +594,8 @@ Fight does what it does unticked. It can always be ticked and unticked.
 - **Which fight makes my food last longest?** Click Food/kill: the top line eats the least for each kill.
   "Your food lasts" in its details says how many kills the food in your bank is enough for.
 - **Which spell?** Simulate once per spell and compare. Columns > Supplies shows the runes each one uses.
+- **Which stance for this weapon?** Best for tries them all and names the best. In Fights, choose one in the
+  Stance box and simulate, or tick Compare and give B another stance.
 - **Where is the gold?** Simulate everything and sort by Gold. Columns > Money adds what the supplies cost
   and Net gold, the gold that is left after them.
 
@@ -678,7 +714,7 @@ Everything is in `mods\CombatSim`:
 | With Go on until, a fight that did not go on | Every number of the list was within the size already, or 12 hours could not bring it even within ± 10% (a few deaths, gold from a rare drop). |
 | With Go on until ± 2% sure, a number still at ± 4% | 12 hours could not bring that number within ± 2%, so the fight waited only until it was within ± 5%. |
 | No range in the tooltip or in Details | The scan was made before the ranges were counted: simulate again. Or the number was 0 all fight and is not counted one at a time, like no damage taken. |
-| "A and B are the same setup" above Simulate | B is still a copy of A. Press B and change its loadout, an item or its spell: Simulate waits until the two differ. |
+| "A and B are the same setup" above Simulate | B is still a copy of A. Press B and change its loadout, an item or its spell, or in Fights its stance: Simulate waits until the two differ. In Best for, which tries every stance, two setups that differ only in the stance chosen in Fights are the same. |
 | With Compare, a line with `-` for one setup | That setup has no result for the fight: you changed it after the scan, or its fight could not be simulated. Press Simulate again. |
 | With Compare, a loadout's name cut short | Beside A and B the drop-down has less room than alone. Put the pointer on A or B for the whole name. |
 | "The game did not write a fresh save to simulate from" | The snapshot could not be taken. Try again; if it stays, report it with the log. |
@@ -691,7 +727,8 @@ Everything is in `mods\CombatSim`:
 | A line of Find upgrades with a gold note beside the name and no numbers | The copy did not put the item on as asked, and the note is why: no arrows in your bank with supplies From bank, or an item the game would not equip. |
 | Simulate greyed in the panel of Find upgrades | The line beside it says why: more than 40 items (tick fewer slots, or where they come from), no item in your choice, the game's data still being read, or a scan running. |
 | `...` under Comes from | The game's data is still being read, once a character: it fills in a moment later. `-` means it could not be read: `MelvorModLoader.log` has a line `[CombatSim] Where items come from could not be read`. |
-| "The stance ... is not available with this weapon" on a line of Find upgrades | In Best for, that item's weapon has other stances than the line you selected: it was fought in the stance the game chose for it. |
+| "The stance ... is not available with this weapon" on a line of Find upgrades | That item's weapon has other stances than the one asked for (the stance of the line you selected in Best for, or the one chosen in the Stance box): it was fought in the stance the game chose for it, which its tooltip and Details name. |
+| "The stance ... is not available with this weapon" on a fight | The copy could not wear the weapon the slots show (the note before it says why), and the weapon it wore has other stances: it fought in the one the game chose, which Details names under the setup. |
 | Find upgrades greyed | An earlier scan is on show, or a scan is running. Put the pointer on it for why. |
 | No Find upgrades button under Details | No fight is selected, or a game update changed what it reads: `MelvorModLoader.log` then has a line `[CombatSim] Find upgrades is switched off`. The rest of the simulator works as before. |
 | "Your equipment or bank changed after the words above Fight were written" | Something changed between the text and your click. Nothing was put on and no fight was started: read the new text, then press Fight again. |

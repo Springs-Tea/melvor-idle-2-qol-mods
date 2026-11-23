@@ -113,8 +113,12 @@ sealed class UpgradeSearch(SimTarget target, SimState state, SimOptions options)
 
     public readonly string Id = DateTime.UtcNow.Ticks.ToString();
     public readonly SimTarget Target = target;
-    /// <summary>The setup on the left when it was pressed, as it is: what every item is put on top of.</summary>
-    public readonly string SetupKey = state.SetupKey, SetupLabel = state.SetupLabel, LoadoutId = state.LoadoutId, SpellId = state.SpellId;
+    /// <summary>
+    /// The setup on the left when it was pressed, as it is: what every item is put on top of. Named with the stance chosen in
+    /// Fights (issue #51), which every item is fought in too.
+    /// </summary>
+    public readonly string SetupKey = state.SetupKey, SetupLabel = state.SetupName, LoadoutId = state.LoadoutId, SpellId = state.SpellId;
+    public readonly string? StanceId = state.ChosenStance?.Id;
     readonly Dictionary<string, string> _overrides = new(state.Overrides);
     public readonly bool BestMode = state.BestMode;
     public readonly SimOptions Options = options;
@@ -170,7 +174,8 @@ sealed class UpgradeSearch(SimTarget target, SimState state, SimOptions options)
         .Concat(Running ? Enumerable.Empty<UpgradeTry>() : Tries.Where(t => !t.Tried)).Select(t => t.Line).ToList();
 
     /// <summary>The setup on the left is still the one the items were put on (its key, without making it).</summary>
-    public bool Matches(SimState state) => state.LoadoutId == LoadoutId && state.SpellId == SpellId && state.Overrides.Count == _overrides.Count
+    public bool Matches(SimState state) => state.LoadoutId == LoadoutId && state.SpellId == SpellId && state.ChosenStance?.Id == StanceId
+                                           && state.Overrides.Count == _overrides.Count
                                            && state.Overrides.All(o => _overrides.TryGetValue(o.Key, out string? v) && v == o.Value);
 
 #if DEVTOOLS
@@ -544,7 +549,7 @@ public partial class CombatSimMod : IUpgradeLookup
         // In the words of a scan's line ("Simulating N fights"), which a scan's end answers ("Simulation finished").
         _ctx.Log($"Simulating {jobs.Count} fights to find upgrades for {target.Name}{(target.StanceName != "" ? " (" + target.StanceName + ")" : "")}: " +
                  $"{pick.ToTry.Count} items in {pick.Slots} {(pick.Slots == 1 ? "slot" : "slots")} and the setup as it is, {options.Hours:0.##} h each, " +
-                 $"supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {options.SetupLabel}, {UpgradeSearch.Workers} at a time.");
+                 $"supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {search.SetupLabel}, {UpgradeSearch.Workers} at a time.");
 #if DEVTOOLS
         DevLogPlan(search, plan, pick, jobs.Count);
 #endif
@@ -565,6 +570,8 @@ public partial class CombatSimMod : IUpgradeLookup
         LoadoutId = with.LoadoutId,
         Overrides = new Dictionary<string, string>(overrides),
         SpellId = with.SpellId,
+        StanceId = with.StanceId,
+        StanceName = with.StanceName,
         SetupKey = setupKey,
         SetupLabel = label,
         Sure = with.Sure,

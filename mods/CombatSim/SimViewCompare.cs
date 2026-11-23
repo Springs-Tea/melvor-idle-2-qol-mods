@@ -28,11 +28,13 @@ sealed partial class SimView
     // number with A, with B.
     const string Versus = "@vs", WithA = "@a", WithB = "@b";
     const int PairCellCount = 3;
-    const string CompareTip = "Compare two setups, A and B. Simulate runs every fight with both, from the same moment of your\n" +
-                              "character, and the list shows each fight with which one is better, A's number and B's.\n" +
-                              "The first time, B starts as a copy of A: press B, then change its loadout, an item or its spell.";
-    const string SideTip = "The loadout, the slots and the spell below show and change the setup whose button is down.\n" +
-                           "Fight is for that setup too.";
+    // What tells B from A, in the words of the tab on show: Best for has no Stance box, and tries every stance (issue #51).
+    string WhatChanges => _state.BestMode ? "its loadout, an item or its spell" : "its loadout, an item, its stance or its spell";
+    string CompareTip => "Compare two setups, A and B. Simulate runs every fight with both, from the same moment of your\n" +
+                         "character, and the list shows each fight with which one is better, A's number and B's.\n" +
+                         $"The first time, B starts as a copy of A: press B, then change {WhatChanges}.";
+    string SideTip => (_state.BestMode ? "The loadout, the slots and the spell below" : "The loadout, the slots, the stance and the spell below") +
+                      " show and change the setup whose button is down.\nFight is for that setup too.";
 
     Button _compareBox = null!;
     Button? _sideA, _sideB;
@@ -156,8 +158,8 @@ sealed partial class SimView
         if (!_state.Compare || _sideA == null || _sideB == null) return;
         SimSetup a = _state.A, b = _state.B;
         _sideA.Disabled = _sideB.Disabled = _state.Running;
-        _sideA.TooltipText = $"Setup A: {a.Label}\n{SideTip}";
-        _sideB.TooltipText = $"Setup B: {b.Label}\n{SideTip}";
+        _sideA.TooltipText = $"Setup A: {_state.NameOf(a)}\n{SideTip}";
+        _sideB.TooltipText = $"Setup B: {_state.NameOf(b)}\n{SideTip}";
         int withA = _state.ToSimulate(a).Count, fights = withA + _state.ToSimulate(b).Count;
         _estimate.Text = withA == 0 ? "Nothing to simulate here"
             : _state.SameSetups ? "A and B are the same setup"
@@ -385,14 +387,18 @@ sealed partial class SimView
         _bestB = lines.Select(l => Usable(_state.Pair(l).B)).OfType<SimResult>().MaxBy(_state.Xp)?.Target.FightKey;
     }
 
-    // The tooltip of a line: each setup's stance, the 95% ranges of each, then the notes of the runs.
+    // The tooltip of a line: each setup's stance (the one it fought in, and whether it was asked for, issue #51), the 95%
+    // ranges of each, then the notes of the runs.
     string PairTip(SimResult line)
     {
         var (a, b) = _state.Pair(line);
-        string sa = a?.Target.StanceName ?? "", sb = b?.Target.StanceName ?? "";
-        string Stance(SimResult? r) => r == null ? "none" : r.Target.StanceName == "" ? "the one selected" : r.Target.StanceName;
+        string Stance(SimResult? r) => r == null ? "no result" : r.StanceShown == "" ? AsGame : StanceWords(r);
         var lines = new List<string>();
-        if (sa != "" || sb != "") lines.Add(sa == sb ? $"Stance: {sa} with A and B" : $"Stance: {Stance(a)} with A, {Stance(b)} with B");
+        if (a?.StanceShown is { Length: > 0 } || b?.StanceShown is { Length: > 0 })
+        {
+            if (Stance(a) == Stance(b)) lines.Add($"Stance with A and B: {Stance(a)}");
+            else lines.AddRange(new[] { $"Stance with A: {Stance(a)}", $"Stance with B: {Stance(b)}" });
+        }
         foreach (var (side, r) in new[] { ("A", a), ("B", b) })
             if (r != null) lines.AddRange(RangeLines(r, "95% ranges with " + side));
         foreach (var (side, r) in new[] { ("A", a), ("B", b) })
@@ -431,7 +437,7 @@ sealed partial class SimView
         }
         if (lines.Count > 0 || _state.Running || _state.Catalog.Count == 0) return;
         _empty.Text = _state.SameSetups
-            ? "A and B are the same setup.\n\nPress B on the left, change its loadout, an item or its spell, then press Simulate."
+            ? $"A and B are the same setup.\n\nPress B on the left, change {WhatChanges}, then press Simulate."
             : "Nothing simulated with these two setups yet.\n\nPress Simulate: every fight is run with A and with B, from the same moment of your character.";
     }
 
@@ -549,22 +555,25 @@ sealed partial class SimView
             return;
         }
 
-        // Who, where, and the two setups, each with its stance.
+        // Who, where, and the two setups, each with the stance it fought in under its name (issue #51), as one setup's
+        // Details has it (StanceLine): a stance and a setup's name do not fit on one line of the column, a swapped weapon's
+        // "+ 1 change" least of all. A result's own name is that of its equipment and spell; a setup without a result here
+        // is named with the stance chosen for it. The stance line adds "as the game has it" only where the other setup
+        // fought in the same stance because it was asked for: two setups told apart by that alone would otherwise read the
+        // same. Every line whole (Whole).
         var head = _s.Spaced(new HBoxContainer(), 10);
-        head.AddChild(_s.Picture(_lookup.TargetIcon(any.Target), 44));
+        head.AddChild(HeadPicture(_lookup.TargetIcon(any.Target)));
         var title = _s.Spaced(new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill }, 0);
-        Label name = _s.Text(any.Target.Name, GameStyle.TextWhite, 16, GameStyle.Bold);
-        name.ClipText = true;
-        title.AddChild(name);
-        title.AddChild(_s.Text(any.Target.IsDungeon ? any.Target.CategoryName : $"{any.Target.AreaName}  ·  Level {any.Target.CombatLevel}", GameStyle.TextGrey, 12));
-        foreach (var (letter, r, label) in new[] { ("A", a, _state.ShownLabelA), ("B", b, _state.ShownLabelB) })
+        title.AddChild(Whole(_s.Text(any.Target.Name, GameStyle.TextWhite, 16, GameStyle.Bold)));
+        title.AddChild(Whole(_s.Text(any.Target.IsDungeon ? any.Target.CategoryName : $"{any.Target.AreaName}  ·  Level {any.Target.CombatLevel}", GameStyle.TextGrey, 12)));
+        foreach (var (letter, r, other, label) in new[] { ("A", a, b, _state.ShownLabelA), ("B", b, a, _state.ShownLabelB) })
         {
-            string stance = r?.Target.StanceName ?? "";
-            Label with = _s.Text($"{letter}: {(stance == "" ? "" : stance + "  ·  ")}{r?.SetupLabel ?? label}", GameStyle.TextDim, 12);
-            with.ClipText = true;
+            Label with = Whole(_s.Text($"{letter}: {r?.SetupLabel ?? label}", GameStyle.TextDim, 12));
             with.TooltipText = with.Text;
             with.MouseFilter = Control.MouseFilterEnum.Pass;
             title.AddChild(with);
+            bool apartByAsking = r != null && other != null && other.StanceIdShown == r.StanceIdShown && !SameStance(r, other);
+            if (r != null && StanceLine(r, fight: false, asGame: apartByAsking && !r.StanceAsAsked) is { } stance) title.AddChild(stance);
         }
         head.AddChild(title);
         _details.AddChild(head);

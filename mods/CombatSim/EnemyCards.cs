@@ -242,7 +242,8 @@ sealed class EnemyCards
     static string Tip(Scan scan, SimResult r, bool same)
     {
         var tip = new StringBuilder();
-        string stance = r.Target.StanceName != "" ? ", " + r.Target.StanceName : "";
+        // The stance the scan fought in (issue #51); a scan made before that was kept names the one of a Best for line.
+        string stance = r.StanceShown != "" ? $", {r.StanceShown} stance" : "";
         tip.Append(same ? "Combat Simulator: your newest scan with what you have on now, " : "Combat Simulator: your newest scan of this fight, ")
            .Append(SimView.Ago(scan.At)).Append('\n')
            .Append($"{SimText.Clock(r.Hours * 3600)} of fighting{stance}, {(scan.Unlimited ? "unlimited supplies" : "supplies from the bank")}\n");

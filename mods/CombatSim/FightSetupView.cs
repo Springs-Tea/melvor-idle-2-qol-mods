@@ -58,13 +58,14 @@ sealed partial class SimView
         return foot;
     }
 
-    // From FillDetails, once the Fight button and its words follow the selection.
+    // From FillDetails, once the Fight button and its words follow the selection. The words are for the fight as Fight
+    // starts it (FightAs): with the stance chosen for its result, as with a Best for line's.
     void FillWear()
     {
         _wearBox.Visible = _fightTarget != null;
         _wearReport.Visible = false;
-        if (_fightTarget == null) return;
-        var (note, off, whole) = _state.Viewing != null ? new WearForecast("", WearViewingOff) : _lookup.ForecastWear(_fightTarget);
+        if (_fightAs == null) return;
+        var (note, off, whole) = _state.Viewing != null ? new WearForecast("", WearViewingOff) : _lookup.ForecastWear(_fightAs);
         _wearOff = off;
         Dim(off != "");
         _wearBox.TooltipText = off != "" ? TipLines(off) + "\n\n" + WearTip : WearTip;
@@ -74,7 +75,7 @@ sealed partial class SimView
         _fightNote.Visible = _fightNote.Text != "";
 
         // What the last Fight did, as long as this fight with this setup is selected.
-        bool report = _state.FightReport != "" && _state.Viewing == null && _state.FightReportKey == ReportKey(_state, _fightTarget);
+        bool report = _state.FightReport != "" && _state.Viewing == null && _state.FightReportKey == ReportKey(_state, _fightAs);
         if (!report) _state.FightReport = "";
         _wearReport.Text = _state.FightReport;
         _wearReport.Visible = report;

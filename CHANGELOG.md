@@ -4,6 +4,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Combat Simulator**: in Fights, a **Stance** box under the slots chooses the attack stance to fight in,
+  from the game's own stances of the weapon on the left (a swapped weapon of another kind brings its own).
+  Its first choice is the one the game has selected, "As now: Accurate" when it can tell. Every result names
+  the stance it was fought in ("as the game has it" when you did not choose one): under the setup in Details,
+  in a line's tooltip, in Compare, for an item of Find upgrades that fought in another stance, and in
+  History. Fight switches to a stance you chose.
 - **Combat Goals**: while you make something with a stop set (Smithing, Crafting, Fletching, Runecrafting,
   Beastcrafting, Cooking or Herblore), the end of the game's footer says how long until the stop ends the action,
   in the footer's own words: "1m 38s until Stop Condition". Its tooltip names the stop as the skill's page does.

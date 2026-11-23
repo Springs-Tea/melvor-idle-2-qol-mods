@@ -5,14 +5,19 @@ using System.Linq;
 namespace CombatSim;
 
 /// <summary>
-/// One equipment setup as the left of the window describes it (SimState.LoadoutId, Overrides and SpellId), with its
-/// key and name (SetupKey, SetupLabel) and the attack stances of its weapon, as they were when it was last on the left.
+/// One equipment setup as the left of the window describes it (SimState.LoadoutId, Overrides, SpellId and StanceId), with
+/// the key and name of its loadout, changes and spell (BaseKey, BaseLabel) and the attack stances of its weapon, as they
+/// were when it was last on the left. Its stance is added to them by the tab on show (SimState.KeyOf and NameOf): Fights
+/// fights in the stance chosen, Best for tries every stance.
 /// </summary>
-sealed record SimSetup(string LoadoutId, IReadOnlyDictionary<string, string> Overrides, string SpellId, string Key, string Label,
+sealed record SimSetup(string LoadoutId, IReadOnlyDictionary<string, string> Overrides, string SpellId, string BaseKey, string BaseLabel,
     IReadOnlyList<(string Id, string Name)> Stances)
 {
     /// <summary>No second setup: compare mode was not switched on since the character was opened.</summary>
     public static readonly SimSetup None = new("", new Dictionary<string, string>(), "", "", "", Array.Empty<(string, string)>());
+
+    /// <summary>The stance chosen in its Stance box (issue #51); "" is "As the game has it".</summary>
+    public string StanceId { get; init; } = "";
 
     /// <summary>
     /// What its slots showed when it was last on the left, each item in its own slot (<see cref="SimState.ShownSlots"/>):
@@ -29,8 +34,8 @@ sealed record SimSetup(string LoadoutId, IReadOnlyDictionary<string, string> Ove
 /// Compare mode (issue #2): two setups, A and B. One press of Simulate runs every fight with both, from the same
 /// snapshot of the character, and the list has one line per fight with the two side by side (SimViewCompare.cs). The
 /// left of the window shows one of them with the controls it always had, and they change the fields they always
-/// changed (LoadoutId, Overrides, SpellId); the other setup waits in <see cref="Other"/>. Like the setup itself, none
-/// of it is saved: it lasts as long as the character is open.
+/// changed (LoadoutId, Overrides, SpellId, StanceId); the other setup waits in <see cref="Other"/>. Like the setup itself,
+/// none of it is saved: it lasts as long as the character is open.
 /// </summary>
 sealed partial class SimState
 {
@@ -52,8 +57,9 @@ sealed partial class SimState
 #endif
 
     /// <summary>The setup on the left, as it is now, with what its slots show.</summary>
-    public SimSetup OnLeft => new(LoadoutId, new Dictionary<string, string>(Overrides), SpellId, SetupKey, SetupLabel, Stances.ToList())
+    public SimSetup OnLeft => new(LoadoutId, new Dictionary<string, string>(Overrides), SpellId, GearKey(Overrides), SetupLabel, Stances.ToList())
     {
+        StanceId = StanceId,
         Shown = ShownSlots,
 #if DEVTOOLS
         DevSlots = DevSlots,
@@ -64,13 +70,20 @@ sealed partial class SimState
     /// <summary>"A" or "B": the setup on the left.</summary>
     public string LeftSide => ShowingB ? "B" : "A";
     /// <summary>A and B are the same setup: there is nothing to compare, and Simulate waits until one of them changes.</summary>
-    public bool SameSetups => Other.Key == SetupKey;
+    public bool SameSetups => KeyOf(Other) == SetupKey;
+
+    /// <summary>The stance a run of the tab on show fights this setup in: the one chosen in Fights, as <see cref="ChosenStance"/> is for the left.</summary>
+    public (string Id, string Name)? ChosenOf(SimSetup setup) => ChosenOf(setup.StanceId, setup.Stances);
+    /// <summary>The key of a setup's results in the tab on show: its loadout, changes and spell, and in Fights the stance chosen.</summary>
+    public string KeyOf(SimSetup setup) => setup.BaseKey + StanceKey(ChosenOf(setup));
+    /// <summary>A setup's name in the tab on show, as <see cref="SetupName"/> is the left's.</summary>
+    public string NameOf(SimSetup setup) => SimText.WithStance(setup.BaseLabel, ChosenOf(setup)?.Name ?? "");
 
     /// <summary>The Compare box. The first time it is ticked the left is setup A, and B starts as a copy of it.</summary>
     public void SetCompare(bool on)
     {
         Compare = on;
-        if (!on || Other.Key != "") return;
+        if (!on || Other.BaseKey != "") return;
         Other = OnLeft;
         ShowingB = false;
     }
@@ -91,6 +104,7 @@ sealed partial class SimState
         Overrides.Clear();
         foreach (var (slot, item) in setup.Overrides) Overrides[slot] = item;
         SpellId = setup.SpellId;
+        StanceId = setup.StanceId;
     }
 
     /// <summary>Another character: one setup again.</summary>
@@ -114,8 +128,8 @@ sealed partial class SimState
     /// tried for one fight are (SimUpgrades.cs): they are tried with the setup on the left.
     /// </summary>
     public bool ShownComparing => !ShowingUpgrades && (Viewing?.Compare ?? Compare);
-    public string ShownLabelA => Viewing?.SetupLabel ?? A.Label;
-    public string ShownLabelB => Viewing != null ? Viewing.SetupLabelB ?? "" : B.Label;
+    public string ShownLabelA => Viewing?.SetupLabel ?? NameOf(A);
+    public string ShownLabelB => Viewing != null ? Viewing.SetupLabelB ?? "" : NameOf(B);
 
     // The two results of each fight on the list, by its FightKey, as Lines() found them last.
     readonly Dictionary<string, (SimResult? A, SimResult? B)> _pairs = new();
@@ -152,11 +166,12 @@ sealed partial class SimState
         {
             SimSetup a = A, b = B;
             bool aStances = PerStanceOf(a), bStances = PerStanceOf(b);
+            string keyA = KeyOf(a), keyB = KeyOf(b);
             var fights = InScope.Select(t => t.FightKey).ToHashSet();
             pool = Results.Values.Where(r => fights.Contains(r.Target.FightKey));
             // A fight tried per stance and the same fight in the stance of the moment are different runs.
-            ofA = r => r.SetupKey == a.Key && (r.Target.StanceId != null) == aStances;
-            ofB = r => r.SetupKey == b.Key && (r.Target.StanceId != null) == bStances;
+            ofA = r => r.SetupKey == keyA && (r.Target.StanceId != null) == aStances;
+            ofB = r => r.SetupKey == keyB && (r.Target.StanceId != null) == bStances;
         }
         SimResult? Pick(IEnumerable<SimResult> results) =>
             ShownBest ? results.OrderByDescending(r => r.Failed ? -1 : Xp(r)).FirstOrDefault() : results.FirstOrDefault();
@@ -205,7 +220,7 @@ public partial class CombatSimMod
     /// </summary>
     void DescribeOther()
     {
-        if (_state.Other.Key == "") return;
+        if (_state.Other.BaseKey == "") return;
         SimSetup left = _state.OnLeft;
         _state.PutOnLeft(_state.Other);
 #if DEVTOOLS
@@ -293,13 +308,15 @@ public partial class CombatSimMod
                                                              $"(asked {(on ? "on" : "off")}); the words above Fight: '{(_view?.DevFightNote.Text ?? "-")}'");
     }
 
-    // "on, A on the left; A Warrior (key ...), stances 3; B Mage (key ...), stances 1".
+    // "on, A on the left; A Warrior (key ...), stances 3, stance as the game has it; B Mage (key ...), stances 1, ...".
     string DevCompareState()
     {
         SimSetup a = _state.A, b = _state.B;
-        string Setup(string name, SimSetup s) => $"{name} {s.Label} (key {s.Key}), {s.Stances.Count} stances, {_state.ToSimulate(s).Count} fights";
+        string Setup(string name, SimSetup s) => $"{name} {_state.NameOf(s)} (key {_state.KeyOf(s)}), {s.Stances.Count} stances, " +
+                                                 $"stance {(s.StanceId == "" ? "as the game has it" : s.StanceId)}{(s.StanceId != "" && _state.ChosenOf(s) == null ? " (not used in this tab)" : "")}, " +
+                                                 $"{_state.ToSimulate(s).Count} fights";
         return (_state.Compare ? $"on, {_state.LeftSide} on the left" : $"off, {_state.LeftSide} on the left") +
-               (_state.Other.Key == "" ? "; no second setup" : $"; {Setup("A", a)}; {Setup("B", b)}{(_state.SameSetups ? "; A AND B ARE THE SAME SETUP" : "")}");
+               (_state.Other.BaseKey == "" ? "; no second setup" : $"; {Setup("A", a)}; {Setup("B", b)}{(_state.SameSetups ? "; A AND B ARE THE SAME SETUP" : "")}");
     }
 #endif
 }
