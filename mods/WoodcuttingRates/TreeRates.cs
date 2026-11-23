@@ -19,7 +19,9 @@ enum LogsWith
     /// <summary>
     /// A hit brings them for every hit point it takes from the tree, so a cut brings them for every hit point of the tree:
     /// a reading of the name of one of the card's two lists (PerHealthGrantsContainer, by its name a list per hit point).
-    /// Which items that list shows, and the words over it, the light check reads ("Dev: game").
+    /// Which items that list shows, and the words over it, the light check reads ("Dev: game"). Counted as every hit point
+    /// of the tree for each cut: before this is settled, the hit points a last hit takes beyond what is left (its overkill)
+    /// and what an instant cut brings need their own evidence (the watch's logs per hit and per cut).
     /// </summary>
     HitPoint,
 }
@@ -34,7 +36,11 @@ enum HitItemsWith
 {
     /// <summary>Every hit rolls each item once, at its chance.</summary>
     EveryHit,
-    /// <summary>Every hit point a hit takes rolls each item once, so a cut rolls them for every hit point of the tree.</summary>
+    /// <summary>
+    /// Every hit point a hit takes rolls each item once, so a cut rolls them for every hit point of the tree. Before this
+    /// is settled, a last hit's overkill and an instant cut need their own evidence, as for <see cref="LogsWith.HitPoint"/>
+    /// (the code review of turn 3).
+    /// </summary>
     HitPoint,
 }
 

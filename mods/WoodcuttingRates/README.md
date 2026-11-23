@@ -88,7 +88,7 @@ Put the pointer on a line for the hour at that tree, as far as it is counted:
 | **Every hit, a chance of (once a hit: the window's reading):**, and a line per item | Each item a hit can bring besides the logs, with its chance per hit, how many it brings when it is more than one, and how many an hour brings if every hit rolls it once. That is the window's reading, not settled: a hit could also roll its items once for every hit point it takes. |
 | **Every cut, a chance of:**, and a line per item | Each item a cut can bring, with its chance per cut. Not per hour, as the cuts of an hour are not counted. |
 | **The doubling chance (5%) is counted in the items.** | Only when you have one. |
-| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, when everything of the hour that sells is counted by the game's rule. |
+| **Gold: 1,234 an hour, ...** | What the logs and items of an hour sell for, when everything of the hour that sells is counted by a settled rule, not by the mod's reading. |
 | **Overgrowth on this tree now, its bonuses in the numbers above:**, and a line per effect | The overgrowth on the tree, by the game's names, with the stacks each has left. |
 | **Click to show this tree on the Woodcutting page. Woodcutting is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Woodcutting page has no room for this tree's card beside this window: drag the window aside.** | Instead of the line above, on two lines, when no scroll of the page's list shows the tree's whole card clear of the window. |

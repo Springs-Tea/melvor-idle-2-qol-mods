@@ -466,9 +466,16 @@ public partial class WoodcuttingRatesMod : IMod
         var action = _woodcutting!.Action;
         Button? button = CategoryButton(category);
         if (!CanPress(button)) return false;
-        if (button!.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        // How the buttons of its group are drawn now: put back as they were when the filter does not follow, so that no
+        // button is left drawn pressed for a category the page does not show (the code review of turn 3, fault 2).
+        var group = button!.ButtonGroup?.GetButtons().OfType<BaseButton>().ToList() ?? new List<BaseButton>();
+        if (!group.Contains(button)) group.Add(button);
+        var drawn = group.Select(b => (Button: b, Pressed: b.ButtonPressed)).ToList();
+        if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
         button.EmitSignal(BaseButton.SignalName.Pressed);
         if (ReferenceEquals(action.SelectedCategory, category)) return true;
+        foreach (var (b, pressed) in drawn)
+            if (GodotObject.IsInstanceValid(b) && b.ButtonPressed != pressed) b.SetPressedNoSignal(pressed);
         _filterOff = true;
         Report("The Woodcutting page's category button did not set its category when pressed (the game was updated?): a click on a line no longer changes the filter.");
         return false;
