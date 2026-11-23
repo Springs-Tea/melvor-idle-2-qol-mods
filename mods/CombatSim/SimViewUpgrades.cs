@@ -17,11 +17,13 @@ namespace CombatSim;
 /// NumbersStrip), the way an earlier scan takes the list's place (the line above it, "Back to the fights" where "Back to
 /// now" is). Every column of the list says what the item changes in it, against the setup as it is, in Compare's words
 /// for how much ("+14%", "×2.5") and by the simulator's one rule for better, worse and could be luck (PairVerdict:
-/// the ranges of issue #5, a real 0 included); the same is "no better". At the end, where the item comes from, as Item
+/// the ranges of issue #5, a real 0 included, and as Compare judges B against A the bar lowered by the luck the item and
+/// the setup as it is met alike, issue #63); the same is "no better". A cell keeps its words, as Compare's first cell
+/// does; the ± is in Details and the line's tooltip. At the end, where the item comes from, as Item
 /// Sources says it. Items the character cannot wear yet, when the panel lists them, come after the others, in grey with
 /// what they need beside their name.</item>
-/// <item>Details: the line clicked, against the setup as it is, column by column in Stat lines, and where it comes from
-/// in the Item Encyclopedia's "Found in" look.</item>
+/// <item>Details: the line clicked, against the setup as it is, column by column in Stat lines, with the change's ± where
+/// the same dice decided it, and where it comes from in the Item Encyclopedia's "Found in" look.</item>
 /// </list>
 /// </summary>
 sealed partial class SimView
@@ -33,7 +35,10 @@ sealed partial class SimView
     internal const string EmptySlot = "in an empty slot";
 
     // What the item does to a column's number: its words and colour, the verdict, and where it goes in the list's order.
-    readonly record struct Gained(string Text, Color Tint, Verdict? Verdict, double? Sort);
+    // Where the same dice decided the verdict (issue #63): the change as Details writes it beside its ± (Change, in percent
+    // where the list says "×2.5"; null where the words are the item's own, as SameDiceNote has it for a setup's own number),
+    // and the ± (Plus).
+    readonly record struct Gained(string Text, Color Tint, Verdict? Verdict, double? Sort, string? Change = null, string? Plus = null);
 
     IUpgradeLookup? Finder => _lookup as IUpgradeLookup;
     Button _upgradeButton = null!;
@@ -231,6 +236,13 @@ sealed partial class SimView
     // by its rule (PairVerdict): a share of the number as it is ("+14%", "-23%", "×2.5"); "+7,300" where there was none,
     // as "Compared with" gives a number against 0; how much more or less where the number as it is is below 0 (Net gold).
     // Words stay the item's own (OwnWords), coloured.
+    // Where the verdict went by the same dice (issue #63, SimRanges.Apart, which PairVerdict's Judge took), the change for
+    // Details and its ±, both on the base of the change, so that a change is green or red exactly when it is larger than
+    // its ±: a share of the number as it is by SimRanges.Percents, "+64.4%" and "± 64.1%" (SameDiceNote, as "Compared
+    // with" writes a change), twice as much or more too: "+150%" and "± 160%" where the list says "×2.5", as "Compared
+    // with" writes it; a "×2.5" over "± 1.6" of the number as it is would be grey though 2.5 is more than 1.6 (review of
+    // turn 1). In the column's own format, "+300" and "± 2,000"; beside the item's own words, the difference with its ±,
+    // "+1,234 ± 2,000" (SameDiceNote). The list's cell keeps its words, as Compare's first cell does.
     Gained Adds(SimColumn c, SimResult trial, SimResult now)
     {
         if (c.Value(trial) is not { } t || c.Value(now) is not { } n) return new Gained("-", GameStyle.TextDim, null, null);
@@ -244,7 +256,11 @@ sealed partial class SimView
             _ => GameStyle.TextWhite,
         };
         string Amount(double v) => (c.Format ?? Fmt)(v);
+        // The reach of luck the verdict went by, where the item and the setup as it is were paired (PairVerdict judges two
+        // finite numbers by SimRanges.Judge, which takes it whenever there is one).
+        SimLuck? luck = double.IsFinite(t) && double.IsFinite(n) && c.Rate?.Invoke() is { } rate ? SimRanges.Apart(trial, now, rate) : null;
         string text;
+        string? change = null, plus = null;
         // How far the item is ahead, the way the column is better.
         double ahead;
         if (OwnWords(c, t, n))
@@ -252,32 +268,37 @@ sealed partial class SimView
             text = c.Text(trial);
             bool finite = double.IsFinite(t) && double.IsFinite(n);
             ahead = verdict == Verdict.Better ? (finite ? 1 : double.PositiveInfinity) : verdict == Verdict.Worse ? (finite ? -1 : double.NegativeInfinity) : 0;
+            if (luck is { } own) plus = SameDiceNote(c, t, n, own, null, percent: false).Note;
         }
         else
         {
-            double change;
+            double share;
             if (n > 0 && t >= 0)
             {
-                text = t / n >= 2 ? "×" + Times(t / n) : t > n ? "+" + SimRanges.Percent(t / n - 1) : "-" + SimRanges.Percent(1 - t / n);
-                change = (t - n) / n;
+                bool times = t / n >= 2;
+                text = times ? "×" + Times(t / n) : t > n ? "+" + SimRanges.Percent(t / n - 1) : "-" + SimRanges.Percent(1 - t / n);
+                share = (t - n) / n;
+                if (luck is { } l) (change, plus) = SameDiceNote(c, t, n, l, null, percent: true);
             }
             else if (n == 0)
             {
                 text = (t >= 0 ? "+" : "-") + Amount(Math.Abs(t));
-                change = t > 0 ? double.PositiveInfinity : double.NegativeInfinity;
+                share = t > 0 ? double.PositiveInfinity : double.NegativeInfinity;
+                if (luck is { } l) (change, plus) = (text, "± " + Amount(l.Reach));
             }
             else
             {
                 text = (t >= n ? "+" : "-") + Amount(Math.Abs(t - n));
-                change = (t - n) / Math.Abs(n);
+                share = (t - n) / Math.Abs(n);
+                if (luck is { } l) (change, plus) = (text, "± " + Amount(l.Reach));
             }
-            ahead = c.Better == Better.Less ? -change : change;
+            ahead = c.Better == Better.Less ? -share : share;
         }
         // Folded below 1 after the verdict's tier, so that a clear gain sorts above any that could be luck, those above no
         // better, and the clear losses last (as Compare's Matters folds them).
         double folded = double.IsInfinity(ahead) ? Math.Sign(ahead) : ahead / (1 + Math.Abs(ahead));
         double tier = verdict == Verdict.Better ? 2 : verdict == Verdict.Worse ? -2 : 0;
-        return new Gained(text, tint, verdict, tier + folded);
+        return new Gained(text, tint, verdict, tier + folded, change, plus);
     }
 
     /// <summary>The result of an item that was tried and fought with what it was asked to wear; null for any other line.</summary>
@@ -495,8 +516,11 @@ sealed partial class SimView
         t.Needs != "" ? $"You do not meet {its} requirements: {t.Needs}." : $"You do not meet {its} requirements.";
 
     // The tooltip of a line: the item, its slot and what it goes on in place of, what you have of it, the stance it fought
-    // in when that is not the one of the setup as it is, then why it has no numbers or the note of its fight, and the 95%
-    // ranges of its numbers.
+    // in when that is not the one of the setup as it is, then why it has no numbers or the note of its fight, the 95%
+    // ranges of its numbers and, where the same dice decided (issue #63), each change with its ±, three to a line, as
+    // Compare's line tooltip gives each lead (PairTip). Without "could be luck": the grey of the cell says it.
+    //   The change ± luck, with the same dice
+    //   Kills +14% ± 9.1%  ·  XP +12% ± 8.6%  ·  Gold +6.2% ± 13%
     string UpgradeTip(UpgradeTry t, SimResult line)
     {
         var said = new List<string>
@@ -512,6 +536,13 @@ sealed partial class SimView
             if (OtherStance(line, _state.Upgrades?.Baseline) is { } stance) said.Add(stance);
             if (line.Note != "") said.Add(TipLines(line.Note));
             if (UsableTry(line) is { } r) said.AddRange(RangeLines(r, "95% ranges with it"));
+            var changes = BaseShown().Select(c => GainOf(c, line) is { Plus: { } plus } g ? $"{TitleOf(c)} {(g.Change != null ? g.Change + " " : "")}{plus}" : null)
+                .OfType<string>().ToList();
+            if (changes.Count > 0)
+            {
+                said.Add("The change ± luck, with the same dice");
+                said.AddRange(changes.Chunk(3).Select(three => string.Join("  ·  ", three)));
+            }
         }
         return string.Join("\n", said);
     }
@@ -591,8 +622,12 @@ sealed partial class SimView
             foreach (SimColumn c in BaseShown())
             {
                 if (GainOf(c, line) is not { } g) continue;
-                string luck = g.Verdict == Verdict.Luck ? "  ·  " + SimRanges.Words(Verdict.Luck) : "";
-                _details.AddChild(Stat(NameOf(c), g.Text, g.Tint, $"{c.Text(trial)} with it, {c.Text(now)} now{luck}"));
+                // Under the two numbers, where the same dice decided (issue #63), how far luck could move the change, after
+                // "could be luck" where it is that, as "Compared with" writes it (SameDiceNote): "± 9.1%" under "+14%". Where
+                // the line does not fit, the two numbers over what decided (SmallLine parts it at its dot).
+                string? luck = g.Verdict == Verdict.Luck ? SimRanges.Words(Verdict.Luck) : null;
+                string? judged = g.Plus is { } plus ? (luck != null ? $"{luck}, {plus}" : plus) : luck;
+                _details.AddChild(Stat(NameOf(c), g.Change ?? g.Text, g.Tint, $"{c.Text(trial)} with it, {c.Text(now)} now" + (judged != null ? Dot + judged : "")));
             }
         }
 
@@ -610,7 +645,18 @@ sealed partial class SimView
 
         if (trial != null)
         {
-            Label foot = Wrapped($"{Clock(trial.Hours * 3600)} of fighting simulated with it, from the same moment and with the same luck as the setup as it is, put on as a pick in the {t.SlotName} slot puts it on.",
+            // Both ways a change is judged (SimRanges.Judge), the second only where the item and the setup as it is were
+            // paired (issue #63), as Compare's foot names them; and the lines above that are green or red but were judged
+            // without a range, by name (NoRange), so that the foot is true of every colour above it. A line here has the
+            // verdict's colour alone (Adds), where Compare's two numbers are green beside red. Grey is not said, in either
+            // foot: its lines say "could be luck" themselves.
+            string rule = now is { Spread: not null } && trial.Spread != null
+                ? " Green and red only where the two 95% ranges do not overlap" +
+                  (SimRanges.SameDice(trial, now) ? ", or with the same dice where the change is larger than its ±." : ".") +
+                  NoRange(BaseShown().Where(c => GainOf(c, line) is { Verdict: Verdict.Better or Verdict.Worse } && !JudgedByLuck(c, trial, now)).Select(NameOf),
+                      "green or red")
+                : "";
+            Label foot = Wrapped($"{Clock(trial.Hours * 3600)} of fighting simulated with it, from the same moment and with the same luck as the setup as it is, put on as a pick in the {t.SlotName} slot puts it on.{rule}",
                 250, GameStyle.TextDim, 11);
             foot.HorizontalAlignment = HorizontalAlignment.Center;
             _details.AddChild(new Control { CustomMinimumSize = new Vector2(0, _s.Px(4)), MouseFilter = Control.MouseFilterEnum.Ignore });
@@ -823,9 +869,12 @@ sealed partial class SimView
 
     /// <summary>
     /// Development, at the end of a search: the setup as it is against its two checks (UpgradeSearch.DevAgain, DevLuck).
-    /// "Again" number for number: with the same dice it must be the very same, Low HP included. "Luck" by the list's one
-    /// rule in every column of the list that has a range; a column without one (Low HP) is given as its two numbers and
-    /// not judged, as any difference in it would read as not luck.
+    /// "Again" number for number: with the same dice it must be the very same, Low HP included; and as it is paired with
+    /// the setup as it is as an item is (issue #63), SAME DICE, a share of luck left of 0 in every column the same dice
+    /// judge (the bar lowered by 100%), and column by column the words the list would give it ("no better", "the same").
+    /// "Luck" by the list's one rule in every column of the list that has a range; a column without one (Low HP) is given
+    /// as its two numbers and not judged, as any difference in it would read as not luck. Its dice are its own, so nothing
+    /// pairs it: it is judged by the two own ranges, as before.
     /// </summary>
     public string DevUpgradeTwins(UpgradeSearch u)
     {
@@ -834,6 +883,7 @@ sealed partial class SimView
             $"kills {r.Kills}, deaths {r.Deaths}, food {r.FoodEaten}, damage {r.DamageTaken}, healed {r.Healed}, lowest HP {r.LowestHp}, " +
             $"xp {r.Xp.Values.Sum():0.##}, gold {r.GoldPerHour * r.Hours:0.##}, {r.Hours:0.####} h";
         static string Without(SimResult? r) => r == null ? "NO RESULT" : r.Failed ? "FAILED " + r.Note : "NOT WORN AS ASKED: " + r.WearNote;
+        static string F(double v) => v.ToString("0.###");
         var said = new List<string>();
         if (u.DevAgain is { Failed: false, WearNote: "" } again)
         {
@@ -841,6 +891,16 @@ sealed partial class SimView
             said.Add($"again ({u.DevAgainWhat}), with the dice of the setup as it is: " + (mine == now
                 ? $"{mine}; THE SAME NUMBERS: the items are fought with the same luck as the setup as it is"
                 : $"{mine} against {now}; DIFFERENT: an item is not fought with the same luck as the setup as it is (compare their 'Dev: dice of' and 'Dev: result' lines)"));
+            // Paired as an item is: what the list would show for it, column by column, and what each went by.
+            var words = BaseShown().Select(c =>
+            {
+                Gained g = Adds(c, again, b);
+                string rule = c.Rate?.Invoke() is { } rate
+                    ? SimRanges.Apart(again, b, rate) is { } shared ? SimRanges.DevBar(shared, F) : $"RULE AS BEFORE ({SimRanges.DevWhy(again, b, rate).Or("-")})"
+                    : "no rate";
+                return $"{c.Key} '{g.Text}' ({g.Verdict?.ToString() ?? "-"}; {rule})";
+            });
+            said.Add($"again, paired with the setup as it is as an item is: {(SimRanges.SameDice(again, b) ? "SAME DICE" : "NOT PAIRED")}; " + string.Join(", ", words));
         }
         else said.Add("again: " + Without(u.DevAgain));
         if (u.DevLuck is { Failed: false, WearNote: "" } luck)
@@ -849,7 +909,9 @@ sealed partial class SimView
             var judged = columns.Where(c => c.Rate != null).Select(c => (Column: c, Verdict: PairVerdict(c, luck, b, c.Value(luck)!.Value, c.Value(b)!.Value))).ToList();
             var off = judged.Where(v => v.Verdict is Verdict.Better or Verdict.Worse).Select(v => v.Column.Key).ToList();
             var bare = columns.Where(c => c.Rate == null).Select(c => $"{c.Key} {c.Value(luck):0.####} vs {c.Value(b):0.####}").ToList();
-            said.Add("luck, the setup as it is with dice of its own, kept in step: " +
+            // Its dice are its own: nothing pairs it, so it is judged by the two own ranges, as before.
+            said.Add("luck, the setup as it is with dice of its own, kept in step, " +
+                     (SimRanges.SameDice(luck, b) ? "PAIRED WITH THE SETUP AS IT IS THOUGH ITS DICE ARE ITS OWN" : "not paired, so judged by the two own ranges as before") + ": " +
                      string.Join(", ", judged.Select(v => $"{v.Column.Key} {v.Verdict} ({v.Column.Value(luck):0.##} vs {v.Column.Value(b):0.##})")) +
                      (bare.Count > 0 ? "; without a range, not judged: " + string.Join(", ", bare) : "") + "; " +
                      (off.Count == 0 ? "THE SAME OR COULD BE LUCK in every column with a range" : $"NOT LUCK in {string.Join(", ", off)}"));
@@ -877,17 +939,30 @@ sealed partial class SimView
         List<SimResult> lines = Sorted(_state.Lines());
         DevLog?.Invoke($"{head}: {lines.Count} lines on the list, sorted by {SortedBy() ?? "-"}, {(SortedDescending ? "most" : "least")} first; Details follows {_upgradeShownKey ?? "-"}; " +
                        $"the last {_devBuiltRows} lines were built in {_devBuildMs:0.0} ms");
-        foreach (SimResult line in lines.Take(40))
+        // The rows as built, in the list's order (FillRows), for each line's tooltip as it reads.
+        var rows = _rows.GetChildren().OfType<Button>().Where(b => !b.IsQueuedForDeletion()).ToList();
+        for (int i = 0; i < Math.Min(lines.Count, 40); i++)
         {
+            SimResult line = lines[i];
             UpgradeTry? t = _state.TryOf(line);
-            var cells = new List<string> { $"{t?.ItemName} [{t?.SlotName}]{(t is { InBank: > 0 } ? " x" + t.InBank : "")}{(WhyNoNumbers(t, line) is { } why ? $" NO NUMBERS: '{why.Words}' ({DevTint(why.Tint)})" : "")}" };
+            var cells = new List<string> { $"{t?.ItemName} [{t?.SlotName}]{(t is { InBank: > 0 } ? " x" + t.InBank : "")}{(WhyNoNumbers(t, line) is { } why ? $" NO NUMBERS: '{why.Words}' ({DevTint(why.Tint)})" : "")}" +
+                                            $"; paired with the setup as it is: {(UsableTry(line) is { } r && u?.Baseline is { } b ? (SimRanges.SameDice(r, b) ? "SAME DICE" : "NOT PAIRED") : "-")}" };
             if (UsableTry(line) is { } trial && u?.Baseline is { Failed: false } now)
                 foreach (SimColumn c in BaseShown())
                     if (GainOf(c, line) is { } g)
-                        cells.Add($"{c.Key}: '{g.Text}' ({DevTint(g.Tint)}, {g.Verdict?.ToString() ?? "-"}; {c.Value(trial):0.####} vs {c.Value(now):0.####}, sorts as {g.Sort:0.####})");
+                    {
+                        // What the cell shows, what Details writes for it with its ±, and what the verdict went by (DevRuleOf,
+                        // with BOTH READ where SimRanges.Percent alone would write the change and its ± alike).
+                        double? tv = c.Value(trial), nv = c.Value(now);
+                        string rule = tv is { } x && nv is { } y && double.IsFinite(x) && double.IsFinite(y)
+                            ? DevRuleOf(c, trial, now, x, y, g.Change?.EndsWith('%') == true) : "judged without a range: not two finite numbers";
+                        cells.Add($"{c.Key}: '{g.Text}' ({DevTint(g.Tint)}, {g.Verdict?.ToString() ?? "-"}; {tv:0.####} vs {nv:0.####}, sorts as {g.Sort:0.####}); " +
+                                  $"Details '{g.Change ?? g.Text}'{(g.Plus != null ? $" over '{g.Plus}'" : ", no ±")}{(g.Change != null && g.Change != g.Text ? $", where the cell writes '{g.Text}'" : "")}; {rule}");
+                    }
             var (fromText, fromTint) = FromOf(line);
             cells.Add($"from '{fromText}' ({DevTint(fromTint)}); its tooltip '{(t == null ? "" : FromTip(t).Replace("\n", " / "))}'");
             DevChunks(head + " line", cells);
+            DevLog?.Invoke($"{head} line tooltip: {t?.ItemName}: " + (rows.Count == lines.Count ? $"'{rows[i].TooltipText.Replace("\n", " | ")}'" : $"the {rows.Count} rows on show are NOT THE {lines.Count} LINES"));
         }
         // The widest words of a cell against the cell, in this window's font and pixels.
         if (GameStyle.SemiBold is { } semi)
@@ -907,12 +982,33 @@ sealed partial class SimView
             string Said(Label l)
             {
                 string tint = l.HasThemeColorOverride("font_color") ? DevTint(l.GetThemeColor("font_color")) : "white";
-                return l.Text.Replace("\n", " / ") + (tint is "white" or "grey" ? "" : $" [{tint}]");
+                return DevPlain(l.Text) + (tint is "white" or "grey" ? "" : $" [{tint}]");
             }
             var words = labels.Where(l => l.Text != "").Select(Said).ToList();
             if (words.Count > 0) said.Add(string.Join(" ~ ", words));
         }
         DevChunks(head + " details", said);
+        // Details' "Compared with" as it is drawn (each Stat's name, number and small line, read from the labels), beside the
+        // verdict each went by: what the item on show in Details changes, against the setup as it is.
+        if (_upgradeOrdered.FirstOrDefault(l => l.Key == _upgradeShownKey) is { } shown && UsableTry(shown) is { } item
+            && u?.Baseline is { Failed: false, WearNote: "" } setup)
+        {
+            var stats = _details.GetChildren().Where(n => !n.IsQueuedForDeletion()).OfType<PanelContainer>()
+                .Select(p => p.FindChildren("*", "Label", true, false).OfType<Label>().ToList()).Where(l => l.Count >= 2).ToList();
+            var compared = new List<string>();
+            foreach (SimColumn c in BaseShown())
+            {
+                if (GainOf(c, shown) is not { } g) continue;
+                var drawn = stats.FirstOrDefault(l => l[0].Text == NameOf(c));
+                // The small line as it is laid out, its lines parted by " / " (SmallLine).
+                string words = drawn == null ? "NOT DRAWN"
+                    : $"shows '{drawn[1].Text}' ({DevTint(drawn[1].GetThemeColor("font_color"))})" + (drawn.Count > 2 ? $" over '{DevPlain(drawn[2].Text)}'" : "");
+                string why = c.Value(item) is { } x && c.Value(setup) is { } y && double.IsFinite(x) && double.IsFinite(y)
+                    ? DevRuleOf(c, item, setup, x, y, g.Change?.EndsWith('%') == true) : "judged without a range: not two finite numbers";
+                compared.Add($"{NameOf(c)}: {g.Verdict?.ToString() ?? "-"}, {words} ({why})");
+            }
+            DevChunks($"{head} details compared ({_state.TryOf(shown)?.ItemName} against the setup as it is)", compared);
+        }
         DevLog?.Invoke($"{head}: Fight '{_fightButton.Text}' {(_fightButton.Visible ? "shown" : "hidden")} for {_fightTarget?.Key ?? "-"}; above it '{_fightNote.Text}'");
         DevLogColumns("upgrades");
     }

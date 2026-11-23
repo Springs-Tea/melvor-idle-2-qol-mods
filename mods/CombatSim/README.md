@@ -406,7 +406,8 @@ writes the bar as the lead and its ±, **A by 48% ± 47%**: green and red exactl
 its ±. Where the two would read the same, both get one more figure: **A by 64.4% ± 64.1%**. The more alike
 the two fight, the more luck they share: two helmets, or one weapon in two stances, share much of it;
 Warrior and Mage, who attack at other speeds, share almost none. Each one's own range is still in the
-line's tooltip.
+line's tooltip. [Find upgrades](#what-to-get-next-find-upgrades) judges every item against the setup as it is
+the same way.
 
 Judged as before, by the two own ranges side by side: a count that did not come in every part of either
 fight, like a death or two; a number one of them had none of; fights that ended at different times (Go on
@@ -443,7 +444,7 @@ the line over the list says how many are done, the line under Simulate names the
 folded title counts the fights. **Stop**, where the button was, or Cancel on the left, stops it; the items
 tried so far stay.
 
-![Find upgrades for Black Slime: sixteen boots against the Mithril Boots worn, what each changes in every column, and the Details of Winged Boots](../../docs/img/combat-simulator-upgrades.png)
+![Find upgrades for Black Slime: three leather boots against the Mithril Boots worn, what each changes in every column, and the Details of Leather Boots with "could be luck, ± 1.2%" under Experience](../../docs/img/combat-simulator-upgrades.png)
 
 - **The same moment, the same luck.** The setup as it is and every item are fought from the same moment of
   your character. Every item is fought with the same luck as the setup as it is, so a difference comes from
@@ -460,11 +461,14 @@ tried so far stay.
 - **What it adds.** Every column you chose for the list says what the item changes in it, in the words of
   Compare: **+14%** is 14% more with it, **-23%** 23% less, **×2.5** two and a half times as much, **+7,300**
   that much where there was none, and for Net gold how much more or less, **+1,200**. Green is better and red
-  is worse, the way the column says (more XP, fewer deaths), and grey where it could be luck because the two
-  95% ranges overlap. **no better** is less than half a percent apart. For Healed, Items and Sim time neither
-  is better: no colour, and "the same". Only words stay the item's own, coloured: Safe or Risky, the name of
-  the best drop, and a first death where one of the two never dies ("none", or the time). Put the pointer on a
-  column's name for its words.
+  is worse, the way the column says (more XP, fewer deaths), and grey where it could be luck: judged as in
+  Compare ([The same dice](#the-same-dice)), with the luck the item and the setup as it is met alike taken off
+  the bar. Luck is shared kill by kill, so an item that changes how fast you kill shares less of it: a weapon
+  of another speed, but also boots or a helmet that add damage. **no better** is less than half a percent
+  apart. For Healed, Items and Sim time neither is better: no colour, and "the same". Only words stay the
+  item's own, coloured: Safe or Risky, the name of the best drop, and a first death where one of the two never
+  dies ("none", or the time). Put the pointer on a column's name for its words, and on a line for the 95%
+  ranges of its numbers and, where the same dice decided, each change with its ± (see Details).
 - **The order.** Click a column's name to sort by what the item adds there: the first click puts the clear
   gains on top, the largest first, then the gains that could be luck, then no better, then the losses that
   could be luck, then what makes it worse. **Item** sorts by name and **Comes from** puts what you have first.
@@ -480,11 +484,15 @@ tried so far stay.
 - **No numbers.** An item the copy could not put on as asked (no arrows in your bank with supplies From bank,
   an item the game would not equip) says why in gold beside its name instead of numbers, and a fight that
   failed in red.
-- **Details.** Click a line: every column with both numbers ("13,815 with it, 12,100 now") and where the item
-  comes from, place by place, as the Item Encyclopedia lists it. Where an enemy and its area do not fit on one
-  line, the area (for a dungeon "Dungeon reward") goes on a small grey line under the name, for every enemy
-  under that heading. Fight under it is still the selected fight with what you have on: Find upgrades never
-  puts anything on.
+- **Details.** Click a line: every column with both numbers ("13,815 with it, 12,100 now"). Where the same
+  dice decided a column, its line also says how far luck could move the change, both written alike as
+  "Compared with" writes them: **± 9.1%** under **+14%**, **could be luck, ± 4.7%** under **+4.6%**, with one
+  more figure where the two would read the same, **± 64.1%** under **+64.4%** (the list keeps **+64%**), and
+  **+150%** where the list says **×2.5**. Green and red hold exactly where the change is larger than its ±.
+  Then where the item comes from, place by place, as the Item Encyclopedia lists it. Where an enemy and its
+  area do not fit on one line, the area (for a dungeon "Dungeon reward") goes on a small grey line under the
+  name, for every enemy under that heading. Fight under it is still the selected fight with what you have on:
+  Find upgrades never puts anything on.
 - **Back to the fights**, over the list, leaves the items; the fight they were tried for stays selected. The
   button under Details then says **Show upgrades** and brings them back, while the search runs and after it,
   as long as the setup on the left is the one they were tried on. Over the items, Find upgrades opens the
@@ -625,9 +633,10 @@ Fight does what it does unticked. It can always be ticked and unticked.
   Simulate. The fights where the choice matters most are on top, and the line above the list counts the
   fights each setup wins.
 - **Is it really better, or was that luck?** "Compared with" is green or red only when the two ranges do not
-  overlap, and grey with "could be luck" when they do; between A and B of one compare, only when the change is
-  larger than its ±. Go on until ± 2% sure narrows the ranges where it is close. Compare fights both setups
-  with the same dice, which takes the luck they meet alike off the bar.
+  overlap, and grey with "could be luck" when they do; between A and B of one compare, and between an item of
+  Find upgrades and the setup as it is, only when the change is larger than its ±. Go on until ± 2% sure
+  narrows the ranges where it is close. Compare and Find upgrades fight with the same dice, which takes the
+  luck the two meet alike off the bar.
 - **Can I leave this running overnight?** From bank, 12 hours. No deaths, and no "Ran out of" or "Stopped
   at" note, means yes; the enemy's card in the combat areas menu then says Safe. Low HP tells you how close it
   was. Columns > Idle puts Safe, the deaths, the first death and the enemy's biggest hit side by side for

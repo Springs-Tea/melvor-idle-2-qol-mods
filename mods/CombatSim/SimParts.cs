@@ -44,8 +44,9 @@ sealed class SimParts
     // The sizes a rate may be held to, smallest first: the chosen one and the larger ones the box offers.
     readonly double[] _sizes;
     readonly List<SimRate> _watch;
-    // A fight of a compare: its parts are kept when it ends (Kept), for the luck it shared with the other setup's fight,
-    // and its totals are noted at its kills (Killed), every _markStep-th, between MostMarks / 2 and MostMarks of them.
+    // A fight with a side (SimOptions.Side: A or B of a compare, the setup as it is or an item of Find upgrades): its parts
+    // are kept when it ends (Kept), for the luck it shared with the other side's fight, and its totals are noted at its
+    // kills (Killed), every _markStep-th, between MostMarks / 2 and MostMarks of them.
     readonly bool _keep;
     readonly List<Mark> _marks = new();
     int _markStep = 1;
@@ -99,11 +100,13 @@ sealed class SimParts
     }
 
     /// <summary>
-    /// Called after a tick in which the fight killed (SimEngine.Fight), with the kills so far: a fight of a compare notes
-    /// its totals at every <see cref="_markStep"/>-th kill, so that its parts can be cut at the same kills as the other
-    /// setup's (<see cref="Apart"/>). When there are <see cref="MostMarks"/>, every second one goes and the step doubles,
-    /// the same way for every fight: two fights always have their marks at the same kills, as far as both got. Nothing
-    /// for a fight of one setup.
+    /// Called after a tick in which the fight killed (SimEngine.Fight), with the kills so far: a fight with a side (a
+    /// compare, a search of Find upgrades) notes its totals at every <see cref="_markStep"/>-th kill, so that its parts can
+    /// be cut at the same kills as the other side's (<see cref="Apart"/>). When there are <see cref="MostMarks"/>, every
+    /// second one goes and the step doubles, the same way for every fight: two fights always have their marks at the same
+    /// kills, as far as both got. Nothing for a fight of one setup. It only reads (<see cref="Totals"/>: the counts the
+    /// engine keeps on the result, each skill's XP, the loot and supplies counted so far, the ammo used, and once the
+    /// copy's spells and prayers), so the fight goes on exactly as it would without it.
     /// </summary>
     public void Killed(long ticks, int kills)
     {
@@ -157,22 +160,23 @@ sealed class SimParts
     }
 
     /// <summary>
-    /// What a fight of a compare was when it ended (issue #57): its ticks; its parts of game time, as its own ranges have
-    /// them (each part's hours, kills and runs, a dungeon's, and how much of every quantity each part had); its totals at
-    /// the kills it noted (<see cref="Killed"/>) and at its end. Plain numbers, nothing of the copy: SimEngine keeps them
-    /// until the other setup's fight is over too.
+    /// What a fight with a side was when it ended (issue #57, and Find upgrades' since issue #63): its ticks; its parts of
+    /// game time, as its own ranges have them (each part's hours, kills and runs, a dungeon's, and how much of every
+    /// quantity each part had); its totals at the kills it noted (<see cref="Killed"/>) and at its end. Plain numbers,
+    /// nothing of the copy: SimEngine keeps them until the run is over, for the other side's fights.
     /// </summary>
     public sealed record Record(long Ticks, double[] Durations, double[]? Kills, double[]? Runs, IReadOnlyDictionary<string, double[]> Of,
         IReadOnlyList<Mark> Marks, IReadOnlyDictionary<string, double> End);
 
-    /// <summary>The totals of a fight of a compare after the tick in which it made its kills-th kill.</summary>
+    /// <summary>The totals of a fight with a side after the tick in which it made its kills-th kill.</summary>
     public sealed record Mark(int Kills, long Ticks, IReadOnlyDictionary<string, double> Totals);
 
-    /// <summary>The parts of a fight of a compare (SimOptions.Side) once <see cref="Finish"/> has run; null otherwise.</summary>
+    /// <summary>The parts of a fight with a side (SimOptions.Side) once <see cref="Finish"/> has run; null otherwise.</summary>
     public Record? Kept { get; private set; }
 
     /// <summary>
-    /// How much of the luck of two fights of a compare is left in the difference of their rates (issue #57), for every
+    /// How much of the luck of two fights with the same dice is left in the difference of their rates (issue #57: A and B
+    /// of a compare; issue #63: an item of Find upgrades and the setup as it is), for every
     /// quantity per hour, per kill and per run, in the order of <see cref="SimSpread.Half"/>, to two figures: the half of
     /// the even 95% range of the difference, over the root of the sum of the squares of the two fights' own halves, all
     /// three from the same parts (SimRanges.HalfWidth). About 1 when the two met no luck alike, 0 when they met all of it

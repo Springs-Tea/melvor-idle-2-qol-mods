@@ -66,15 +66,20 @@ sealed class SimOptions
     /// (SimDice.InStep). Find upgrades (issue #4) gives every fight of a search the key of the setup as it is, so every
     /// item is fought with the same luck as the setup. Compare (issue #57) gives A's and B's fights of an enemy the key of
     /// that fight (CombatSimMod.CompareDice), so A and B meet the same dice. Null: the result's own key, set once when the
-    /// copy is loaded.
+    /// copy is loaded. Fights with the same dice are paired by their <see cref="Side"/>.
     /// </summary>
     public string? Dice;
     /// <summary>
-    /// Compare (issue #57): "A" or "B", the setup this fight is for. When it and a fight of the other setup with the same
-    /// <see cref="Dice"/> are both over, SimEngine works out from their parts how much of their luck is left in their
-    /// difference (SimSpread.Apart), which lowers the bar A against B is judged by. Null outside Compare.
+    /// Which of two setups this fight is for, when its <see cref="Dice"/> are shared: in Compare (issue #57) "A" or "B"; in
+    /// Find upgrades (issue #63) <see cref="SideNow"/> for the setup as it is and <see cref="SideItem"/> for every item tried.
+    /// When it and a fight of the other side with the same dice are both over, SimEngine works out from their parts how much
+    /// of their luck is left in their difference (SimSpread.Apart), which lowers the bar the two are judged by. Fights of the
+    /// same side are never paired, so each item is paired with the setup as it is only. Null in a scan of one setup, and for
+    /// a fight with dice of its own.
     /// </summary>
     public string? Side;
+    /// <summary>Find upgrades' two sides (issue #63): the setup as it is, and the items tried on top of it.</summary>
+    public const string SideNow = "now", SideItem = "item";
     /// <summary>What the status line names while this fight runs (the item Find upgrades tries); "" is the fight's name.</summary>
     public string StatusName = "";
 #if DEVTOOLS
@@ -87,7 +92,7 @@ sealed class SimOptions
     /// <summary>
     /// The same options with the dice of <paramref name="dice"/> (<see cref="Dice"/>) for one <paramref name="side"/>
     /// (<see cref="Side"/>): the fights of one enemy in Compare. Every field is copied, the development ones too; the copies
-    /// share the dictionaries and lists, which a fight only reads.
+    /// share the dictionaries and lists, which a fight only reads. Find upgrades makes its own (CombatSimMod.TryOptions).
     /// </summary>
     public SimOptions WithDice(string dice, string side)
     {

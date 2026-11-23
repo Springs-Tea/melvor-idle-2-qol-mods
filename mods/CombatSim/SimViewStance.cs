@@ -427,7 +427,7 @@ sealed partial class SimView
         float word = label.Text.Split(new[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(Wide).DefaultIfEmpty(0).Max();
         int lines = label.GetLineCount(), shown = label.GetVisibleLineCount();
         bool whole = shown >= lines && (trims ? !given.Any(line => Shortened(label, line)) : (wraps ? word : widest) <= room + 0.5f);
-        return (whole, $"'{label.Text.Replace("\n", " / ")}' {widest:0.#} wide in {room:0.#}, {lines} {(lines == 1 ? "line" : "lines")}" +
+        return (whole, $"'{DevPlain(label.Text)}' {widest:0.#} wide in {room:0.#}, {lines} {(lines == 1 ? "line" : "lines")}" +
                        $"{(lines > given.Length ? ", wrapped" : "")}{(wraps ? "" : ", never wraps")}, {shown} shown: {(whole ? "whole" : "CUT")}");
     }
 

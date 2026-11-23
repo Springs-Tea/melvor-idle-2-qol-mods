@@ -1094,7 +1094,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
     //                 game's own equipment screen (CombatSimGear.DevGearCommand)
     //   compare=<loadout>|<slot=item id>|<spell>, compare=off, compare=twin, side=a|b, wear=on|off   compare mode (SimCompare.cs)
-    //   upgrades=<enemy>, upgrades=slot=|from=|search=|cannot|clear|go|panel, upgrades=stop|back|line=<item>|hover=<item>|log
+    //   upgrades=<enemy>, upgrades=slot=|from=|search=|cannot|clear|bankweapon|go=<most>|panel, upgrades=stop|back|line=<item>|hover=<item>|log
     //                 Find upgrades and its panel (SimUpgrades.cs)
     //   stance=<part of a stance's name>, stance=#2, stance=game, stance=log, stance=view#2, stance=shot   the Stance box
     //                 of Fights (issue #51, DevStance): a choice in it as the player's click makes it (#2: the second stance

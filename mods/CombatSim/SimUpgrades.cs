@@ -91,7 +91,11 @@ sealed record UpgradeSource(string Short, string Tip, IReadOnlyList<ItemLine> Li
 /// snapshot of the character (SimEngine.Start), so that every item is compared with what you have from the same moment.
 /// All of them are fought alike: the same length (never "Go on until"), and the same luck, the dice of the setup as it is
 /// kept in step all fight (SimOptions.Dice, SimDice.InStep), so a difference comes from the item and not from the dice.
+/// Each item's fight is paired with the fight of the setup as it is, and with nothing else (SimOptions.Side: SideItem
+/// against SideNow, SimEngine.Pair), so that its change is judged as Compare judges B against A (issue #63): by the bar
+/// of two ranges side by side, lowered by the luck the two met alike (SimRanges.Apart).
 /// None of it goes into SimState.Results or the history: there it would fill "Compared with" in Details and the scans.
+/// A search is kept only here, in SimState.Upgrades, until another character is opened: never in History or settings.json.
 /// </summary>
 sealed class UpgradeSearch(SimTarget target, SimState state, SimOptions options)
 {
@@ -509,17 +513,20 @@ public partial class CombatSimMod : IUpgradeLookup
             return;
         }
         // Each item one fight of the length chosen, as the setup as it is: never on until sure, and with the dice of the
-        // setup as it is kept in step, so all are fought alike and with the same luck.
+        // setup as it is kept in step, so all are fought alike and with the same luck. The setup as it is on one side and
+        // every item on the other: each item is paired with it, and the items are not paired with each other.
         SimOptions options = RunOptions();
         options.Sure = 0;
         options.Dice = SimResult.MakeKey(options.SetupKey, target.Key);
+        options.Side = SimOptions.SideNow;
         options.StatusName = UpgradeSearch.Status;
         var search = new UpgradeSearch(target, _state, options) { Chosen = ChoiceWords(pick, _state.UpgradeChoice) };
         var jobs = new List<SimJob> { new(target, options) };
         foreach (UpgradeTry t in pick.ToTry)
         {
             search.Add(t.Copy());
-            SimOptions with = TryOptions(options, t.SetupKey, $"{options.SetupLabel}, {t.ItemName} in {t.SlotName}", t.Overrides, t.Shown, t.ItemName);
+            SimOptions with = TryOptions(options, t.SetupKey, $"{options.SetupLabel}, {t.ItemName} in {t.SlotName}", t.Overrides, t.Shown, t.ItemName,
+                SimOptions.SideItem);
 #if DEVTOOLS
             with.DevGear = t.DevSlots;   // what the slots would show with it, for SimEngine.DevGear
 #endif
@@ -551,7 +558,7 @@ public partial class CombatSimMod : IUpgradeLookup
                  $"{pick.ToTry.Count} items in {pick.Slots} {(pick.Slots == 1 ? "slot" : "slots")} and the setup as it is, {options.Hours:0.##} h each, " +
                  $"supplies {(options.UnlimitedSupplies ? "unlimited" : "from bank")}, with {search.SetupLabel}, {UpgradeSearch.Workers} at a time.");
 #if DEVTOOLS
-        DevLogPlan(search, plan, pick, jobs.Count);
+        DevLogPlan(search, plan, pick, jobs);
 #endif
         PumpUpgrades();
     }
@@ -561,9 +568,10 @@ public partial class CombatSimMod : IUpgradeLookup
         if (_upgradeRun != null) _engine.Cancel();
     }
 
-    // The setup of the search with other changes: an item on it, as Simulate would run it after that pick (RunOptions).
+    // The setup of the search with other changes: an item on it, as Simulate would run it after that pick (RunOptions). Its
+    // side is said at every call (SimOptions.Side): an item's pairs it with the setup as it is; null pairs it with nothing.
     static SimOptions TryOptions(SimOptions with, string setupKey, string label, IReadOnlyDictionary<string, string> overrides,
-        IReadOnlyDictionary<string, string>? shown, string status) => new()
+        IReadOnlyDictionary<string, string>? shown, string status, string? side) => new()
     {
         Hours = with.Hours,
         UnlimitedSupplies = with.UnlimitedSupplies,
@@ -580,6 +588,7 @@ public partial class CombatSimMod : IUpgradeLookup
         Watch = with.Watch,
         Shown = shown == null ? null : new Dictionary<string, string>(shown),
         Dice = with.Dice,
+        Side = side,
         StatusName = status,
 #if DEVTOOLS
         DevGear = with.DevGear,
@@ -604,7 +613,13 @@ public partial class CombatSimMod : IUpgradeLookup
         }
         // Asked first: once the engine says it stopped, everything it made is already in the queue.
         bool running = _engine.Running, took = false;
-        while (_engine.Finished.TryDequeue(out SimResult? result)) took |= search.Take(result);
+        while (_engine.Finished.TryDequeue(out SimResult? result))
+        {
+#if DEVTOOLS
+            _engine.DevTakenIn(result);   // the verdict lines of an item and the setup as it is, as Pump's of a compare
+#endif
+            took |= search.Take(result);
+        }
         bool runningChanged = running != _state.Running;
         bool changed = took || indexed || runningChanged || _state.Done != _engine.Done || _state.Current != _engine.Current;
         _state.Running = running;
@@ -734,9 +749,80 @@ public partial class CombatSimMod : IUpgradeLookup
     static string DevChoice(UpgradeChoice c) =>
         $"slots [{string.Join(", ", c.Slots)}], kinds [{string.Join(", ", c.Kinds)}], search '{c.Search}', list what cannot be worn {c.CannotWear}";
 
+    /// <summary>
+    /// Development (upgrades=bankweapon, issue #63): a weapon that fights unlike the setup as it is, and fights at all. Of
+    /// the items Find upgrades would try in the slot of the setup's weapon (SafePlan): one in your bank that the character
+    /// can wear, that needs no ammunition (WeaponCapability.RequiredAmmoType) and whose stances all fight in a combat style of
+    /// the setup's weapon (AttackStance.CombatStyle: melee for a sword), at another attack speed. The weapon is the one in
+    /// the slot named Weapon, as stance=weapon finds it (DevStanceWeapon). The speed is the one stat of the weapon's
+    /// EquipmentCapability.Stats whose id or name says interval or speed, read from the game's items; every stat of the
+    /// setup's weapon is logged with it, so the choice can be checked. More than one such stat, or none, and nothing is
+    /// chosen; a weapon of the bank that lacks the stat is "no speed read", never a speed of 0 (review of turn 2). Of those
+    /// left, the one furthest from the setup's speed whose name, typed into the panel's search box, leaves the fewest items
+    /// to try in that slot (at most 4). Its name, or null with why not. Read only: nothing is put on.
+    /// </summary>
+    string DevBankWeapon(out string? name)
+    {
+        name = null;
+        if (_game == null) return "no character open";
+        var items = _game.Data.GetDataRegistryOutput<Item>();
+        // The setup's own weapon: the slot named Weapon on the left.
+        if (_state.Gear.FirstOrDefault(g => g.SlotName.Equals("Weapon", StringComparison.OrdinalIgnoreCase)) is not { } slot)
+            return "THE SETUP HOLDS NO WEAPON: no Weapon slot on the left";
+        if (slot is not { ItemId: { } wornId, FilledFrom: "" } || !items.TryGetObjectById(wornId, out Item? worn)
+            || !worn.Capabilities.TryGet(out WeaponCapability? wornWeapon) || wornWeapon == null
+            || !worn.Capabilities.TryGet(out EquipmentCapability? wornGear) || wornGear == null)
+            return $"THE SETUP HOLDS NO WEAPON: its Weapon slot holds {(slot.ItemId == null ? "nothing" : $"{slot.ItemName} ({slot.ItemId}), no weapon")}";
+        static HashSet<string> Styles(WeaponCapability w) => w.Type.Stances.Select(s => s.CombatStyle?.Id).OfType<string>().ToHashSet();
+        HashSet<string> styles = Styles(wornWeapon);
+        var stats = wornGear.Stats.Stats;
+        string all = string.Join(", ", stats.Select(s => $"{s.Stat.Id} '{s.Stat.DisplayName.Text}' {s.Value:0.###}"));
+        var speeds = stats.Select(s => s.Stat).Where(s => s.Id.Contains("Interval", StringComparison.OrdinalIgnoreCase) || s.Id.Contains("Speed", StringComparison.OrdinalIgnoreCase)
+            || s.DisplayName.Text.Contains("Interval", StringComparison.OrdinalIgnoreCase) || s.DisplayName.Text.Contains("Speed", StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(s => s.Id).ToList();
+        string setup = $"the setup's weapon {worn.DisplayName.GetPluralText(1)} ({worn.Id}) in {slot.SlotName}, styles [{string.Join(", ", styles)}]; its stats: {all}";
+        if (speeds.Count == 0) return $"{setup}; NO ATTACK SPEED READ: no stat of it says interval or speed";
+        if (speeds.Count > 1) return $"{setup}; NO ATTACK SPEED READ: {speeds.Count} of its stats say interval or speed ({string.Join(", ", speeds.Select(s => s.Id))}), so none is taken";
+        var speed = speeds[0];
+        double wornSpeed = wornGear.Stats.GetCombatStatTotal(speed);
+        UpgradePlan plan = SafePlan();
+        var inSlot = plan.Tries.Where(t => t.SlotId == slot.SlotId && t.Tried).ToList();
+        var looked = new List<string>();
+        var fit = new List<(UpgradeTry Try, double Speed, int Leaves)>();
+        foreach (UpgradeTry t in inSlot.Where(t => t.InBank > 0))
+        {
+            if (!items.TryGetObjectById(t.ItemId, out Item? item) || !item.Capabilities.TryGet(out WeaponCapability? w) || w == null
+                || !item.Capabilities.TryGet(out EquipmentCapability? e) || e == null)
+            {
+                looked.Add($"{t.ItemName}: not a weapon");
+                continue;
+            }
+            HashSet<string> its = Styles(w);
+            // Its speed only where it has the stat: a weapon without it is not read as 0, the furthest of all from any speed.
+            double? at = e.Stats.Stats.Any(s => s.Stat.Id == speed.Id) ? e.Stats.GetCombatStatTotal(speed) : null;
+            string[] words = t.ItemName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            int leaves = inSlot.Count(o => words.All(word => o.ItemName.Contains(word, StringComparison.OrdinalIgnoreCase)));
+            string why = w.RequiredAmmoType != null ? "needs ammunition"
+                : its.Count == 0 || !its.IsSubsetOf(styles) ? $"another style [{string.Join(", ", its)}]"
+                : at is not { } itsSpeed ? $"no speed read (no {speed.Id})"
+                : Math.Abs(itsSpeed - wornSpeed) < 1e-9 ? "the same speed"
+                : leaves > 4 ? $"its name leaves {leaves} items"
+                : "fits";
+            looked.Add($"{t.ItemName} x{t.InBank} speed {at?.ToString("0.###") ?? "-"}: {why}");
+            if (why == "fits" && at is { } chosenSpeed) fit.Add((t, chosenSpeed, leaves));
+        }
+        string read = $"{setup}; speed: {speed.Id} '{speed.DisplayName.Text}' {wornSpeed:0.###}; of {inSlot.Count} items it would try there, in your bank: " +
+                      (looked.Count == 0 ? "none" : string.Join(" | ", looked));
+        if (fit.Count == 0) return read + "; NO WEAPON OF ANOTHER SPEED IN YOUR BANK";
+        var chosen = fit.OrderByDescending(f => Math.Abs(f.Speed - wornSpeed)).ThenBy(f => f.Leaves).ThenBy(f => f.Try.ItemName, StringComparer.OrdinalIgnoreCase).First();
+        name = chosen.Try.ItemName;
+        return read + $"; chose {name} (speed {chosen.Speed:0.###} against {wornSpeed:0.###}), whose name leaves {chosen.Leaves} {(chosen.Leaves == 1 ? "item" : "items")} in {slot.SlotName}";
+    }
+
     // The setup as it is twice more (UpgradeSearch.DevAgainKey, DevLuckKey). "Again": the piece of the first slot tried
     // that holds one of its own, one at a time (not a pile of arrows), put on again through the game's equip call as an
-    // item goes on, with the search's dice. "Luck": dice of its own, kept in step the same way.
+    // item goes on, with the search's dice, and paired with the setup as it is as an item is (SimOptions.SideItem). "Luck":
+    // dice of its own, kept in step the same way, and no side: nothing shares its dice, so it is judged as before.
     void DevTwinJobs(UpgradeSearch search, List<SimJob> jobs, UpgradePick pick)
     {
         SimOptions o = search.Options;
@@ -749,18 +835,24 @@ public partial class CombatSimMod : IUpgradeLookup
                 search.DevAgainWhat = $"{slot.ItemName} put on again in {slot.SlotName}";
                 break;
             }
-        jobs.Add(new SimJob(search.Target, TryOptions(o, o.SetupKey + UpgradeSearch.DevAgainKey, o.SetupLabel + ", again", overrides, o.Shown, "the setup as it is, again")));
-        SimOptions luck = TryOptions(o, o.SetupKey + UpgradeSearch.DevLuckKey, o.SetupLabel + ", other dice", o.Overrides, o.Shown, "the setup as it is, other dice");
+        jobs.Add(new SimJob(search.Target, TryOptions(o, o.SetupKey + UpgradeSearch.DevAgainKey, o.SetupLabel + ", again", overrides, o.Shown, "the setup as it is, again",
+            SimOptions.SideItem)));
+        SimOptions luck = TryOptions(o, o.SetupKey + UpgradeSearch.DevLuckKey, o.SetupLabel + ", other dice", o.Overrides, o.Shown, "the setup as it is, other dice", null);
         luck.Dice = SimResult.MakeKey(luck.SetupKey, search.Target.Key);
         jobs.Add(new SimJob(search.Target, luck));
     }
 
-    // The count of items it will try, and what it read and decided for them, before the first fight.
-    void DevLogPlan(UpgradeSearch search, UpgradePlan plan, UpgradePick pick, int fights)
+    // The count of items it will try, and what it read and decided for them, before the first fight; the side of each fight
+    // as its options have it (SimOptions.Side), which decides what is paired with what.
+    void DevLogPlan(UpgradeSearch search, UpgradePlan plan, UpgradePick pick, List<SimJob> jobs)
     {
         SimOptions o = search.Options;
+        int fights = jobs.Count;
         _ctx.Log($"Dev: upgrades: for {search.Target.Name} [{search.Target.Key}] with {search.SetupLabel} (key {search.SetupKey}), {o.Hours:0.##} h, supplies {(o.UnlimitedSupplies ? "unlimited" : "from bank")}, " +
-                 $"sure {o.Sure:0.###}, dice of {o.Dice} kept in step, {UpgradeSearch.Workers} at a time (a scan {_state.Workers}); choice {DevChoice(_state.UpgradeChoice)}: " +
+                 $"sure {o.Sure:0.###}, dice of {o.Dice} kept in step, {UpgradeSearch.Workers} at a time (a scan {_state.Workers}); " +
+                 $"sides: the setup as it is '{o.Side}', every item and again " +
+                 $"'{string.Join("/", jobs.Skip(1).Where(j => !j.Options.SetupKey.EndsWith(UpgradeSearch.DevLuckKey, StringComparison.Ordinal)).Select(j => j.Options.Side ?? "none").Distinct())}', " +
+                 $"luck '{jobs.FirstOrDefault(j => j.Options.SetupKey.EndsWith(UpgradeSearch.DevLuckKey, StringComparison.Ordinal))?.Options.Side ?? "none"}'; choice {DevChoice(_state.UpgradeChoice)}: " +
                  $"{pick.ToTry.Count} items to try in {pick.Slots} slots, {search.Tries.Count(t => !t.Tried)} listed without trying ({pick.CannotWear.Count} cannot be worn in the choice), " +
                  $"of {plan.Tries.Count} in the plan ({plan.Skipped} left out: held there already, or the same setup as another pick); {fights} fights with the setup as it is " +
                  $"and its two checks (again: {search.DevAgainWhat}). Estimate: {_view?.DevUpgradeEstimate(pick.ToTry.Count + 1) ?? "-"}");
@@ -821,7 +913,13 @@ public partial class CombatSimMod : IUpgradeLookup
     //                                        a click on that tick of the panel
     //   upgrades=search=<words>              types the words into the panel's search box ("upgrades=search=" empties it)
     //   upgrades=clear                       unticks every slot and kind and empties the search box, as those clicks do
-    //   upgrades=go                          presses Simulate in the panel; follow with wait=finished
+    //   upgrades=bankweapon                  types into the search box the name of a weapon in your bank that fights unlike
+    //                                        the setup's weapon: the same combat style, no ammunition, another attack speed
+    //                                        (DevBankWeapon); without one, one line and the rest of the request is dropped
+    //   upgrades=go=<most>                   presses Simulate in the panel when its own line counts <most> items or fewer;
+    //                                        otherwise, or without a most, one line with the count and the rest of the
+    //                                        request is dropped (the maintainer plays while it runs); follow with
+    //                                        wait=finished
     //   upgrades=panel                       logs what the panel shows: its ticks, their counts, the line and the button
     //   upgrades=stop                        presses the button when it says Stop
     //   upgrades=back                        presses "Back to the fights"
@@ -845,7 +943,44 @@ public partial class CombatSimMod : IUpgradeLookup
             _ctx.Log("Dev: upgrades: " + _view.DevUpgradeLine(what));
             return;
         }
-        if (what is "cannot" or "clear" or "go" or "panel" || what.StartsWith("slot=", StringComparison.Ordinal)
+        if (what == "bankweapon")
+        {
+            string found = DevBankWeapon(out string? weapon);
+            if (weapon == null)
+            {
+                _ctx.Log($"Dev: upgrades: bankweapon: {found}; the rest of the request is dropped.");
+                _devCommands.Clear();
+                return;
+            }
+            _ctx.Log($"Dev: upgrades: bankweapon: {found}; " + _view.DevUpgradeChoice("search=" + weapon));
+            return;
+        }
+        if (what == "go" || what.StartsWith("go=", StringComparison.Ordinal))
+        {
+            // Never more items than the request names: the count is read back from the panel's own line before the press.
+            int most = 0;
+            bool number = what.Length > 3 && int.TryParse(what[3..], out most), named = number && most > 0;
+            int? count = _view.DevChoiceCount();
+            if (!named || count is not { } n || n > most)
+            {
+                _ctx.Log($"Dev: upgrades: {what}: NOT PRESSED: " + (!number ? "the line names no most (upgrades=go=<most>)"
+                    : !named ? $"a most of {most} lets no item be tried (upgrades=go=<most>, 1 or more)"
+                    : count == null ? "the panel's line gives no count" : $"the panel counts {count} items, more than the {most} the request names") +
+                         $"; the rest of the request is dropped. {_view.DevUpgradeChoice("panel")}");
+                _devCommands.Clear();
+                return;
+            }
+            string pressed = _view.DevUpgradeChoice("go");
+            if (_upgradeRun == null)
+            {
+                _ctx.Log($"Dev: upgrades: {what}: the panel counts {n} items, but NO SEARCH STARTED ({pressed}); the rest of the request is dropped.");
+                _devCommands.Clear();
+                return;
+            }
+            _ctx.Log($"Dev: upgrades: {what}: the panel counts {n} items, at most {most} named; {pressed}");
+            return;
+        }
+        if (what is "cannot" or "clear" or "panel" || what.StartsWith("slot=", StringComparison.Ordinal)
             || what.StartsWith("from=", StringComparison.Ordinal) || what.StartsWith("search=", StringComparison.Ordinal))
         {
             _ctx.Log("Dev: upgrades: " + _view.DevUpgradeChoice(what));
