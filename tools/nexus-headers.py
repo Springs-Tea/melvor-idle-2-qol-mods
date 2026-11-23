@@ -41,6 +41,7 @@ HEADERS = {
     'ItemEncyclopedia': ('h-item-encyclopedia.svg', 'What is this item, what is it good for, and where do I get it?'),
     'RecipeRates': ('h-recipe-rates.svg', 'Which recipe gives more XP per hour?'),
     'FishingRates': ('h-fishing-rates.svg', 'Where do I fish for the most XP, fish or gold per hour?'),
+    'MiningRates': ('h-mining-rates.svg', 'Where do I mine for the most XP, ore or gold per hour?'),
     'ThievingOverview': ('h-thieving-overview.svg', 'Which target should I steal from, for XP, for gold or for one item, and will it knock me out?'),
     'SkillBonuses': ('h-skill-bonuses.svg', 'Why is my Woodcutting this fast?'),
     'AstrologyOverview': ('h-astrology-overview.svg', 'Which constellation is closest to its next unlock?'),
