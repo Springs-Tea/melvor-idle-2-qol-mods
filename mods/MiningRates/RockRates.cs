@@ -10,21 +10,30 @@ using Godot;
 namespace MiningRates;
 
 /// <summary>
-/// How the game may decide that a hit breaks a rock. Its names show a break bar that is a chance (MiningRock.Progress,
-/// starting from MiningActionStats.MinimumProspecting), a "+x%" the page floats after a hit
-/// (ActiveRockView.AddChanceIncreaseLabel) and a break chance per rock (MiningActionStats.RockBreakChance); how they
-/// make a break is kept in the game's methods. These are the readings the names leave open (the code review of turn 1,
-/// "Ore per hour from the game"). In each, a hit that does not break adds the rock's break chance to the bar, a break
-/// puts the bar back to its minimum, and a full bar always breaks.
+/// How the game may decide that a hit breaks a rock. Its names show a break bar (MiningRock.Progress, starting from
+/// MiningActionStats.MinimumProspecting), a "+x%" the page floats after a hit (ActiveRockView.AddChanceIncreaseLabel)
+/// and a break chance per rock (MiningActionStats.RockBreakChance); how they make a break is kept in the game's methods.
+/// These are the readings the names leave open (the code review of turn 1, "Ore per hour from the game"), and the one
+/// the page's own words state (<see cref="SameChanceUntilFull"/>). In each, a hit that does not break adds the rock's
+/// break chance to the bar and a break puts the bar back to its minimum.
 /// </summary>
 enum BreakRule
 {
-    /// <summary>A hit breaks the rock at the chance the bar stands at before the hit.</summary>
+    /// <summary>A hit breaks the rock at the chance the bar stands at before the hit; a full bar always breaks.</summary>
     BarBeforeHit,
-    /// <summary>A hit first adds the break chance to the bar, and breaks the rock at the chance the bar then stands at.</summary>
+    /// <summary>
+    /// A hit first adds the break chance to the bar, and breaks the rock at the chance the bar then stands at; a full bar
+    /// always breaks.
+    /// </summary>
     BarAfterRaise,
-    /// <summary>Every hit breaks the rock at its break chance, whatever the bar shows.</summary>
+    /// <summary>Every hit breaks the rock at its break chance, whatever the bar shows, and nothing else breaks it.</summary>
     SameChance,
+    /// <summary>
+    /// Every hit breaks the rock at its break chance; a hit that does not break adds it to the bar, a sum, and the hit
+    /// that brings the sum to 100% breaks the rock. The card's break chance says so in the game's own words (<see
+    /// cref="RockRates.GameWords"/>).
+    /// </summary>
+    SameChanceUntilFull,
 }
 
 /// <summary>What backs the rule the hour rests on.</summary>
@@ -46,37 +55,37 @@ enum RuleSource
 /// spot's hour (mods/FishingRates/SpotRates.cs).
 ///
 /// A hit is the game's action: its time is the rock's interval. That every hit gives the XP of the rock's XP tag is the
-/// mod's reading of the game's names (its event of a hit, RockMinedEventArgs, is its ActionPerformedEventArgs and says
-/// whether the hit broke the rock), until the development checks show it. The ore comes with a break. How many hits a
-/// break takes rests on a rule (<see cref="BreakRule"/>) that only the game's own words or a measure can settle
-/// (<see cref="Settled"/>); until one has, the time of an ore, the ore and the gold of an hour are null and the window
-/// does not show them.
+/// mod's reading of the game's words ("The Skill XP gained per action.") and names (its event of a hit,
+/// RockMinedEventArgs, is its ActionPerformedEventArgs and says whether the hit broke the rock). The ore comes with a
+/// break, as the card lists it among its "On Break Rewards". How many hits a break takes rests on a rule
+/// (<see cref="BreakRule"/>), the one the card's break chance states in the game's own words (<see cref="Known"/>);
+/// without a rule the time of an ore, the ore and the gold of an hour are null and the window does not show them.
 /// </summary>
 sealed class RockRates
 {
     /// <summary>
-    /// The rule the hour rests on, and what backs it. Null: neither the Mining page's own words nor a measure has
-    /// settled it, and the window shows only what does not rest on it (the time of a hit and the XP). It is set here,
-    /// in this one place, once the development checks have settled it: GameWords when the light check's "Dev: words"
-    /// shows that the page's own words state the rule (quoted in the README), Measured when the silent watch has
-    /// counted it ("Dev: watch | ... the readings").
+    /// The first two sentences of the words the Mining page shows on a card's break chance
+    /// (MiningRockSelectView.s_rockBreakChanceStatDescription), quoted in the Ore column's tip and the guides. The light
+    /// check reads the game's words and says whether this is still them ("Dev: words").
     /// </summary>
-    static readonly (BreakRule Rule, RuleSource Source)? Known = null;
+    public const string GameWords = "Your chance to break the rock per hit.\nRock automatically breaks when a sum of 100% is reached.";
+
+    /// <summary>
+    /// The rule the hour rests on, and what backs it: set here, in this one place. The light check of 23 Nov 2026
+    /// (check-2, "Dev: words") read the card's break chance in the game's words: "Your chance to break the rock per hit.
+    /// / Rock automatically breaks when a sum of 100% is reached. Base chance for this Rock: {0:P2} / Current chance for
+    /// this Rock: {1:P2}". The chance of a hit is the rock's break chance, the one the card shows (60.00% for Stone, its
+    /// RockBreakChance); the sum is the break bar, which grows by that chance on a hit that does not break (a "+x%" after
+    /// the hit); and the hit that brings it to 100% breaks the rock. "Base" and "Current" read as the chance without and
+    /// with the character's bonuses, as the XP tag's "Base Skill XP" and "With Modifiers" do, and as the game's info
+    /// icon of the break chance keeps the recipe's base (RockBreakIcon._baseProductChance, set from the recipe): so the
+    /// chance of a hit does not grow. The light check reads the two numbers the card's tooltip shows ("Dev: break rule");
+    /// null here would leave the window with the time of a hit and the XP only.
+    /// </summary>
+    static readonly (BreakRule Rule, RuleSource Source)? Known = (BreakRule.SameChanceUntilFull, RuleSource.GameWords);
 
     /// <summary>The rule the hour rests on, or null while nothing has settled it (<see cref="Known"/>).</summary>
-    public static (BreakRule Rule, RuleSource Source)? Settled =>
-#if DEVTOOLS
-        DevRule is { } dev ? (dev, RuleSource.Measured) :
-#endif
-        Known;
-
-#if DEVTOOLS
-    /// <summary>
-    /// Development: a reading the light check puts in for one picture, to show how the window looks once a rule is
-    /// settled. Its numbers are that reading's, which nothing has settled; the request says so in its log.
-    /// </summary>
-    public static BreakRule? DevRule;
-#endif
+    public static (BreakRule Rule, RuleSource Source)? Settled => Known;
 
     /// <summary>
     /// One item a hit can bring. <see cref="Chance"/> is per hit; <see cref="Each"/> the average number a hit that
@@ -86,7 +95,8 @@ sealed class RockRates
 
     /// <summary>
     /// One of the rock's own stone, essence or bar items that the character has a chance at, but that the game's list
-    /// of a hit's items does not hold: whether it comes on a hit or on a break, the game does not say by its names.
+    /// of a hit's items does not hold. The window does not count it: none was on the Mining page's cards in the light
+    /// check of 23 Nov 2026, where no rock had a chance above 0, so how the game gives it is not known.
     /// </summary>
     public sealed record Side(Item Item, string Name, double Chance);
 
@@ -126,12 +136,23 @@ sealed class RockRates
 
     /// <summary>The rock's break chance as the game keeps it (MiningActionStats.RockBreakChance).</summary>
     public double BreakChance { get; private set; }
-    /// <summary>Where the game's minimum of the break bar stands (MiningActionStats.MinimumProspecting).</summary>
+    /// <summary>
+    /// Where the game's minimum of the break bar stands (MiningActionStats.MinimumProspecting), as the game keeps it.
+    /// The break chance and the bar are fractions (Mithril Ore's bar at 0.675 after three hits of 0.225); a minimum is
+    /// counted as the same, the part of the bar a break leaves filled (the mod's reading of its name), only while it is
+    /// a part of the bar (<see cref="MinimumCounted"/>).
+    /// </summary>
     public double MinimumProspecting { get; private set; }
+    /// <summary>
+    /// The minimum is a part of the bar, from 0 to under 1, so it can be counted. Anything else (a minimum the game would
+    /// keep in percent would be 1 or more) leaves the hits a break takes, and the ore, uncounted for the rock.
+    /// </summary>
+    public bool MinimumCounted => MinimumProspecting >= 0 && MinimumProspecting < 1;
 
     /// <summary>
     /// How many hits a break takes on average, by the settled rule (<see cref="Settled"/>) from the rock's own break
-    /// chance and minimum; null while no rule is settled, and for a rock that would never break by it.
+    /// chance and minimum; null while no rule is settled, when the minimum cannot be counted, and for a rock that would
+    /// never break by it.
     /// </summary>
     public double? HitsPerBreak { get; private set; }
 
@@ -204,10 +225,11 @@ sealed class RockRates
 
         r.HitSeconds = stats.Interval.Value / Ms;
         r.BreakChance = Fraction(stats.RockBreakChance.Value);
-        r.MinimumProspecting = Fraction(stats.MinimumProspecting.Value);
+        // As the game keeps it, not cut to a fraction: a minimum of 1 or more is not counted (MinimumCounted).
+        r.MinimumProspecting = stats.MinimumProspecting.Value is var minimum && double.IsFinite(minimum) ? minimum : -1;
         r.XpEach = stats.Experience.XpToAdd.Value;
         r.Doubling = Chance(stats.DoublingChance);
-        r.HitsPerBreak = Settled is { } settled && r.HasTime ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
+        r.HitsPerBreak = Settled is { } settled && r.HasTime && r.MinimumCounted ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
         double hits = r.HitsPerHour;
 
         if (recipe.Product?.Item is { } ore)
@@ -251,6 +273,16 @@ sealed class RockRates
     public static double? ExpectedHits(BreakRule rule, double chance, double minimum)
     {
         if (rule == BreakRule.SameChance) return chance > 0 ? 1 / chance : null;
+        if (rule == BreakRule.SameChanceUntilFull)
+        {
+            if (chance <= 0) return null;
+            // The hit that brings the sum to 100%: the k-th, the first with minimum + k * chance at 100%. A sum that is 100%
+            // on paper is reached (10 hits of 10%), whatever the last digit of the arithmetic says.
+            double sure = Math.Max(1, Math.Ceiling((1 - minimum) / chance - 1e-9));
+            double miss = 1 - Math.Min(chance, 1);
+            // Every hit before the sure one breaks the rock at the chance: 1 + miss + miss^2 + ... over the sure hits.
+            return miss <= 0 ? 1 : (1 - Math.Pow(miss, sure)) / (1 - miss);
+        }
         // Without a raise the bar stays at its minimum, which is then the chance of every hit.
         if (chance <= 0) return minimum > 0 ? 1 / minimum : null;
         double hits = 0, unbroken = 1;

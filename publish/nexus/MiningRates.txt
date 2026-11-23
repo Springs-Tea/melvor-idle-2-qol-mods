@@ -14,12 +14,12 @@ PICTURES
 docs/img/mining-rates.png (main), mining-rates-sorted.png, mining-rates-tooltip.png
 
 SUMMARY (the short line under the name, at most 350 characters)
-Where do I mine for the most XP? On the Mining page, a round button opens a window with one line per rock: the time of a hit and Mining XP per hour, the best of each column in gold, sortable, and in each line's tooltip the whole hour: the break chance, the ore of a break and every item of a hit with its chance.
+Where do I mine for the most XP, ore or gold? On the Mining page, a round button opens a window with one line per rock: the time of one ore, and ore, Mining XP and gold per hour, the best of each column in gold, sortable, and in each line's tooltip the whole hour: the breaks, the ore and every item of a hit with its chance.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Mining Rates[/b][/size]
-Every rock has its own time per hit, its own XP and its own ore, and some give gems or other items on the side. To compare them you would open the rocks one by one and work out the hour in your head. This window puts them side by side, with the time of a hit and the Mining XP an hour at each rock gives your character.
+Every rock has its own time per hit, its own XP and its own ore, and some give gems or other items on the side. The ore comes when the rock breaks, and how often that is depends on its break chance. To compare the rocks you would open them one by one and work out the hour in your head. This window puts them side by side, with the time of one ore and the ore, Mining XP and gold an hour at each rock gives your character.
 
 [size=4][b]Where it is[/b][/size]
 On the Mining page, a round button with the Mining icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Mining.
@@ -27,23 +27,24 @@ On the Mining page, a round button with the Mining icon joins the others on the 
 [size=4][b]What the window shows[/b][/size]
 One line per rock the Mining page shows you, starting with the rock's picture and its category, and:
 [list]
-[*][b]Time[/b]: how long one hit takes, with your bonuses.
+[*][b]Time[/b]: how long one ore takes, with your bonuses and the hits a break takes counted in.
+[*][b]Ore[/b]: the rock's ore per hour.
 [*][b]XP[/b]: Mining XP per hour.
+[*][b]Gold[/b]: what the ore and the other items of an hour sell for.
 [/list]
 The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best rocks on top. The rock you are mining has a lit outline. A rock you cannot mine yet is greyed, with the level it needs. A rock you hid on the Mining page is listed only while the page lists hidden rocks too.
 Click a line to see that rock on the Mining page: the page's category filter goes to the rock's category when it is on another one, and its list of rocks scrolls to the rock's card. Nothing is started or stopped, and the window stays open.
 
 [size=4][b]In the tooltip of a line[/b][/size]
-The whole hour at that rock: the time of a hit, the XP per hour and per hit, the break chance and the ore of a break, and every item of a hit with its chance per hit and how many an hour brings.
+The whole hour at that rock: the time of a hit, how many hits a break takes and the breaks of an hour, the XP per hour and per hit, the break chance and the ore of a break and of an hour, every item of a hit with its chance per hit and how many an hour brings, and the gold.
 
 [size=4][b]What is counted[/b][/size]
-The numbers start from the game's own values for each rock, so whatever changes those changes the window too. A hit takes the rock's time of a hit, every hit counts the rock's XP whether it breaks the rock or not, the items of a hit come at their chance on every hit, the doubling chance doubles them, and chances count as their long-run average.
+The numbers start from the game's own values for each rock, so whatever changes those changes the window too. How many hits a break takes follows the game's own words on a rock's break chance: "Your chance to break the rock per hit. Rock automatically breaks when a sum of 100% is reached." The window reads them as: every hit breaks the rock at its break chance, and the hit that brings the sum of those chances to 100% breaks it for sure. These are the window's reading too: every hit gives the rock's XP, whether it breaks the rock or not; the doubling chance doubles the ore and the items of a hit; a minimum break bar is where the sum starts after a break. A hit takes the rock's time of a hit, the items of a hit come at their chance on every hit, and chances count as their long-run average.
 
 [size=4][b]Good to know[/b][/size]
 [list]
 [*]It is an estimate, not a promise: chances average out over many hits.
-[*]How many hits it takes to break a rock is not a number the game shows, and the window does not make one up: it counts no ore, time of an ore or gold per hour.
-[*]A chance to shatter a rock and a chance of more ore are not counted; the tooltip says so when you have one, by the name the Mining page gives it.
+[*]A chance to shatter a rock and a chance of more ore are not counted; the tooltip says so when you have one, by the name the Mining page gives it. A rock's own stone, essence or bar is not counted either.
 [*]Mining has no mastery XP in this game, so there is no column for it.
 [*]The window starts nothing. A click on a line only changes the page's category filter and where its list of rocks is scrolled; mining, the rocks you hid and whether the page lists them are left as they are.
 [*]A rock the game has no picture for yet shows none, rather than the game's grey stand-in.

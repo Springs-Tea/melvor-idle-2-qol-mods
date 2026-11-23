@@ -25,9 +25,10 @@ namespace MiningRates;
 // action says them, the rock's break chance and minimum at that hit, the break bar before and after, the order of the
 // game's events, the XP and the items it added. The events of one hit come in one frame, and are told apart from the
 // next hit by the frame. It ends when the minutes are up or after a minute without a hit, with, for every rock hit, one
-// line per question, each with a verdict in capitals; NOT DECIDED below MostBreaks breaks. The question the window waits
-// on is how the game decides a break (RockRates.BreakRule): every reading's expected breaks over the hits seen, from each
-// hit's own bar, against the breaks seen, and the hits no reading allows. Then the game's own tracker
+// line per question, each with a verdict in capitals; NOT DECIDED below MostBreaks breaks. The question the window's
+// rule is checked on (RockRates.Known, from the game's words) is how the game decides a break (RockRates.BreakRule):
+// every reading's expected breaks over the hits seen, from each hit's own bar, against the breaks seen, and the hits no
+// reading allows. Then the game's own tracker
 // (MiningEntity.Tracker) over its periods beside ours. Its last line says it stopped listening and changed nothing.
 // Every listener runs inside a try, and all are taken off when it ends, on Stop (with the done file, DevStopped) and on
 // another character (DevUnwatchAll).
@@ -311,7 +312,9 @@ public partial class MiningRatesMod
         return (expected, z, impossible);
     }
 
-    // The chance a reading gives a hit, from the bar before it and the rock's break chance at it (both fractions).
+    // The chance a reading gives a hit, from the bar before it and the rock's break chance at it (both fractions). By the
+    // game's words (SameChanceUntilFull) a hit whose raise brings the sum to 100% breaks for sure, as RockRates.ExpectedHits
+    // counts it (a sum of 100% on paper is reached).
     static double DevReadingChance(BreakRule rule, DevHit h)
     {
         double chance = Math.Clamp(double.IsFinite(h.Chance) ? h.Chance : 0, 0, 1), bar = h.Before ?? 0;
@@ -319,6 +322,7 @@ public partial class MiningRatesMod
         {
             BreakRule.BarBeforeHit => bar,
             BreakRule.BarAfterRaise => bar + chance,
+            BreakRule.SameChanceUntilFull => bar + chance >= 1 - 1e-9 ? 1 : chance,
             _ => chance,
         };
     }
@@ -327,6 +331,7 @@ public partial class MiningRatesMod
     {
         BreakRule.BarBeforeHit => "THE BAR BEFORE THE HIT",
         BreakRule.BarAfterRaise => "THE BAR AFTER THE RAISE",
+        BreakRule.SameChanceUntilFull => "THE SAME CHANCE UNTIL THE SUM IS FULL",
         _ => "THE SAME CHANCE ON EVERY HIT",
     };
 

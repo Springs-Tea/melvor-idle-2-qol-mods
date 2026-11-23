@@ -28,10 +28,11 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     /// <summary>
     /// The columns, left to right: the issue's (#70), with Fishing Rates' names and widths where they mean the same.
     /// Mastery XP is not a column: Mining in this game keeps no mastery XP by the game's names (its Mastery Guild counts
-    /// ranks, points and tasks). The time of an ore, the ore and the gold rest on the hits a break takes: while no rule
-    /// for them is settled (RockRates.Settled) they are not columns at all, rather than three columns of "-", and Time
-    /// is the time of a hit, as Fishing Rates' is the time of a catch. A tip's line is never longer than Fishing Rates'
-    /// longest (82 characters): Godot's tooltip does not wrap.
+    /// ranks, points and tasks). The time of an ore, the ore and the gold rest on the hits a break takes, by the rule the
+    /// card's break chance states (RockRates.Settled), whose words the Ore column's tip quotes; without a rule they would
+    /// not be columns at all, rather than three columns of "-", and Time would be the time of a hit, as Fishing Rates' is
+    /// the time of a catch. A tip's line is never longer than Fishing Rates' longest (82 characters): Godot's tooltip does
+    /// not wrap.
     /// </summary>
     public static List<RateColumn> All()
     {
@@ -43,13 +44,15 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
                 new("time", "Time", "Seconds for one hit, with your bonuses", 58, r => r.HasTime ? r.HitSeconds : null, Words.Seconds, Better.Less),
                 xp,
             ];
-        string how = settled.Source == RuleSource.Measured ? "as measured in the game" : "by the game's own rule";
+        // The game's own words, quoted whole, when they are what the rule rests on (the review of turn 2).
+        string how = Words.How(settled.Source);
+        string ore = "The rock's ore per hour, with the hits a break takes\n" + char.ToUpperInvariant(how[0]) + how[1..] +
+            (settled.Source == RuleSource.GameWords ? ", in the words of a rock's break chance:\n\"" + RockRates.GameWords + "\"" : "");
         return
         [
             new("time", "Time", "Seconds for one ore, with the hits a break takes counted in", 58,
                 r => r.HasTime ? r.SecondsPerOre : null, Words.Seconds, Better.Less),
-            new("ore", "Ore", $"The rock's ore per hour, the hits a break takes {how}", 66,
-                r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
+            new("ore", "Ore", ore, 66, r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
             xp,
             new("gold", "Gold", "What the ore and the items of an hour sell for", 66,
                 r => r.HasTime ? r.GoldPerHour : null, Words.Number, Better.More),

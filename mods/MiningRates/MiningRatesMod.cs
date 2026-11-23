@@ -13,9 +13,9 @@ namespace MiningRates;
 
 /// <summary>
 /// Which rock gives what per hour. On the Mining page a round button in the strip on the right edge of the screen opens
-/// a window with one line per rock the page shows: the rock's picture, its category, the time of a hit and the Mining
-/// XP of an hour, from the game's own numbers for each rock (RockRates); and the time of an ore, the ore and the gold of
-/// an hour once a rule for the hits a break takes is settled (RockRates.Settled). The best number of each column is
+/// a window with one line per rock the page shows: the rock's picture, its category, the time of an ore, the ore, the
+/// Mining XP and the gold of an hour, from the game's own numbers for each rock (RockRates), the hits a break takes by
+/// the rule the card's break chance states in the game's words (RockRates.Settled). The best number of each column is
 /// gold, a click on a column's name sorts by it, the rock the Mining page shows has a lit outline, and a line's tooltip
 /// has the whole hour. A click on a line shows that rock on the Mining page, as the player's own clicks there would
 /// (ShowOnPage); nothing is started or stopped from it. Built the way Fishing Rates is (mods/FishingRates).

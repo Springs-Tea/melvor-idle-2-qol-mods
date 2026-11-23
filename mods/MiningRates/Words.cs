@@ -37,10 +37,10 @@ static class Words
     }
 
     /// <summary>
-    /// The whole hour at a rock: the time of a hit, the XP, the ore of a break and the items of a hit with their chance
-    /// and number; once a rule for the hits a break takes is settled (RockRates.Settled), the breaks, the ore and the
-    /// gold of an hour too. nameOf gives the game's name of a bonus that is not counted, when it has been read
-    /// (BonusNames). No line is longer than Fishing Rates' longest (94 characters): Godot's tooltip does not wrap.
+    /// The whole hour at a rock: the time of a hit, the breaks by the game's rule (RockRates.Settled), the XP, the ore of
+    /// a break and the items of a hit with their chance and number, and the gold. nameOf gives the game's name of a bonus
+    /// that is not counted, when it has been read (BonusNames). No line is longer than Fishing Rates' longest (94
+    /// characters): Godot's tooltip does not wrap.
     /// </summary>
     public static string Tooltip(RockRates r, Func<string, string?> nameOf)
     {
@@ -58,21 +58,19 @@ static class Words
         lines.Add($"One hit every {Seconds(r.HitSeconds)}: {Number(r.HitsPerHour)} hits an hour.");
         if (r.HitsPerBreak is { } hits && r.BreaksPerHour is { } breaks && RockRates.Settled is { } settled)
             lines.Add($"A break every {Number(hits)} hits on average, {How(settled.Source)}: {Number(breaks)} an hour.");
+        else if (RockRates.Settled != null && !r.MinimumCounted)
+            lines.Add($"The ore is not counted: the game's minimum break bar here reads {Number(r.MinimumProspecting)}.");
+        // The minimum moves the sure break forward: where it is counted, it is said, as the mod's reading of its name.
+        if (r.HitsPerBreak != null && r.MinimumProspecting > 0)
+            lines.Add($"Your minimum break bar ({Percent(r.MinimumProspecting)}) is counted as where the bar starts.");
         lines.Add($"Mining XP: {Number(r.XpPerHour)} an hour, {Number(r.XpEach)} a hit.");
 
         lines.Add("");
         if (r.Ore != null)
         {
-            if (r.OrePerHour is { } ore)
-            {
-                lines.Add("Every break:");
-                lines.Add($"  {r.OreName}, {r.OreQuantity} a break: {Number(ore)}");
-            }
-            else
-            {
-                lines.Add($"Every break (break chance {Percent(r.BreakChance)}):");
-                lines.Add($"  {r.OreName}, {r.OreQuantity}");
-            }
+            // The ore of a break, and of an hour where the breaks are counted.
+            lines.Add($"Every break (break chance {Percent(r.BreakChance)} a hit):");
+            lines.Add($"  {r.OreName}, {r.OreQuantity} a break" + (r.OrePerHour is { } ore ? $": {Number(ore)}" : ""));
         }
         if (r.PerHit.Count > 0)
         {
@@ -90,7 +88,7 @@ static class Words
                 : $"Gold: {Number(gold)} an hour, what {(r.OrePrice != null ? "the ore sells" : "the items of a hit sell")} for.");
         if (r.NotCountedItems.Count > 0)
         {
-            lines.Add("Not counted, as the game does not say whether a hit or a break brings them:");
+            lines.Add("Not counted, the rock's own stone, essence or bar you have a chance at:");
             lines.AddRange(r.NotCountedItems.Select(side => $"  {side.Name}, {Percent(side.Chance)}"));
         }
         // The game's own names, as the Mining page lists them among your bonuses.
@@ -101,8 +99,9 @@ static class Words
         return string.Join("\n", lines);
     }
 
-    // What backs the hits a break takes, in plain words: never the game's own when it was measured.
-    static string How(RuleSource source) => source == RuleSource.Measured ? "as measured in the game" : "by the game's own rule";
+    // What backs the hits a break takes, in plain words: the number is always worked out by the mod, from the rock's own
+    // break chance by a rule the game states or one measured on a character's mining (the code review of turn 2, fault 3).
+    public static string How(RuleSource source) => source == RuleSource.Measured ? "worked out by a rule measured in the game" : "worked out by the game's own rule";
 
     // What a click on the line does, when it changes what the Mining page shows.
     static string? Click(RockRates r) => r.Clickable ? "Click to show this rock on the Mining page. Mining is not started." : null;
