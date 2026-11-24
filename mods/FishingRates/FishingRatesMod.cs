@@ -75,6 +75,10 @@ public partial class FishingRatesMod : IMod
     // Twice a second: which character, whether the Fishing page is on the screen, and the window's numbers.
     void OnFrame()
     {
+#if DEVTOOLS
+        // What a development request's own press left on the page is read on the frame it settles, not a tick later.
+        if (_devSettle != null && !_stopped) DevSettleNow();
+#endif
         if (!_tick.Due()) return;
         try
         {
@@ -248,12 +252,13 @@ public partial class FishingRatesMod : IMod
     {
         var action = _fishing!.Action;
         ActiveFishingRecipe? onPage = SpotRates.ShownOnPage(_fishing);
+        SpotRates.Fished fished = SpotRates.FishingNow(_fishing, _game);
         var spots = new List<SpotRates>();
         foreach (FishingLocation location in _fishing.Config.Locations)
         {
             if (!action.Locations.TryGetValue(location, out ActiveFishingLocation? active)) continue;
             foreach (ActiveFishingRecipe spot in active.Recipes)
-                if (SpotRates.Revealed(spot)) spots.Add(SpotRates.Read(spot, _fishing, _bank, onPage, Shown));
+                if (SpotRates.Revealed(spot)) spots.Add(SpotRates.Read(spot, _fishing, _bank, onPage, Shown, fished));
         }
         return spots;
     }
@@ -355,14 +360,15 @@ public partial class FishingRatesMod : IMod
     // shows: the spot's location, as the page's location buttons open one (FishingActionComponent.SetCurrentLocation),
     // then the spot, as its spot list selects one (ActiveFishingLocation.SelectRecipe). The development request
     // compares them with the game's own buttons. Fishing is not started or stopped. A locked spot opens its location
-    // only, and a spot whose location is locked nothing (SpotRates.ClickOpens). The window stays open; the lit line
-    // follows the page.
+    // only, and a spot whose location is locked nothing (SpotRates.ClickOpens). While the character fishes at the spot's
+    // location, the click opens that location only, when the page shows another, and selects no spot there (lesson 56;
+    // what was seen in the game is in SpotRates.ClickOpens). The window stays open; the lit line follows the page.
     void OpenOnPage(SpotRates spot)
     {
         if (!PageShown) return;
         ActiveFishingRecipe active = spot.Active;
-        // As it is now, not as it was at the last tick.
-        SpotRates.Opens opens = SpotRates.ClickOpens(active);
+        // As it is now, not as it was at the last tick: what the spot needs, and whether and where he fishes.
+        SpotRates.Opens opens = SpotRates.ClickOpens(active, SpotRates.FishingNow(_fishing!, _game));
         var action = _fishing!.Action;
         if (opens == SpotRates.Opens.Nothing || !action.Locations.TryGetValue(active.Location, out ActiveFishingLocation? location)) return;
         if (!ReferenceEquals(action.CurrentLocation, location)) action.SetCurrentLocation(location);
@@ -454,6 +460,10 @@ public partial class FishingRatesMod : IMod
         _ctx.Log("Stopped (the game was updated?): " + e);
 #if DEVTOOLS
         try { DevUnwatch(); } catch { }
+        try { DevBaitWatchEnd("stopped: the mod stopped"); } catch { }
+        // A request that runs ends with its done file and settings.json written back, so the check does not wait its whole
+        // time for it and the window opens as the player had it.
+        try { DevStopped(); } catch { }
 #endif
         try { Detach(); } catch { }
     }
