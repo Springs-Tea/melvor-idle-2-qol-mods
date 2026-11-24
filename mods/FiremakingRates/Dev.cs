@@ -37,12 +37,15 @@ namespace FiremakingRates;
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
 // everything back (-Text 'fail=click'). Built on Woodcutting Rates' request as merged (mods/WoodcuttingRates/Dev.cs, after
 // its six turns and four code reviews), for the Firemaking page.
-// It only looks, points, and clicks the mod's own controls and, in step 9, a log's line, the page's own category button
-// and the handlers of the page's own log button for the same log: nothing is started or stopped, the page's Start button
-// and every control of the bonfire are never named, pressed or pointed at, no stop condition is set, nothing is spent.
-// What the request changes on the page is its selected category, its selected log and the scroll of its list of logs,
-// in step 9 only, and it puts each back through the game's public members a click on a line uses
-// (FiremakingActionComponent.SelectRecipe, SelectCategory), never by setting what the page keeps behind them. A click is
+// It only looks, points, and clicks the mod's own controls and, in step 9, a log's line and the page's own category and
+// log buttons for the same log, always with the pointer: nothing is started or stopped, the page's Start button and every
+// control of the bonfire are never named, pressed or pointed at, no stop condition is set, nothing is spent. What the
+// request changes on the page is its selected category, its selected log and the scroll of its list of logs, in step 9
+// only, and it puts each back through the game's public members a click on a line uses (FiremakingActionComponent.
+// SelectCategory, SelectRecipe), never by setting what the page keeps behind them. The rule of lesson 56: nothing is
+// selected while a log burns. Whether one burns is read again (LogRates.IsBurning, the widest test) on the tick of every
+// press and of every put-back; while one burns, the click is one that only scrolls, the page's own buttons are not
+// pressed, and a selection that waits for its put-back is not put back, said NOT PUT BACK. A click is
 // made in two steps (DevPress): the pointer is put on the control, and a later step presses only when the game says the
 // pointer is on that control; a control of the game under the mod's own window is pointed at beside it, or not at all
 // (said at once). Nothing is pointed at or pressed while somebody is at the mouse: a step waits until the real pointer
@@ -79,25 +82,30 @@ namespace FiremakingRates;
 //     of the column with the longest tip: shot-firemaking-tooltip.png, shot-firemaking-header-tooltip.png and "Dev:
 //     tooltip". Then clicks "XP": "Dev: order" and crop-firemaking-sorted.png.
 //  8. (the end of the list, as part of 6)
-//  9. "Dev: click": only when the page shows a category and a log, so that both can be put back: clicks a line of a log
-//     the page does not show, first an unlocked one of another category, and reads back the page's selected category and
-//     log, what the page shows in its own words (the selected log's name, the list's category), the lit line, the window,
-//     and what firemaking is doing before and after, with every game event about them heard meanwhile (the action's
-//     Started and Stopped, its timer's Started and Stopped, CreatingRecipeChanged, the bonfire's IsActiveChanged):
-//     BURNING STARTED, BURNING STOPPED, THE LOG BURNING CHANGED, THE FIRE'S TIMER STARTED or STOPPED, THE BONFIRE CHANGED,
-//     THE STOP CHANGED, NOT OPENED, THE PAGE SHOWS ANOTHER LOG and THE WINDOW CLOSED mark what must not happen. Picture
-//     shot-firemaking-clicked.png, the log's button proved beside the window. Puts the selection back and, two frames
-//     later, the scroll; presses the page's own category button for the same category with the pointer as a player
-//     would, and the handlers of the page's own button of the log (BaseButtonContainer.Pressed, as Fishing Rates'
-//     request presses its spot buttons), and compares (DIFFER, EVENTS DIFFER); then puts the selection and the scroll
-//     back again. Each part (category, log, scroll) is put back only while it is still exactly what the request left,
-//     read once the page settled; anything else is the player's and is left, said in one line (the rule of step 11).
+//  9. "Dev: click": only when the page shows a category and a log, so that both can be put back. While nothing burns: clicks
+//     a line of a log the page does not show, first an unlocked one of another category. While a log burns: clicks only a
+//     line whose click scrolls the page's list (a log of the category the page shows whose button is out of sight), or
+//     none, and SELECTED WHILE A LOG BURNS marks a selection that changed anyway. When the burning changed between the
+//     choice and the press, the click is not made. Reads back the page's selected category and log, what the page shows
+//     in its own words (the selected log's name, the list's category), the lit line, the window, and what firemaking is
+//     doing before and after, with every game event about them heard meanwhile (the action's Started and Stopped, its
+//     timer's Started and Stopped apart from a fire's own restart, CreatingRecipeChanged, the bonfire's IsActiveChanged):
+//     BURNING STARTED, BURNING STOPPED, THE LOG BURNING CHANGED, THE FIRE WAS RESET, THE BONFIRE CHANGED, THE STOP CHANGED,
+//     NOT OPENED, THE PAGE SHOWS ANOTHER LOG and THE WINDOW CLOSED mark what must not happen. Picture
+//     shot-firemaking-clicked.png, the log's button proved beside the window. Puts the selection back and, a tick after
+//     the page settled, the scroll; then, only while nothing burns, presses the page's own category button and the page's
+//     own button of the log with the pointer as a player would, each in two steps behind the hand guard, and compares
+//     (DIFFER, EVENTS DIFFER); then puts the selection and the scroll back again. Each part is put back only while it is
+//     still exactly what the request left, read once the page settled; anything else is the player's and is left, said in
+//     one line (the rule of step 11).
 // 10. "Dev: size": the window at its smallest and at its largest size (crop-firemaking-smallest.png,
 //     crop-firemaking-largest.png), LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both. Closes
 //     the window with its X: shot-firemaking-closed.png.
 // 11. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
-//     closed and folded as it was, the page's selected log and category, and the scroll of its list two frames later,
-//     each only if it is still as the request left it (otherwise the player changed it, and it is left as he did); reads
+//     closed and folded as it was, the page's selected category and log (in the click's order, each read again after
+//     every member call and put back once more when the other call moved it; never while a log burns), and the scroll of
+//     its list a tick later, each only if it is still as the request left it (otherwise the player changed it, and it is
+//     left as he did); reads
 //     the Firemaking page back while it is still on the screen; then the page that was on the screen, only if the
 //     request opened Firemaking itself, and the pointer where the real one is. Woodcutting Rates' one rule for each part
 //     of the page, each on its own: what the request left on a part is read from the page once the page has settled
@@ -107,7 +115,9 @@ namespace FiremakingRates;
 //     part's put-back (a category of his takes the scroll with it: the list is his category's then). The keyboard focus
 //     is taken off a control right after the request's own press of it, if it has it (DevFocusOff); nothing is given
 //     back. Every part (settings.json, the window, the selection, the scroll, the page, the pointer) is put back in its
-//     own try, with one line: a part that fails is NOT AS IT WAS, and the next part runs all the same.
+//     own try, with one line: a part that fails is NOT AS IT WAS, and the next part runs all the same. The category and
+//     the log are one selection here: a change of his to either lets go of both, and of the scroll, since putting one
+//     back through the members may move the other.
 // 12. Reads the rest back from the screen, the game and the disk, what firemaking is doing too, and says in its last line
 //     what was put back, with NOT AS IT WAS for anything that is not, and for any put-back on the way that was not, and
 //     NOT READ BACK for what could not be read. What the player changed himself is said as his, and is no fault.
@@ -326,6 +336,8 @@ public partial class FiremakingRatesMod
 
     void DevEnd(string result)
     {
+        // A scroll of the window's own still waiting for drawn frames is dropped: nothing moves his list after the request.
+        _scrollTo = null;
         DevLog("Firemaking Rates check " + result);
         _devSteps.Clear();
         _devAt = 0;
@@ -410,30 +422,28 @@ public partial class FiremakingRatesMod
     }
 
     // Each part the request owns, read again: one that is not exactly what the request left is the player's. The request
-    // lets go of it (nothing of it is put back, and the read back says so). A category of his takes the scroll with it,
-    // since the list scrolled is then his category's; a log of his or a scroll of his touches no other part. Returns the
-    // parts he changed, in words.
+    // lets go of it (nothing of it is put back, and the read back says so). The category and the log are one selection on
+    // this page: a change of his to either lets go of both, and of the scroll, since a member call that puts one back may
+    // move the other (SelectRecipe may bring its own category, SelectCategory may move the log), and the list scrolled is
+    // then his. A scroll of his touches no other part. Returns the parts he changed, in words.
     List<string> DevHisNow()
     {
         var moved = new List<string>();
         var action = _firemaking!.Action;
-        if (_devOwnCategory is { } category && !ReferenceEquals(action.SelectedCategory, category.Value))
+        bool categoryHis = _devOwnCategory is { } category && !ReferenceEquals(action.SelectedCategory, category.Value);
+        bool logHis = _devOwnLog is { } log && !ReferenceEquals(action.SelectedRecipe, log.Value);
+        if (categoryHis || logHis)
         {
-            moved.Add($"the category (now {Id(action.SelectedCategory)}, the request left {Id(category.Value)})");
-            _devOwnCategory = null;
-            _devHis.Add("category");
+            moved.Add($"the selection (now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}, the request left " +
+                $"{(_devOwnCategory is { } c ? Id(c.Value) : "-")} / {(_devOwnLog is { } l ? Id(l.Value) : "-")})");
+            if (_devOwnCategory != null) { _devOwnCategory = null; _devHis.Add("category"); }
+            if (_devOwnLog != null) { _devOwnLog = null; _devHis.Add("log"); }
             if (_devOwnScroll != null)
             {
-                moved.Add("the scroll with it (the list is his category's now)");
+                moved.Add("the scroll with it (the list is his selection's now)");
                 _devOwnScroll = null;
                 _devHis.Add("scroll");
             }
-        }
-        if (_devOwnLog is { } log && !ReferenceEquals(action.SelectedRecipe, log.Value))
-        {
-            moved.Add($"the log (now {Id(action.SelectedRecipe)}, the request left {Id(log.Value)})");
-            _devOwnLog = null;
-            _devHis.Add("log");
         }
         if (_devOwnScroll != null && !ReferenceEquals(action.SelectedCategory, _devScrollUnder))
         {
@@ -717,8 +727,9 @@ public partial class FiremakingRatesMod
         DevClickEvents? events = null;
         Image? beforeClick = null;
         string burningBefore = "", ours = "", ourEvents = "", pageBack = "";
-        bool categoryChanged = false, compareSkipped = false, compared = false;
+        bool categoryChanged = false, compareSkipped = false, compared = false, clickedWhileBurning = false;
         ActiveFiremakingCategory? categoryBeforeClick = null;
+        ActiveFiremakingRecipe? logBeforeClick = null;
 
         // The scroll put back on its own, a tick after the page settled from the selection's put-back (DevScrollBack), and
         // one line that says the selection's put-back and the scroll's together.
@@ -735,7 +746,7 @@ public partial class FiremakingRatesMod
                 string said = DevJoin(pageBack, scrollWords);
                 if (said.Length == 0) said = "nothing of the request's is left on the page";
                 DevLog($"{head} {said}; drawn {DevLook() ?? "NOT FOUND"}");
-                if (said.Contains("NOT AS IT WAS")) _devOnTheWay.Add($"{head} {said}");
+                if (said.Contains("NOT AS IT WAS") || said.Contains("NOT PUT BACK")) _devOnTheWay.Add($"{head} {said}");
                 pageBack = "";
                 return true;
             });
@@ -751,17 +762,34 @@ public partial class FiremakingRatesMod
                     "request cannot take off (DeselectRecipe is never called), so no line is clicked. Select a log on the Firemaking page by hand and send the request again.");
                 return true;
             }
-            var lines = _list!.DevLines().Select(l => l.Log).Where(t => t.Clickable && !t.OnPage && !t.Burning).ToList();
-            // First an unlocked log of another category than the page shows (the category and the log change), then another
-            // log of the same category, then a locked one (its category only), then any line a click changes.
-            clicked = lines.FirstOrDefault(t => t.Click == Opens.Log && !t.CategoryOnPage) ?? lines.FirstOrDefault(t => t.Click == Opens.Log) ??
-                lines.FirstOrDefault(t => t.Click == Opens.Category && !t.CategoryOnPage) ?? _list.DevLines().Select(l => l.Log).FirstOrDefault(t => t.Clickable);
+            Refresh();
+            clickedWhileBurning = DevBurningWide();
+            if (clickedWhileBurning)
+            {
+                // Lesson 56: while a log burns nothing is selected; the only click made is one that only scrolls.
+                clicked = _list!.DevLines().Select(l => l.Log).FirstOrDefault(t => t.Click == Opens.Scroll && t.Clickable);
+                if (clicked == null)
+                {
+                    DevLog("click | a log burns: a click selects nothing, and no line's click would scroll the page's list (every button of the category shown is in sight " +
+                        "beside the window, or not shown): no line is clicked, and the page's own buttons are not pressed");
+                    return true;
+                }
+            }
+            else
+            {
+                var lines = _list!.DevLines().Select(l => l.Log).Where(t => t.Clickable && !t.OnPage && !t.Burning).ToList();
+                // First an unlocked log of another category than the page shows (the category and the log change), then
+                // another log of the same category, then a locked one (its category only), then any line a click changes.
+                clicked = lines.FirstOrDefault(t => t.Click == Opens.Log && !t.CategoryOnPage) ?? lines.FirstOrDefault(t => t.Click == Opens.Log) ??
+                    lines.FirstOrDefault(t => t.Click == Opens.Category && !t.CategoryOnPage) ?? _list.DevLines().Select(l => l.Log).FirstOrDefault(t => t.Clickable);
+            }
             if (clicked == null) { DevLog("click | no line opens something a click would change: none is clicked."); return true; }
-            _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
+            _list!.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             burningBefore = DevBurning();
             categoryBeforeClick = action.SelectedCategory;
+            logBeforeClick = action.SelectedRecipe;
             DevLog($"click | the line of {clicked.Active.Recipe.Id} ({clicked.Active.Category?.Id ?? "no category"}{(clicked.OnPage ? ", the log the page shows" : "")}, " +
-                $"a click opens {clicked.Click}); before: {DevPageState(clicked.Active)}; {burningBefore}");
+                $"a click opens {clicked.Click}, a log burns: {clickedWhileBurning}); before: {DevPageState(clicked.Active)}; {burningBefore}");
             return true;
         });
         Add("the screen before the click", () =>
@@ -774,6 +802,19 @@ public partial class FiremakingRatesMod
         Add("click the line", () =>
         {
             if (clicked == null) return true;
+            // Read again on the tick of the press: when a log began or stopped burning since the line was chosen, its click
+            // would do something else than chosen, and it is not made.
+            if (DevBurningWide() != clickedWhileBurning)
+            {
+                string words = $"the click on the line of {clicked.Active.Recipe.Id} NOT MADE: a log {(clickedWhileBurning ? "no longer burns" : "burns now")}, which changes what the click does";
+                if (_devAim != null) { _devAim = null; DevPointerBack(); }
+                DevLog("click | " + words);
+                _devOnTheWay.Add(words);
+                events?.Dispose();
+                events = null;
+                clicked = null;
+                return true;
+            }
             events ??= new DevClickEvents(_firemaking!, DevLog);
             LogRates line = clicked;
             bool? pressed = DevPagePress(() => DevClickLine(line), before, $"the click on the line of {line.Active.Recipe.Id}");
@@ -810,8 +851,12 @@ public partial class FiremakingRatesMod
                         : "  NOT IN SIGHT, AND THE LINE'S TOOLTIP DOES NOT SAY THERE IS NO ROOM",
                 };
             var litMeant = action.SelectedRecipe is { } selected && _list.DevLines().Any(l => ReferenceEquals(l.Log.Active, selected)) ? [selected.Recipe.Id] : new List<string>();
+            // While a log burns the click only scrolls: the page's selection must be exactly as before it.
+            string selectedWhileBurning = clickedWhileBurning && (!ReferenceEquals(action.SelectedCategory, categoryBeforeClick) || !ReferenceEquals(action.SelectedRecipe, logBeforeClick))
+                ? $"  SELECTED WHILE A LOG BURNS (before {Id(categoryBeforeClick)} / {Id(logBeforeClick)})" : "";
+            if (clickedWhileBurning) { opened = true; nameRight = true; }
             DevLog($"click | after the click on the line of {log.Recipe.Id}: {DevPageState(log)}; the page's own words: the selected log '{shownName}'; " +
-                $"the game's events [{ourEvents}], {events.Fires} fires burnt meanwhile; {burning}" + (opened ? "" : "  NOT OPENED") + (nameRight ? "" : "  THE PAGE SHOWS ANOTHER LOG") + sight +
+                $"the game's events [{ourEvents}], {events.Fires} fires burnt meanwhile; {burning}" + selectedWhileBurning + (opened ? "" : "  NOT OPENED") + (nameRight ? "" : "  THE PAGE SHOWS ANOTHER LOG") + sight +
                 DevBurningMarks(burningBefore, burning) + DevEventMarks(ourEvents) +
                 (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") + (IsOpen ? "" : "  THE WINDOW CLOSED"));
             Shot("clicked");
@@ -827,6 +872,15 @@ public partial class FiremakingRatesMod
         {
             if (clicked == null) return true;
             var action = _firemaking!.Action;
+            // Lesson 56: the page's own buttons select, and nothing is selected while a log burns, read on every tick of
+            // this step, the tick of the press too; a pointer already put on the button is taken back.
+            if (clickedWhileBurning || DevBurningWide())
+            {
+                compareSkipped = true;
+                if (_devAim != null) { _devAim = null; DevPointerBack(); }
+                DevLog("click | a log burns: the page's own category and log buttons are not pressed, and the click is not compared with them");
+                return true;
+            }
             // He is using the page: the comparison, a development check only, is not made over it (Woodcutting Rates' code
             // review of turn 4, polish).
             if (_devHis.Count > 0 && !compareSkipped)
@@ -867,22 +921,32 @@ public partial class FiremakingRatesMod
                 DevLog($"click | the page shows the category {Id(action.SelectedCategory)}, not {log.Category?.Id}: the log's own button is not there to press, and the click is not compared");
                 return true;
             }
-            CraftingRecipeButton button = Native.Card(_page!, log) ?? throw new InvalidOperationException($"the page's list has no button for {log.Recipe.Id}");
-            events ??= new DevClickEvents(_firemaking!, DevLog);
-            bool? pressed = DevPagePress(() =>
+            // Lesson 56, read again on every tick of this step, the tick of the press too.
+            if (DevBurningWide())
             {
-                Action? handlers = DevNative.PressedHandlers(button);
-                DevLog($"click | the page's own button of {log.Recipe.Id} is pressed through the {handlers?.GetInvocationList().Length ?? 0} handlers of its click " +
-                    "(BaseButtonContainer.Pressed), as Fishing Rates' request presses its spot buttons");
-                handlers?.Invoke();
+                compareSkipped = true;
+                if (_devAim != null) { _devAim = null; DevPointerBack(); }
+                DevLog($"click | a log burns now: the page's own button of {log.Recipe.Id} is not pressed, and the click is not compared with it");
                 return true;
-            }, before, $"the press of the page's own button of {log.Recipe.Id}, to compare");
+            }
+            CraftingRecipeButton button = Native.Card(_page!, log) ?? throw new InvalidOperationException($"the page's list has no button for {log.Recipe.Id}");
+            // With the pointer, in two steps behind the hand guard, as the category button (the code review of turn 1, fault
+            // 3): a disabled button, or one that cannot be seen beside the window, is not pressed.
+            if (_devAim != button && (button.Disabled || !button.IsVisibleInTree() || !DevSight(button).HasArea()))
+            {
+                compareSkipped = true;
+                DevLog($"click | the page's own button of {log.Recipe.Id} is {(button.Disabled ? "disabled" : "not in sight beside the mod's window")}: it is not pressed, and the click is not compared with it");
+                return true;
+            }
+            events ??= new DevClickEvents(_firemaking!, DevLog);
+            bool? pressed = DevPagePress(() => DevPress(button, $"the page's own button of {log.Recipe.Id}"),
+                before, $"the press of the page's own button of {log.Recipe.Id}, to compare");
             if (pressed != null) return pressed.Value;
             compareSkipped = true;
             events.Dispose();
             events = null;
             return true;
-        });
+        }, PointerStepTime);
         Add("the page's buttons compared", () =>
         {
             if (clicked == null || compareSkipped || events == null) return true;
@@ -1101,8 +1165,9 @@ public partial class FiremakingRatesMod
         {
             if (!line.StartsWith("fail=")) { DevLog($"the request's line '{line}' is not understood and left out."); continue; }
             string name = line["fail=".Length..].Trim();
-            // "fail=click" names the click on a line.
-            if (name == "click") name = "click the line";
+            // "fail=click" fails right after the click on a line, so that what the click left on the page (its category,
+            // log and scroll) is put back by the final put-back (the code review of turn 1, fault 5).
+            if (name == "click") name = "the log shown";
             if (_devSteps.Take(_devPutBackAt).Any(s => s.Name == name))
             {
                 _devFailOnPurpose = name;
@@ -1117,6 +1182,9 @@ public partial class FiremakingRatesMod
         ?? throw new InvalidOperationException("The window has no fold button.");
 
     bool DevBurningNow() => _game!.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, _firemaking));
+
+    // A log burns, by the widest test (LogRates.IsBurning), read again before every press and every put-back (lesson 56).
+    bool DevBurningWide() => LogRates.IsBurning(_firemaking!, _game);
 
     // The stop condition and goal of every action-until component of Firemaking, if the game gives it one: no click of the
     // request's may set or clear one.
@@ -1256,7 +1324,9 @@ public partial class FiremakingRatesMod
             string sight = card is { } c && c.IsVisibleInTree() ? DevCardSight(card, false) : card == null ? "its button not in the list (another category)" : "its button hidden";
             if (card != null && card.IsVisibleInTree()) any ??= card;
             bool room = t.Sight is CardSight.UnderWindow or CardSight.NoRoom, tells = button.TooltipText.Contains("has no room");
-            bool scrollOnly = t.CategoryOnPage && (t.OnPage || t.Click == Opens.Category) && t.Click != Opens.Nothing;
+            // A line whose click can only scroll: any line while a log burns, or the log shown, or a locked one of the
+            // category shown.
+            bool scrollOnly = t.Click == Opens.Scroll || (t.CategoryOnPage && (t.OnPage || t.Click == Opens.Category) && t.Click != Opens.Nothing);
             string marks = (scrollOnly && card != null && card.IsVisibleInTree() && t.Clickable != (t.Sight == CardSight.Scroll) ? "  MISMATCH: its line clickable " + t.Clickable : "") +
                 (room && !tells ? "  NOT SAID in its tooltip" : "") + (!room && tells ? "  SAID in its tooltip WITH ROOM" : "");
             said.Add($"{t.Active.Recipe.LocalId}: {sight}, its line clickable {t.Clickable}{marks}");
@@ -1277,59 +1347,81 @@ public partial class FiremakingRatesMod
             $"{under} have no room beside it, {none} no room at all; {lines.Count(t => t.Clickable)} of the {lines.Count} lines are clickable");
     }
 
-    // The page's selection and scroll as they were just before the request's first change (_devOrigin), each part on its
-    // own, by Woodcutting Rates' one rule: a part the request owns is read again; still exactly what the request left, it
-    // is put back; otherwise the player changed it, and it is his: left, said, never taken as the request's own, and it
-    // does not stop another part's put-back. The log goes back first, then the category (a log of another category than
-    // the one the page showed may bring its own category with it), each through the game's public member a click on a
-    // line uses (SelectRecipe, SelectCategory), never by setting what the page keeps behind them. A log is never taken off
-    // (DeselectRecipe is never called): when the page showed none, the log stays and is NOT AS IT WAS (the click step
-    // makes no click then). A part the request cannot put back stays its own, so that the final put-back tries again. The
-    // scroll is put back on its own afterwards (DevScrollBack).
+    // The page's selection as it was just before the request's first change (_devOrigin), by Woodcutting Rates' one rule:
+    // a part the request owns is read again; still exactly what the request left, it is put back; otherwise the player
+    // changed it, and it is his (DevHisNow lets go of the whole selection and the scroll then). Through the game's public
+    // members a click on a line uses, in the click's order, category then log (SelectCategory, SelectRecipe), never by
+    // setting what the page keeps behind them. Both parts are read again after every member call, and when one call moved
+    // the other part, that part is put back once more (the code review of turn 1, fault 4); a part that is still not as
+    // it was stays the request's own, so that the final put-back tries again. Never while a log burns (lesson 56, read on
+    // this tick): the selection is then NOT PUT BACK and stays the request's own. A log is never taken off (DeselectRecipe
+    // is never called) and no member shows no category: when the page showed none, that part is NOT AS IT WAS (the click
+    // step makes no click then). A scroll of the window's own to a log's button still waiting is dropped, so that it
+    // cannot move the list after the put-back (fault 10). The scroll is put back on its own afterwards (DevScrollBack).
     string DevSelectionBack()
     {
+        _scrollTo = null;
         if (_devOrigin is not { } origin || !DevOwnsAny) return "nothing of the request's is left on the page";
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Firemaking page is gone: its selection and scroll NOT AS IT WAS (not put back)";
         var action = _firemaking!.Action;
         var said = new List<string>();
         foreach (string part in DevHisNow()) said.Add($"{part} is the player's, and is left");
+        bool CategoryWrong() => _devOwnCategory != null && !ReferenceEquals(action.SelectedCategory, origin.Category);
+        bool LogWrong() => _devOwnLog != null && !ReferenceEquals(action.SelectedRecipe, origin.Log);
+        if ((CategoryWrong() || LogWrong()) && DevBurningWide())
+            return DevJoin(said.Append($"the selection NOT PUT BACK: a log burns now, and selecting is not done while one burns; it stays " +
+                $"{Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)} (before the request's first change {Id(origin.Category)} / {Id(origin.Log)}), the request's own " +
+                "for the final put-back").ToArray());
+        if (CategoryWrong() && origin.Category == null)
+        {
+            _devOwnCategory = null;
+            said.Add($"the category NOT AS IT WAS: it stays {Id(action.SelectedCategory)}, since the page showed none before and no member shows none");
+        }
+        if (LogWrong() && origin.Log == null)
+        {
+            _devOwnLog = null;
+            said.Add($"the log NOT AS IT WAS: it stays {Id(action.SelectedRecipe)}, since the page showed none before and a log is never taken off (DeselectRecipe is never called)");
+        }
         bool pressed = false;
-        if (_devOwnLog is { } log)
+        var calls = new List<string>();
+        // Twice at most: the second round puts back what the first round's other call moved.
+        for (int round = 0; round < 2 && (CategoryWrong() || LogWrong()); round++)
         {
-            if (ReferenceEquals(action.SelectedRecipe, origin.Log)) { _devOwnLog = null; said.Add("the log as it was"); }
-            else if (origin.Log == null)
+            if (CategoryWrong())
             {
-                _devOwnLog = null;
-                said.Add($"the log NOT AS IT WAS: it stays {Id(log.Value)}, since the page showed none before and a log is never taken off (DeselectRecipe is never called)");
-            }
-            else
-            {
-                action.SelectRecipe(origin.Log);
+                action.SelectCategory(origin.Category!);
+                calls.Add($"SelectCategory({Id(origin.Category)}): now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}");
                 pressed = true;
-                if (ReferenceEquals(action.SelectedRecipe, origin.Log)) { _devOwnLog = null; said.Add($"the log put back to {Id(origin.Log)} (SelectRecipe)"); }
-                else said.Add($"the log NOT AS IT WAS: SelectRecipe({Id(origin.Log)}) left {Id(action.SelectedRecipe)}, which stays the request's own for the final put-back");
+            }
+            if (LogWrong())
+            {
+                action.SelectRecipe(origin.Log!);
+                calls.Add($"SelectRecipe({Id(origin.Log)}): now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}");
+                pressed = true;
             }
         }
-        if (_devOwnCategory is { } category)
+        // A part still not as it was stays the request's own, with what the request's own put-back left on it, so that a
+        // later reading never takes that for a change of his (Woodcutting Rates' review 3: the request's own write stays
+        // its own).
+        if (_devOwnCategory != null)
         {
-            if (ReferenceEquals(action.SelectedCategory, origin.Category)) { _devOwnCategory = null; said.Add("the category as it was"); }
-            else if (origin.Category == null)
-            {
-                _devOwnCategory = null;
-                said.Add($"the category NOT AS IT WAS: it stays {Id(category.Value)}, since the page showed none before and no member shows none");
-            }
+            if (!CategoryWrong()) { _devOwnCategory = null; said.Add(pressed ? $"the category put back to {Id(origin.Category)}" : "the category as it was"); }
             else
             {
-                ActiveFiremakingRecipe? logBefore = action.SelectedRecipe;
-                action.SelectCategory(origin.Category);
-                pressed = true;
-                if (ReferenceEquals(action.SelectedCategory, origin.Category)) { _devOwnCategory = null; said.Add($"the category put back to {Id(origin.Category)} (SelectCategory)"); }
-                else said.Add($"the category NOT AS IT WAS: SelectCategory({Id(origin.Category)}) left {Id(action.SelectedCategory)}, which stays the request's own for the final put-back");
-                // A category's selection that moves the page's log: said, and the read back holds the log against what it was.
-                if (!ReferenceEquals(action.SelectedRecipe, logBefore))
-                    said.Add($"the log NOT AS IT WAS after the category's put-back: SelectCategory moved it from {Id(logBefore)} to {Id(action.SelectedRecipe)}");
+                _devOwnCategory = new(action.SelectedCategory);
+                said.Add($"the category NOT AS IT WAS: it reads {Id(action.SelectedCategory)}, which stays the request's own for the final put-back");
             }
         }
+        if (_devOwnLog != null)
+        {
+            if (!LogWrong()) { _devOwnLog = null; said.Add(pressed ? $"the log put back to {Id(origin.Log)}" : "the log as it was"); }
+            else
+            {
+                _devOwnLog = new(action.SelectedRecipe);
+                said.Add($"the log NOT AS IT WAS: it reads {Id(action.SelectedRecipe)}, which stays the request's own for the final put-back");
+            }
+        }
+        if (calls.Count > 0) said.Add($"by [{string.Join("; ", calls)}]");
         // The put-back lays the list out anew: the scroll the request still owns is read again once it settled.
         if (pressed) _devSettle = ((long)Engine.GetProcessFrames(), false);
         return DevJoin(said.ToArray());
@@ -1517,7 +1609,7 @@ public partial class FiremakingRatesMod
             string Items(IEnumerable<ValueStatNode<GamesByMalcs.Melvor2.Data.Items.ItemQuantityChance>>? nodes) =>
                 string.Join(", ", (nodes ?? []).Select(n => $"{n?.Value?.Item?.Id} {R(n?.Value?.Chance ?? double.NaN)} x{n?.Value?.Quantity}"));
             DevLog($"row | {when} | {recipe.Id} ({recipe.Category?.Id}) | locked={t.Locked}, level={t.Level}, needs '{t.Needs}', on the page={t.OnPage}, burning={t.Burning}, " +
-                $"its category on the page={t.CategoryOnPage}, a click opens {t.Click} (held while burning {t.HeldWhileBurning}), clickable={t.Clickable} | " +
+                $"its category on the page={t.CategoryOnPage}, a log burns={t.AnyBurning}, a click opens {t.Click}, clickable={t.Clickable}, its button {t.Sight?.ToString() ?? "-"} | " +
                 $"raw: interval {R(s.Interval.Value)} ms (the recipe's {recipe.BaseInterval}), XP {R(s.Experience.XpToAdd.Value)} (the recipe's {recipe.BaseExperience}), " +
                 $"item cost [{string.Join(", ", (s.ItemCost?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} x{n?.Value?.Quantity}"))}], currency cost " +
                 $"[{string.Join(", ", (s.CurrencyCost?.Values ?? []).Select(n => $"{n?.Value?.Currency?.Id} x{n?.Value?.Quantity}"))}], product chances [{Items(s.ProductChances?.Values)}], " +
@@ -1530,7 +1622,7 @@ public partial class FiremakingRatesMod
                 $"cost {R(t.CostPerHour)} gold/h [{string.Join(", ", t.Costs.Select(c => $"{c.Item.Id} {R(c.PerHour)}/h at {R(c.Price)} = {R(c.GoldPerHour)}"))}; " +
                 $"{string.Join(", ", t.CurrencyCosts.Select(c => $"{c.Currency.Id} {R(c.PerHour)}/h"))}], coins {t.Coins?.Id} {t.CoinsEach} a fire = {R(t.CoinsPerHour)}/h, " +
                 $"items [{string.Join(", ", t.Products.Select(p => $"{p.Item.Id} {R(p.Chance)} x{p.Quantity} each {R(p.Each)} = {R(p.PerHour)}/h, gold {R(p.GoldPerHour)}/h"))}], " +
-                $"gold {R(t.GoldPerHour)}/h, bonfire {R(t.BonfireSeconds)} s a fire (an hour {R(t.BonfirePerHour)}), the bank's stock lasts {R(t.SecondsOfStock)} s | " +
+                $"gold {R(t.GoldPerHour)}/h, the game's bonfire time (raw, not shown) {R(t.BonfireRaw)}, the bank's stock lasts {R(t.SecondsOfStock)} s | " +
                 $"events [{string.Join(", ", t.Events.Select(e => $"{e.Name}: {e.Reward}"))}] | picture {DevTexture(picture)}" +
                 (picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : ""));
             DevLog($"row | {when} | drawn {drawn}");
@@ -1541,7 +1633,7 @@ public partial class FiremakingRatesMod
         DevLog($"rows | {when} | {count} lines, {DevRowsInSight()} in sight; the game has {action.ActiveRecipes.Count} logs in {action.ActiveCategories.Count} categories, " +
             $"{logs.Count} listed, {logs.Count(t => t.Locked)} locked; columns [{string.Join(", ", _list!.DevColumns)}]; the rules: XP {DevRule(LogRates.XpRule)}, " +
             $"logs {DevRule(LogRates.LogsRule)}, items {DevRule(LogRates.ItemsRule)}, coins {DevRule(LogRates.CoinsRule)}, bonfire {DevRule(LogRates.BonfireRule)}; " +
-            $"a click while a log burns: {LogRates.WhileBurning}" + (count != logs.Count ? "  MISMATCH" : ""));
+            $"a log burns now (the widest test): {DevBurningWide()}, so a click {(DevBurningWide() ? "only scrolls" : "selects")}" + (count != logs.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
     }
 
@@ -1649,7 +1741,7 @@ public partial class FiremakingRatesMod
             try
             {
                 if (log is not ActiveFiremakingRecipe active) { DevLog($"game | a button bound to {log.GetType().Name}, not a log of Firemaking"); continue; }
-                DevButton(active, button, logs.TryGetValue(active, out LogRates? listed) ? listed : LogRates.Read(active, _firemaking, _bank, Shown, false));
+                DevButton(active, button, logs.TryGetValue(active, out LogRates? listed) ? listed : LogRates.Read(active, _firemaking, _bank, Shown, false, DevBurningWide()));
             }
             catch (Exception e) { DevLog($"game | a button could not be read: {e.GetType().Name}: {e.Message}"); }
         }
@@ -1681,16 +1773,23 @@ public partial class FiremakingRatesMod
             DevLog($"game | the page shows no log: its panel '{DevPanelName()}', the burning label '{DevNative.BurningLabel(view)?.Text}'");
             return;
         }
-        LogRates t = logs.TryGetValue(active, out LogRates? listed) ? listed : LogRates.Read(active, _firemaking, _bank, Shown, false);
+        LogRates t = logs.TryGetValue(active, out LogRates? listed) ? listed : LogRates.Read(active, _firemaking, _bank, Shown, false, DevBurningWide());
         DoubleFormattedLabel? interval = DevNative.IntervalLabel(view), bonfire = DevNative.BonfireTimeLabel(view);
         FiremakingBonfireView? bonfireView = DevNative.BonfireView(_page!);
         DoubleFormattedLabel? perLog = bonfireView != null ? DevNative.BonfireTimePerLog(bonfireView) : null;
         // A label's number against ours, in seconds or in milliseconds: which it is.
         static string Unit(DoubleFormattedLabel? label, double seconds) => label == null ? "not found"
             : $"'{label.Text}' ({R(label.Value)}): " + (Math.Abs(label.Value - seconds) < 0.0005 ? "ours in seconds" : Math.Abs(label.Value - seconds * 1000) < 0.5 ? "ours in milliseconds" : $"ours {R(seconds)} s  DIFFER");
+        // A label's number against the game's raw number, unit unknown: which reading of the raw number it shows. These
+        // settle LogRates.BonfireRule's unit; the window shows nothing of the bonfire until then.
+        static string Raw(DoubleFormattedLabel? label, double raw) => label == null ? "not found"
+            : $"'{label.Text}' ({R(label.Value)}): " + (Math.Abs(label.Value - raw) < 1e-6 ? "the raw number as it is"
+                : Math.Abs(label.Value - raw / 1000) < 1e-6 ? "the raw number over 1000 (THE RAW NUMBER IS IN MILLISECONDS IF THE LABEL IS IN SECONDS)"
+                : Math.Abs(label.Value - raw * 1000) < 1e-3 ? "the raw number times 1000" : "NONE OF THE RAW NUMBER'S READINGS");
         DevLog($"game | the selected log {active.Recipe.Id}: its panel '{DevPanelName()}'{(DevWordsOf(DevPanelName()) == DevWordsOf(active.Recipe.DisplayName.Text) ? "" : "  ANOTHER NAME")}, " +
             $"its picture {DevTexture(DevNative.SelectedIcon(view)?.Texture)} (ours {DevTexture(t.Picture)}), the burning label '{DevNative.BurningLabel(view)?.Text}' | " +
-            $"time {Unit(interval, t.Seconds)} | bonfire time {Unit(bonfire, t.BonfireSeconds)} | the bonfire's time per log {Unit(perLog, t.BonfireSeconds)} | " +
+            $"time {Unit(interval, t.Seconds)} | the game's bonfire time of the log (raw) {R(t.BonfireRaw)}: the page's bonfire time {Raw(bonfire, t.BonfireRaw)}, " +
+            $"the bonfire's time per log {Raw(perLog, t.BonfireRaw)} | " +
             $"the bonfire: {(bonfireView == null ? "its part not found" : $"'{DevNative.BonfireStatus(bonfireView)?.Text}', time left '{DevNative.BonfireTimeLeft(bonfireView)?.Text}', " + $"most '{DevNative.BonfireMaxTime(bonfireView)?.Text}', time added '{DevNative.BonfireTimeAdded(bonfireView)?.Text}', '{DevWordsOf(DevNative.BonfireLogsInBank(bonfireView)?.Text ?? "")}'")}; " +
             $"its timer {R(_firemaking.Bonfire.DurationTimer.TimeLeft)} of {R(_firemaking.Bonfire.DurationTimer.MaxTime)}, the bonfire {_firemaking.Bonfire.CurrentBonfire?.Id} " +
             $"most {_firemaking.Bonfire.CurrentBonfire?.MaxDuration}, lit {_firemaking.Bonfire.IsActive}");
@@ -1886,7 +1985,7 @@ public partial class FiremakingRatesMod
             $"the log burnt {Id(action.CreatingRecipe)}, firemaking now: {DevBurningNow()} | the lit line{(lit.Count == 1 ? " is" : "s are")} " +
             $"{(lit.Count == 0 ? "none" : string.Join(", ", lit.Select(t => t.Recipe.Id)))} (drawn lit: {string.Join(", ", _list.DevLines().Where(l => l.Drawn.EndsWith("lit=True")).Select(l => l.Log.Active.Recipe.LocalId))})" +
             (right ? "" : "  MISMATCH") + $" | the lines that say they are burnt [{string.Join(", ", burning)}]" +
-            (burning.SequenceEqual(LogRates.IsBurning(action) && action.CreatingRecipe != null && _list.DevLines().Any(l => ReferenceEquals(l.Log.Active, action.CreatingRecipe)) ? [action.CreatingRecipe.Recipe.Id] : new List<string>()) ? "" : "  MISMATCH"));
+            (burning.SequenceEqual(DevBurningWide() && action.CreatingRecipe != null && _list.DevLines().Any(l => ReferenceEquals(l.Log.Active, action.CreatingRecipe)) ? [action.CreatingRecipe.Recipe.Id] : new List<string>()) ? "" : "  MISMATCH"));
     }
 
     string DevOrder(string when)
@@ -2138,16 +2237,17 @@ public partial class FiremakingRatesMod
     // read for what their numbers are (Mining Rates' break rule read "Base chance" and "Current chance" this way).
     string DevNumbersIn(string words, ActiveFiremakingRecipe log)
     {
-        LogRates t = LogRates.Read(log, _firemaking!, _bank, Shown, false);
+        LogRates t = LogRates.Read(log, _firemaking!, _bank, Shown, false, DevBurningWide());
         var known = new List<(string Name, double Value)>
         {
             ("the log's time in seconds", t.Seconds), ("the log's time in milliseconds", t.Seconds * 1000), ("the fires of an hour", t.FiresPerHour),
             ("the XP of a fire", t.XpEach), ("the XP of an hour (ours)", t.XpPerHour ?? double.NaN), ("the XP of a second", t.HasTime ? t.XpEach / t.Seconds : double.NaN),
             ("the doubling chance", t.DoublingChance), ("the preservation chance", t.PreservationChance), ("the logs burnt an hour (ours)", t.LogsPerHour ?? double.NaN),
-            ("the bonfire time of a fire in seconds", t.BonfireSeconds), ("the bonfire time of a fire in milliseconds", t.BonfireSeconds * 1000),
-            ("the bonfire time of an hour in seconds", t.BonfireSeconds * t.FiresPerHour), ("the bonfire time of an hour in minutes", t.BonfireSeconds * t.FiresPerHour / 60),
-            ("the coins of a fire", t.CoinsEach), ("the coins of an hour", t.CoinsPerHour ?? double.NaN), ("the bonfire's most time in seconds", _firemaking!.Bonfire.DurationTimer.MaxTime / 1000),
-            ("the bonfire's most time (raw)", _firemaking.Bonfire.DurationTimer.MaxTime),
+            ("the game's bonfire time of the log (raw)", t.BonfireRaw), ("the raw bonfire time over 1000", t.BonfireRaw / 1000),
+            ("the raw bonfire time times the fires of an hour", t.BonfireRaw * t.FiresPerHour), ("... over 1000", t.BonfireRaw * t.FiresPerHour / 1000),
+            ("... over 60,000 (minutes of milliseconds)", t.BonfireRaw * t.FiresPerHour / 60000),
+            ("the coins of a fire", t.CoinsEach), ("the coins of an hour", t.CoinsPerHour ?? double.NaN), ("the bonfire's most time (raw)", _firemaking!.Bonfire.DurationTimer.MaxTime),
+            ("the bonfire's most time over 1000", _firemaking.Bonfire.DurationTimer.MaxTime / 1000), ("the bonfire's time left (raw)", _firemaking.Bonfire.DurationTimer.TimeLeft),
         };
         var said = new List<string>();
         foreach (Match m in Regex.Matches(words, @"-?\d[\d,]*(?:\.\d+)?\s*%?"))

@@ -18,20 +18,23 @@ their chances (the doubling chance doubles them) and gives its coins (not double
 has measured them on a character's burning yet. Chances count as their long-run average.
 It is an estimate, not a promise.
 
-The best number of each column is gold (the most XP and gold, the least time and cost; the
-logs have no best); click a column's name to sort by it, and again to turn the order
+The best XP, gold and time are gold (the most XP and gold, the least time; the logs and the
+cost have no best); click a column's name to sort by it, and again to turn the order
 around. A log you cannot burn yet is greyed, with the level it needs. The log the
 Firemaking page shows has a lit outline. Hover a line for the whole hour: the time of a
 fire, the XP per hour and per fire, the logs burnt and how long the bank's last, what else
-a fire uses, the coins and items a fire gives with their chances, the game's bonfire time
-for the log, the gold and the cost of the hour, and the game's Firemaking events that may
-come, which are not counted.
+a fire uses, the coins and items a fire gives with their chances, the gold and the cost of
+the hour, and the game's Firemaking events that may come, which are not counted. The
+bonfire is not counted: the window does not know yet what a fire adds to it.
 
-Click a line to open that log on the Firemaking page: the page shows the log's category
-and selects the log, and its list scrolls until the log's button is in sight beside the
-window. When the page has no room for the button there, the line's tooltip says so: drag
-the window aside. Burning is not started or stopped, the Start button and the bonfire are
-not touched, and the window stays open where it is.
+While you are not burning, click a line to open that log on the Firemaking page: the page
+shows the log's category and selects the log, as your own clicks there would, and its list
+scrolls until the log's button is in sight beside the window. As after your own click, the
+selected log is then the one the page shows and its Start button would start. Nothing is
+started, and the window stays open where it is. While you burn a log, a click selects
+nothing: on a log of the category the page shows it only scrolls the page's list to it.
+When the page has no room for the button beside the window, the line's tooltip says so:
+drag the window aside.
 
 Until you move it, the window opens at the right side of the page, beside the page's list
 of logs. Drag the window to move it, drag its bottom right corner to resize it, fold it
@@ -46,5 +49,6 @@ INSTALL
 UNINSTALL
   Delete the folder mods\FiremakingRates
 
-Nothing in your save is changed.
+A click on a line changes only what your own click on the Firemaking page would; nothing
+else of your game is changed.
 Unofficial, fan-made. Not affiliated with Games by Malcs or Jagex.

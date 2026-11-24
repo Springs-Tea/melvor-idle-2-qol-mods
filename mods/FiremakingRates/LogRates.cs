@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GamesByMalcs.Melvor2;
+using GamesByMalcs.Melvor2.Components.CraftingAction;
 using GamesByMalcs.Melvor2.Conditions;
 using GamesByMalcs.Melvor2.Data.Currencies;
 using GamesByMalcs.Melvor2.Data.Items;
@@ -33,26 +35,20 @@ enum RuleSource
 /// </summary>
 sealed record Settled(RuleSource Source, string Quote = "", string Seen = "");
 
-/// <summary>What a click on a log's line opens on the Firemaking page (<see cref="LogRates.ClickOpens"/>).</summary>
+/// <summary>What a click on a log's line may do on the Firemaking page (<see cref="LogRates.ClickOpens"/>).</summary>
 enum Opens
 {
-    /// <summary>Nothing: the log's category is locked, so the player cannot open it either.</summary>
+    /// <summary>
+    /// Nothing: the log's category is locked, so the player cannot open it either; or a log burns and the line's log is
+    /// of another category than the page shows.
+    /// </summary>
     Nothing,
+    /// <summary>A log burns: nothing is selected, and a click only scrolls the page's list to the log's button.</summary>
+    Scroll,
     /// <summary>Only the log's category: the log itself is locked.</summary>
     Category,
     /// <summary>The log's category and the log.</summary>
     Log,
-}
-
-/// <summary>What a click on a line does while a log burns (<see cref="LogRates.WhileBurning"/>).</summary>
-enum BurningClick
-{
-    /// <summary>The same as at any other time: the log's category and the log are selected.</summary>
-    Select,
-    /// <summary>Only the log's category is selected, the page's selected log is left as it is.</summary>
-    CategoryOnly,
-    /// <summary>Nothing is selected.</summary>
-    Nothing,
 }
 
 /// <summary>
@@ -80,31 +76,22 @@ sealed class LogRates
     /// </summary>
     public static readonly Settled? LogsRule = new(RuleSource.RecipeRates);
     /// <summary>
-    /// The items burning makes: every burn rolls each of the log's products at its chance (ProductChances), as many as its
-    /// quantity, and the doubling chance (DoublingChance) doubles them. What the doubling doubles is Recipe Rates' reading
+    /// The items burning makes: every burn rolls each of the log's products at its chance (the crafting stats' Products, the
+    /// member Recipe Rates reads), as many as its quantity, and the doubling chance (DoublingChance) doubles them. What the doubling doubles is Recipe Rates' reading
     /// too: the products, not the coins.
     /// </summary>
     public static readonly Settled? ItemsRule = new(RuleSource.RecipeRates);
     /// <summary>The coins: every burn gives the log's CurrencyReward, not doubled (Recipe Rates' "Made" line of it).</summary>
     public static readonly Settled? CoinsRule = new(RuleSource.RecipeRates);
     /// <summary>
-    /// Whether every burn adds the log's bonfire time to the bonfire (FiremakingBonfireComponent.GetBonfireTimeForRecipe,
-    /// the time the page shows for the selected log), and how the bonfire's own cap (FiremakingBonfire.MaxDuration) limits
-    /// it. Not settled: the names of the game's members say it may (FiremakingBonfireComponent.FireTimeAdded, the
-    /// statistic BonfireTimeFromFiresStatistic), but nothing read says how. Until the page's words or the watch settle
-    /// it, the tooltip gives the time of a log as the page shows it, and no hour of it.
+    /// What a fire does to the bonfire: whether every fire adds the game's bonfire time of the log
+    /// (FiremakingBonfireComponent.GetBonfireTimeForRecipe), in which unit, and how the bonfire's own most
+    /// (FiremakingBonfire.MaxDuration) limits it. Not settled: the names of the game's members say a fire may add time
+    /// (FiremakingBonfireComponent.FireTimeAdded, the statistic BonfireTimeFromFiresStatistic), but nothing read says how
+    /// much, nor the unit of the game's number. Until the page's own label ("Dev: game") or the watch settle it, the
+    /// window shows nothing of the bonfire (the code review of turn 1, fault 7); the request logs the raw numbers.
     /// </summary>
     public static readonly Settled? BonfireRule = null;
-
-    /// <summary>
-    /// What a click on a line does while a log burns (FiremakingActionComponent.CreatingRecipe, IsStarted). The page keeps
-    /// the log it shows (SelectedRecipe) apart from the log it burns (CreatingRecipe), so by the game's names a selection
-    /// changes nothing of the fire; but the crafting component has an action reset of its own (ShouldResetAction,
-    /// OnActionReset), and only the game can say whether a selection while a log burns sets it off. The light check's
-    /// click, run while a log burns, reads it back: if burning changes, this becomes <see cref="BurningClick.CategoryOnly"/>
-    /// or <see cref="BurningClick.Nothing"/>.
-    /// </summary>
-    public static readonly BurningClick WhileBurning = BurningClick.Select;
 
     /// <summary>One thing a burn uses: a log (or another item), as many as its cost, kept at the preservation chance.</summary>
     public sealed record Cost(Item Item, string Name, int Quantity, double UsedEach, double? PerHour, double? Price, double? GoldPerHour);
@@ -145,12 +132,12 @@ sealed class LogRates
     public string Needs { get; private set; } = "";
     /// <summary>The log the Firemaking page shows (FiremakingActionComponent.SelectedRecipe): the lit line.</summary>
     public bool OnPage { get; init; }
-    /// <summary>The log the character is burning (FiremakingActionComponent.CreatingRecipe while it is started).</summary>
+    /// <summary>The log the character is burning (FiremakingActionComponent.CreatingRecipe, while a log burns).</summary>
     public bool Burning { get; init; }
+    /// <summary>A log burns now (<see cref="IsBurning"/>): a click selects nothing, and the tooltip says so.</summary>
+    public bool AnyBurning { get; init; }
     /// <summary>The page shows the log's category (FiremakingActionComponent.SelectedCategory): its list has the log's button.</summary>
     public bool CategoryOnPage { get; init; }
-    /// <summary>A click would open more but for a log burning now (<see cref="WhileBurning"/>): the tooltip says so.</summary>
-    public bool HeldWhileBurning { get; private set; }
     /// <summary>What a click on the line opens (<see cref="ClickOpens"/>).</summary>
     public Opens Click { get; private set; }
     /// <summary>A click on the line changes what the Firemaking page shows (FiremakingRatesMod.ClickChanges).</summary>
@@ -194,7 +181,7 @@ sealed class LogRates
     /// <summary>The bank was read for <see cref="SecondsOfStock"/>: without it the tooltip says nothing of the stock.</summary>
     public bool StockRead { get; private set; }
 
-    /// <summary>The items a burn can make (FiremakingActionStats.ProductChances), with your bonuses.</summary>
+    /// <summary>The items a burn can make (ICraftingActionStats.Products, as Recipe Rates reads them), with your bonuses.</summary>
     public List<Product> Products { get; } = new();
     /// <summary>The coins a burn gives (FiremakingActionStats.CurrencyReward), with your bonuses; null for none.</summary>
     public Currency? Coins { get; private set; }
@@ -229,10 +216,11 @@ sealed class LogRates
     /// <summary>What the items of an hour sell for, in gold, apart from the coins (the tooltip says the two apart).</summary>
     public double ItemsGoldPerHour => Products.Sum(p => p.GoldPerHour ?? 0);
 
-    /// <summary>The time the log adds to the bonfire, in seconds, as the page shows it for the selected log (GetBonfireTimeForRecipe).</summary>
-    public double BonfireSeconds { get; private set; }
-    /// <summary>The bonfire time of an hour of burning, by <see cref="BonfireRule"/>; null while that is not settled.</summary>
-    public double? BonfirePerHour => BonfireRule != null && HasTime && BonfireSeconds > 0 ? BonfireSeconds * FiresPerHour : null;
+    /// <summary>
+    /// The game's bonfire time of the log as the game gives it (GetBonfireTimeForRecipe), its unit not known: not shown
+    /// to the player while <see cref="BonfireRule"/> is not settled, only logged by the development requests.
+    /// </summary>
+    public double BonfireRaw { get; private set; }
 
     /// <summary>The Firemaking events that may come while this log burns: not counted, named by the game's names.</summary>
     public List<Event> Events { get; } = new();
@@ -256,32 +244,37 @@ sealed class LogRates
         (!category.Data.OnlyShowWhenRecipesAvailable || category.UnlockedRecipeCount > 0);
 
     /// <summary>
-    /// What a click on a log's line opens: the log; only its category while the log is locked; nothing while its
-    /// category is locked, since the player cannot open that one either (Fishing Rates' SpotRates.ClickOpens). While a
-    /// log burns, what <see cref="WhileBurning"/> allows; burning false: as if no log burned.
+    /// What a click on a log's line may do, the rule decided by the orchestrator (lesson 56, its review of turn 1). While
+    /// nothing burns: the log; only its category while the log is locked; nothing while its category is locked, since the
+    /// player cannot open that one either (Fishing Rates' SpotRates.ClickOpens). While a log burns (burning, read with
+    /// <see cref="IsBurning"/>): no selecting member is called at all, since a selection changes what the page's Start
+    /// button and the bonfire's "Add logs" use next, and no member's name rules out that it resets the fire in progress
+    /// (the code review of turn 1); a line of the category the page shows only scrolls the page's list to its log's
+    /// button, any other line does nothing.
     /// </summary>
-    public static Opens ClickOpens(ActiveFiremakingRecipe active, FiremakingActionComponent action, bool burning = true)
+    public static Opens ClickOpens(ActiveFiremakingRecipe active, FiremakingActionComponent action, bool burning)
     {
-        Opens opens = active.Category?.Requirements?.AreMet == false ? Opens.Nothing
+        if (burning) return ReferenceEquals(action.SelectedCategory?.Data, active.Category) ? Opens.Scroll : Opens.Nothing;
+        return active.Category?.Requirements?.AreMet == false ? Opens.Nothing
             : active.Recipe.Requirements?.AreMet == false ? Opens.Category
             : Opens.Log;
-        if (!burning || !IsBurning(action)) return opens;
-        return WhileBurning switch
-        {
-            BurningClick.Nothing => Opens.Nothing,
-            BurningClick.CategoryOnly => opens == Opens.Nothing ? Opens.Nothing : Opens.Category,
-            _ => opens,
-        };
     }
 
-    /// <summary>The character is burning a log.</summary>
-    public static bool IsBurning(FiremakingActionComponent action) => action.IsStarted && action.CreatingRecipe != null;
+    /// <summary>
+    /// A log burns, by the widest test the game's members allow (the code review of turn 1, fault 1): Firemaking's action
+    /// is started, or it has a log it burns (CreatingRecipe), or it is among the game's running actions
+    /// (Game.ActionManager.ActiveActions). Read on every tick for the lines and again at the moment of a click.
+    /// </summary>
+    public static bool IsBurning(FiremakingEntity firemaking, Game? game) =>
+        firemaking.Action.IsStarted || firemaking.Action.CreatingRecipe != null ||
+        game?.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, firemaking)) == true;
 
     /// <param name="bank">The bank, for how long its stock lasts (null: not said).</param>
     /// <param name="shown">A picture of the game as the list shows it: null for the grey stand-in (GamePictures.Shown).</param>
     /// <param name="categories">The page has more than one category: the line writes the log's.</param>
+    /// <param name="burning">A log burns now (<see cref="IsBurning"/>), read once for every line.</param>
     public static LogRates Read(ActiveFiremakingRecipe active, FiremakingEntity firemaking, BankEntity? bank,
-        Func<Texture2D?, Texture2D?> shown, bool categories)
+        Func<Texture2D?, Texture2D?> shown, bool categories, bool burning)
     {
         FiremakingRecipe recipe = active.Recipe;
         FiremakingActionStats stats = active.Stats;
@@ -294,7 +287,8 @@ sealed class LogRates
             Active = active, Name = recipe.DisplayName.Text, CategoryName = category, Category = categories ? category : "",
             Picture = shown(recipe.Icon) ?? (burnt != null ? shown(burnt.Icon) : null),
             OnPage = ReferenceEquals(action.SelectedRecipe, active),
-            Burning = IsBurning(action) && ReferenceEquals(action.CreatingRecipe, active),
+            Burning = burning && ReferenceEquals(action.CreatingRecipe, active),
+            AnyBurning = burning,
             CategoryOnPage = ReferenceEquals(action.SelectedCategory?.Data, recipe.Category),
         };
         ConditionGroup?[] groups = [recipe.Category?.Requirements, recipe.Requirements];
@@ -304,8 +298,7 @@ sealed class LogRates
             r.Needs = Native.Needs(groups);
             r.Level = Native.LevelNeeded(groups, firemaking.Experience);
         }
-        r.Click = ClickOpens(active, action);
-        r.HeldWhileBurning = IsBurning(action) && r.Click < ClickOpens(active, action, burning: false);
+        r.Click = ClickOpens(active, action, burning);
 
         r.Seconds = stats.Interval.Value / Ms;
         r.XpEach = stats.Experience.XpToAdd.Value;
@@ -333,12 +326,15 @@ sealed class LogRates
         r.StockRead = bank != null && r.HasTime;
         r.SecondsOfStock = r.StockRead ? StockSeconds(r, bank!) : null;
 
-        // What a burn makes (Recipe Rates: quantity times chance times one and the doubling chance).
+        // What a burn makes: Recipe Rates' arithmetic on the member it reads (ICraftingActionStats.Products, which
+        // FiremakingActionStats keeps as an explicit member), skipping what it skips (nothing on average); the request
+        // holds it against FiremakingActionStats.ProductChances (the code review of turn 1, fault 9).
         double? made = ItemsRule != null ? burns : null;
-        foreach (var node in stats.ProductChances?.Values ?? [])
-            if (node?.Value is { Item: { } item } product && product.Quantity > 0)
+        foreach (var node in ((ICraftingActionStats)stats).Products?.Values ?? [])
+            if (node?.Value is { Item: { } item } product)
             {
                 double chance = Fraction(product.Chance), each = product.Quantity * (1 + r.DoublingChance);
+                if (!(product.Quantity * chance * (1 + r.DoublingChance) > 0)) continue;
                 double? perHour = made * chance * each;
                 r.Products.Add(new Product(item, item.DisplayName.GetPluralText(2), chance, product.Quantity, each, perHour,
                     GoldOf(item) is { } price ? perHour * price : null));
@@ -350,11 +346,8 @@ sealed class LogRates
             r.CoinsEach = reward.Quantity;
         }
 
-        // The time the page shows for the selected log in its bonfire's part (FiremakingActionView.BonfireTimeLabel), from
-        // the game's own method for it; read in milliseconds, as the game's other times, and held against the page's label
-        // by the light check ("Dev: game").
-        double bonfire = FiremakingBonfireComponent.GetBonfireTimeForRecipe(active);
-        r.BonfireSeconds = double.IsFinite(bonfire) && bonfire > 0 ? bonfire / Ms : 0;
+        // The game's bonfire time of the log, raw: not shown while BonfireRule is not settled.
+        r.BonfireRaw = FiremakingBonfireComponent.GetBonfireTimeForRecipe(active);
 
         foreach (FiremakingEvent e in action.Config.Events ?? Enumerable.Empty<FiremakingEvent>())
         {

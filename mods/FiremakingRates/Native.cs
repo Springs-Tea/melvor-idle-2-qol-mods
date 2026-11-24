@@ -23,6 +23,11 @@ enum CardSight
     UnderWindow,
     /// <summary>No scroll of its list shows the whole button, window or not: a game window smaller than a button.</summary>
     NoRoom,
+    /// <summary>
+    /// The page shows the log's category, but its list does not show the log's button now (none for it, or one not shown,
+    /// such as one in a group of the list that is folded): a click selects the log, and no scroll brings its button.
+    /// </summary>
+    NotShown,
 }
 
 // Read-only access to the parts of the game's Firemaking page it keeps to itself, in one place, as Woodcutting Rates
@@ -47,6 +52,15 @@ internal static class Native
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Buttons")]
     static extern Dictionary<IActiveCraftingRecipe, CraftingRecipeButton>? Buttons(RecipeSubcategoryView view);
 
+    // Where a click shows its result besides the list: the part with the selected log (its name, its time, the page's
+    // burning label and Start button), found as what the part with the logs holds besides its category buttons
+    // (FiremakingActionView.CategoryButtonContainer) and its list; and the bonfire's part (FiremakingActiveView.BonfireView).
+    // Read only for where the window first opens (FiremakingRatesMod.FirstPlace); never pressed.
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CategoryButtonContainer")]
+    static extern VBoxContainer? CategoryColumn(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_BonfireView")]
+    static extern FiremakingBonfireView? BonfireView(FiremakingActiveView page);
+
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_orConditions")]
     static extern ref List<OrConditionGroup> Alternatives(ConditionGroup group);
 
@@ -65,6 +79,25 @@ internal static class Native
         foreach (var (log, button) in all)
             if (log != null && GodotObject.IsInstanceValid(button) && !button.IsQueuedForDeletion() && seen.Add(button))
                 yield return (log, button);
+    }
+
+    /// <summary>
+    /// The parts of the page where a click shows its result, as drawn and shown now: the part with the selected log (the
+    /// children of the part with the logs that hold neither its category buttons nor its list) and the bonfire's part.
+    /// </summary>
+    internal static List<Rect2> Panels(FiremakingActiveView page)
+    {
+        var parts = new List<Rect2>();
+        if (ActionView(page) is { } view && GodotObject.IsInstanceValid(view))
+        {
+            Control? list = RecipeSelect(view), column = CategoryColumn(view);
+            foreach (Control child in view.GetChildren().OfType<Control>())
+                if (child.IsVisibleInTree() && !Holds(child, list) && !Holds(child, column)) parts.Add(Drawn(child));
+        }
+        if (BonfireView(page) is { } bonfire && GodotObject.IsInstanceValid(bonfire) && bonfire.IsVisibleInTree()) parts.Add(Drawn(bonfire));
+        return parts.Where(r => r.HasArea()).ToList();
+
+        static bool Holds(Control part, Control? inner) => inner != null && GodotObject.IsInstanceValid(inner) && (part == inner || part.IsAncestorOf(inner));
     }
 
     /// <summary>The button of a log in the page's list, or null when the list does not have one for it now.</summary>

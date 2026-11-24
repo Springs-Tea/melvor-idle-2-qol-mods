@@ -127,7 +127,7 @@ public partial class FiremakingRatesMod
         var action = _firemaking!.Action;
         DevLog($"watch | {minutes} minutes asked{(asked.Length == 0 ? " (the request was empty)" : $" (the request said '{asked}')")}, or until a minute without a fire; " +
             $"only listening, nothing is changed; {DevBurning()}");
-        if (!LogRates.IsBurning(action) || !DevBurningNow())
+        if (!DevBurningWide() || action.CreatingRecipe == null)
         {
             const string not = "not burning when the watch began: nothing was listened to, nothing changed. Start burning a log by hand and send the request again.";
             DevLog("watch | " + not);
@@ -141,7 +141,7 @@ public partial class FiremakingRatesMod
         _devBurns = w;
         DevWatchListen(w);
         ActiveFiremakingRecipe burnt = action.CreatingRecipe!;
-        LogRates ours = LogRates.Read(burnt, _firemaking, _bank, Shown, false);
+        LogRates ours = LogRates.Read(burnt, _firemaking, _bank, Shown, false, true);
         var mine = ours.Costs.Select(c => c.Item).Concat(ours.Products.Select(p => p.Item)).Distinct(ReferenceEqualityComparer.Instance).Cast<Item>();
         DevLog($"watch | listening; the log burnt {burnt.Recipe.Id}, its numbers {w.Start[burnt]}; the bonfire {(w.Bonfire.IsActive ? "lit" : "out")}, " +
             $"time left {R(w.Bonfire.DurationTimer.TimeLeft)} of {R(w.Bonfire.DurationTimer.MaxTime)} ({w.Bonfire.CurrentBonfire?.Id}, its most {w.Bonfire.CurrentBonfire?.MaxDuration}); " +
@@ -175,6 +175,7 @@ public partial class FiremakingRatesMod
             if (log == null) continue;
             FiremakingActionStats s = log.Stats;
             foreach (var node in s.ItemCost?.Values ?? []) Watch(node?.Value?.Item);
+            foreach (var node in ((ICraftingActionStats)s).Products?.Values ?? []) Watch(node?.Value?.Item);
             foreach (var node in s.ProductChances?.Values ?? []) Watch(node?.Value?.Item);
             foreach (var node in s.CurrencyCost?.Values ?? []) WatchCoins(node?.Value?.Currency);
             WatchCoins(s.CurrencyReward?.Value?.Currency);
@@ -213,7 +214,7 @@ public partial class FiremakingRatesMod
         FiremakingActionStats s = log.Stats;
         return $"interval {R(s.Interval.Value)} ms, XP {R(s.Experience.XpToAdd.Value)}, cost [{string.Join(", ", (s.ItemCost?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} x{n?.Value?.Quantity}"))}], " +
             $"preservation {R(s.PreservationChance?.Total.Value ?? 0)}, doubling {R(s.DoublingChance?.Total.Value ?? 0)}, " +
-            $"products [{string.Join(", ", (s.ProductChances?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} {R(n?.Value?.Chance ?? 0)} x{n?.Value?.Quantity}"))}], " +
+            $"products [{string.Join(", ", (((ICraftingActionStats)s).Products?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} {R(n?.Value?.Chance ?? 0)} x{n?.Value?.Quantity}"))}], " +
             $"coins {s.CurrencyReward?.Value?.Currency?.Id} x{s.CurrencyReward?.Value?.Quantity}, bonfire time {R(FiremakingBonfireComponent.GetBonfireTimeForRecipe(log))}";
     }
 
@@ -422,7 +423,7 @@ public partial class FiremakingRatesMod
                 {
                     var log = (ActiveFiremakingRecipe)group.Key!;
                     var mine = w.Moments.Where(m => m.Burns.Any(b => ReferenceEquals(b.Log, log))).ToList();
-                    var said = DevWatchSummary(mine, log, LogRates.Read(log, _firemaking, _bank, Shown, false), w, w.Start.GetValueOrDefault(log, "not read"), seconds);
+                    var said = DevWatchSummary(mine, log, LogRates.Read(log, _firemaking, _bank, Shown, false, true), w, w.Start.GetValueOrDefault(log, "not read"), seconds);
                     verdicts.Add($"{log.Recipe.LocalId}: {string.Join(", ", said)}");
                 }
                 if (verdicts.Count == 0) verdicts.Add("NO FIRE SEEN");
@@ -537,18 +538,23 @@ public partial class FiremakingRatesMod
                 $"{ours.Products.Count} items on our list; the primary product's event on {moments.Count(m => m.Primary.Count > 0)} fires " +
                 $"[{string.Join(" ", moments.SelectMany(m => m.Primary).GroupBy(q => q).Select(g => $"x{g.Key} {g.Count()} times"))}]{few}");
 
-        // The bonfire (LogRates.BonfireRule): does every fire add the log's bonfire time, and does the bonfire's most cap it?
-        double ourTime = FiremakingBonfireComponent.GetBonfireTimeForRecipe(log);
+        // The bonfire (LogRates.BonfireRule): does every fire add the game's bonfire time of the log? The event's time added
+        // and the game's number are held against each other as they are, with no unit assumed; the timer's time left and
+        // most (one timer, one unit) against each other; every raw number is logged beside the others, so that their unit
+        // can be read from them (the code review of turn 1, polish).
+        double raw = FiremakingBonfireComponent.GetBonfireTimeForRecipe(log);
         var lit = moments.Where(m => m.BonfireLit).ToList();
-        int added = lit.Count(m => m.FireTime.Count > 0), sameTime = lit.Count(m => m.FireTime.Any(t => Math.Abs(t - ourTime) <= Math.Max(1e-6, 1e-4 * Math.Abs(ourTime))));
-        bool capped = lit.Any(m => m.BonfireMost > 0 && m.BonfireLeft >= m.BonfireMost - Math.Max(1, ourTime));
+        int added = lit.Count(m => m.FireTime.Count > 0), sameTime = lit.Count(m => m.FireTime.Any(t => Math.Abs(t - raw) <= Math.Max(1e-6, 1e-4 * Math.Abs(raw))));
+        bool capped = lit.Any(m => m.BonfireMost > 0 && m.BonfireLeft >= m.BonfireMost * 0.999);
+        var steps = lit.Zip(lit.Skip(1), (a, b) => b.BonfireLeft - a.BonfireLeft).ToList();
         Say("the bonfire", lit.Count < MostBurns ? (lit.Count == 0 ? "NOT DECIDED (THE BONFIRE WAS NOT LIT)" : "NOT DECIDED")
-                : added == 0 ? "BURNING ADDS NO BONFIRE TIME" : sameTime >= 0.9 * lit.Count ? "BURNING ADDS BONFIRE TIME, THE LOG'S AS THE PAGE SHOWS IT"
-                : added >= 0.9 * lit.Count ? "BURNING ADDS ANOTHER BONFIRE TIME" : "NOT DECIDED",
-            $"{lit.Count} of {n} fires with the bonfire lit; time added on {added} of them [{string.Join(" ", lit.SelectMany(m => m.FireTime).GroupBy(t => t).Select(g => $"{R(g.Key)} x{g.Count()}"))}], " +
-            $"the log's bonfire time {R(ourTime)} (GetBonfireTimeForRecipe); time added on fires with the bonfire out [{string.Join(" ", moments.Where(m => !m.BonfireLit).SelectMany(m => m.FireTime).Select(R))}]; " +
-            $"the bonfire's time left from {R(moments.FirstOrDefault()?.BonfireLeft ?? double.NaN)} to {R(moments.LastOrDefault()?.BonfireLeft ?? double.NaN)}, its most " +
-            $"{R(moments.LastOrDefault()?.BonfireMost ?? double.NaN)} (the bonfire's MaxDuration {w.Bonfire.CurrentBonfire?.MaxDuration})" +
+                : added == 0 ? "BURNING ADDS NO BONFIRE TIME" : sameTime >= 0.9 * lit.Count ? "EVERY FIRE ADDS THE GAME'S BONFIRE TIME OF THE LOG"
+                : added >= 0.9 * lit.Count ? "EVERY FIRE ADDS ANOTHER BONFIRE TIME" : "NOT DECIDED",
+            $"{lit.Count} of {n} fires with the bonfire lit; the event's time added on {added} of them [{string.Join(" ", lit.SelectMany(m => m.FireTime).GroupBy(t => t).Select(g => $"{R(g.Key)} x{g.Count()}"))}], " +
+            $"the game's bonfire time of the log {R(raw)} (GetBonfireTimeForRecipe, raw); time added on fires with the bonfire out [{string.Join(" ", moments.Where(m => !m.BonfireLit).SelectMany(m => m.FireTime).Select(R))}]; " +
+            $"the timer's time left (raw) from {R(moments.FirstOrDefault()?.BonfireLeft ?? double.NaN)} to {R(moments.LastOrDefault()?.BonfireLeft ?? double.NaN)}, from one fire to the next " +
+            $"[{string.Join(" ", steps.Select(d => Math.Round(d, 3)).GroupBy(d => d).OrderByDescending(g => g.Count()).Take(5).Select(g => $"{R(g.Key)} x{g.Count()}"))}], " +
+            $"its most (raw) {R(moments.LastOrDefault()?.BonfireMost ?? double.NaN)}, the bonfire's MaxDuration (raw) {w.Bonfire.CurrentBonfire?.MaxDuration}, a fire's time {R(n > 1 ? (moments[^1].At - moments[0].At) / (n - 1.0) : double.NaN)} ms" +
             (capped ? "; THE MOST WAS REACHED: the time left stood at its most" : "; the most was not reached"));
         return verdicts;
     }
@@ -582,7 +588,7 @@ public partial class FiremakingRatesMod
             ExperienceComponent experience = _firemaking.Experience;
             var items = moments?.SelectMany(m => m.Items.Select(i => i.Item)).Distinct().ToList() ?? new List<Item>();
             var currencies = moments?.SelectMany(m => m.Coins.Select(c => c.Currency)).Distinct().ToList() ?? new List<Currency>();
-            LogRates? ours = _firemaking.Action.CreatingRecipe is { } log ? LogRates.Read(log, _firemaking, _bank, Shown, false) : null;
+            LogRates? ours = _firemaking.Action.CreatingRecipe is { } log ? LogRates.Read(log, _firemaking, _bank, Shown, false, true) : null;
             int i = 0;
             foreach (var period in tracker.Periods)
             {

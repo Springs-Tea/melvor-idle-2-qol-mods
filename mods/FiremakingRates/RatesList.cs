@@ -31,10 +31,12 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     /// Mastery XP is not a column: Firemaking in this game keeps no mastery XP per action by the game's names (its
     /// Mastery Guild, FiremakingEntity.MasteryGuild, counts ranks, points and tasks). Every number rests on the arithmetic
     /// of a fire (LogRates.XpRule, LogsRule, ItemsRule, CoinsRule), which is Recipe Rates' for the same log: each tip
-    /// says so. Which way is better: XP and gold more; the time less; the cost less, since it is the gold given up by
-    /// burning instead of selling, comparable from log to log; the logs neither, since they are logs of different kinds
-    /// and more of them an hour is faster burning as much as a greater cost (Fishing Rates' Bait column). A tip's line is
-    /// never longer than Fishing Rates' longest (82 characters): Godot's tooltip does not wrap.
+    /// says so. Which way is better, by the orchestrator's rule (review of turn 1): gold marks only what a player wants
+    /// more of, or less of for time. XP and gold more; the time less, a shorter fire being more of everything an hour; the
+    /// logs and the cost neither, since a player does not choose a log for them alone: more logs an hour, or a dearer log,
+    /// is a faster pace or a better log as much as a greater cost (Fishing Rates' Bait column, the code review of turn
+    /// 1, fault 8). A tip's line is never longer than Fishing Rates' longest (82 characters): Godot's tooltip does not
+    /// wrap.
     /// </summary>
     public static List<RateColumn> For() =>
     [
@@ -48,7 +50,7 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
             66, t => t.XpPerHour, Words.Number, Better.More),
         new("cost", "Cost", Lines(["What the logs burnt in an hour would sell for, in gold:",
                 "the gold you give up by burning them instead of selling them", By(LogRates.LogsRule)]),
-            66, t => t.CostPerHour, Words.Number, Better.Less),
+            66, t => t.CostPerHour, Words.Number, Better.Neither),
         new("gold", "Gold", Lines(["What burning gives an hour, in gold: the coins of every fire,",
                 "and what the items it makes sell for, the doubling chance in the items",
                 LogRates.CoinsRule?.Source == LogRates.ItemsRule?.Source ? By(LogRates.CoinsRule) : ""]),

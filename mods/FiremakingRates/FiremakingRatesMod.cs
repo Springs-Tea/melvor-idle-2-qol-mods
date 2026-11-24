@@ -16,11 +16,12 @@ namespace FiremakingRates;
 /// Which log gives what per hour. On the Firemaking page a round button in the strip on the right edge of the screen
 /// opens a window with one line per log the page shows: its picture, its category, the time of a fire, and the logs
 /// burnt, Firemaking XP, cost and gold of an hour, from the game's own numbers for each log (LogRates), counted the way
-/// Recipe Rates counts the same log. The best number of each column is gold, a click on a column's name sorts by it, the
-/// log the Firemaking page shows has a lit outline, and a line's tooltip has the whole hour. A click on a line opens that
-/// log on the Firemaking page, as the player's own clicks there would (ShowOnPage); nothing is started or stopped from
-/// it. Built the way Woodcutting Rates is (mods/WoodcuttingRates/WoodcuttingRatesMod.cs), itself Mining Rates' and
-/// Fishing Rates' (mods/FishingRates).
+/// Recipe Rates counts the same log. The best number of XP and Gold is gold, of Time the least, a click on a column's
+/// name sorts by it, the log the Firemaking page shows has a lit outline, and a line's tooltip has the whole hour. While
+/// nothing burns, a click on a line opens that log on the Firemaking page, as the player's own clicks there would; while
+/// a log burns, it selects nothing and only scrolls the page's list (ShowOnPage). Nothing is started or stopped from it.
+/// Built the way Woodcutting Rates is (mods/WoodcuttingRates/WoodcuttingRatesMod.cs), itself Mining Rates' and Fishing
+/// Rates' (mods/FishingRates).
 /// </summary>
 public partial class FiremakingRatesMod : IMod
 {
@@ -269,11 +270,13 @@ public partial class FiremakingRatesMod : IMod
                 if (recipe != null && LogRates.Listed(recipe, active) && !listed.Contains(recipe)) listed.Add(recipe);
         }
         bool categories = listed.Select(r => r.Category).Distinct(ReferenceEqualityComparer.Instance).Count() > 1;
+        // Whether a log burns, read once for every line: what a click may do follows it (LogRates.ClickOpens).
+        bool burning = LogRates.IsBurning(_firemaking, _game);
         var logs = new List<LogRates>();
         foreach (ActiveFiremakingRecipe recipe in listed)
         {
-            LogRates log = LogRates.Read(recipe, _firemaking, _bank, Shown, categories);
-            log.Clickable = ClickChanges(recipe, out CardSight? sight);
+            LogRates log = LogRates.Read(recipe, _firemaking, _bank, Shown, categories, burning);
+            log.Clickable = ClickChanges(recipe, burning, out CardSight? sight);
             log.Sight = sight;
             logs.Add(log);
         }
@@ -376,28 +379,43 @@ public partial class FiremakingRatesMod : IMod
     // ---- a click on a line ---------------------------------------------------------------------------------------------
 
     // Asked for in issue #73, as the maintainer allowed it for Fishing Rates and Thieving Overview (22 Nov 2026) and for
-    // the four rate windows of #70 to #73 (23 Nov 2026): a click on a line opens that log on the Firemaking page, and does
-    // what the player's own clicks there would, nothing more. Through the game's public members that set what the page
-    // shows, as Fishing Rates' click does (FishingRatesMod.OpenOnPage): the log's category, as the page's category buttons
-    // open one (FiremakingActionComponent.SelectCategory), then the log, as its list of logs selects one (SelectRecipe);
-    // the page follows the component's own events for both (FiremakingActionView's handlers of SelectedCategoryChanged and
-    // SelectedRecipeChanged). The development request compares them with the page's own buttons. Then, once the page has
-    // laid its list out again, the list is scrolled so that the log's whole button is in sight clear of this window
-    // (Woodcutting Rates' review: a button under the window is not seen; ScrollToCard). Burning is not started or stopped,
-    // and the page's Start button and everything of the bonfire are never touched. A locked log opens its category only,
-    // and a log whose category is locked nothing (LogRates.ClickOpens); while a log burns, what LogRates.WhileBurning
-    // allows. The window stays open and where the player put it; the lit line follows the page.
+    // the four rate windows of #70 to #73 (23 Nov 2026), within the rule of lesson 56 (the orchestrator's review of turn
+    // 1): a click on a line opens that log on the Firemaking page, and does what the player's own clicks there would,
+    // nothing more, and only while nothing burns. Whether a log burns is read again at the click itself, by the widest
+    // test the members allow (LogRates.IsBurning).
+    // - While nothing burns: through the game's public members that set what the page shows, as Fishing Rates' click does
+    //   (FishingRatesMod.OpenOnPage): the log's category, as the page's category buttons open one
+    //   (FiremakingActionComponent.SelectCategory), then the log, as its list of logs selects one (SelectRecipe); the page
+    //   follows the component's own events for both (FiremakingActionView's handlers of SelectedCategoryChanged and
+    //   SelectedRecipeChanged). Like the player's own click there, the selected log is then what the page's bonfire part
+    //   shows and what its Start button would start; nothing is started. A locked log opens its category only, and a log
+    //   whose category is locked nothing (LogRates.ClickOpens).
+    // - While a log burns: no selecting member is called at all, since a selection may change the running fire (the code
+    //   review of turn 1). A line of the category the page shows only scrolls the page's list to its log's button; any
+    //   other line does nothing.
+    // Then, once the page has laid its list out again, the list is scrolled so that the log's whole button is in sight
+    // clear of this window (Woodcutting Rates' review: a button under the window is not seen; ScrollToCard). The page's
+    // Start button and every control of the bonfire are never touched. The window stays open and where the player put it;
+    // the lit line follows the page.
     void ShowOnPage(LogRates line)
     {
         if (!PageShown || _clicksOff) return;
         ActiveFiremakingRecipe active = line.Active;
         var action = _firemaking!.Action;
         // As it is now, not as it was at the last tick.
-        if (!ClickChanges(active, out _)) return;
+        bool burning = LogRates.IsBurning(_firemaking, _game);
+        if (!ClickChanges(active, burning, out _)) return;
         try
         {
-            Opens opens = LogRates.ClickOpens(active, action);
-            if (active.Category == null || !action.ActiveCategories.TryGetValue(active.Category, out ActiveFiremakingCategory? category) || category == null) return;
+            Opens opens = LogRates.ClickOpens(active, action, burning);
+            if (opens == Opens.Scroll)
+            {
+                // A log burns: the page's list is only scrolled to the log's button, nothing is selected.
+                _scrollTo = active;
+                _scrollAfter = (long)Engine.GetFramesDrawn() + 2;
+                return;
+            }
+            if (opens == Opens.Nothing || active.Category == null || !action.ActiveCategories.TryGetValue(active.Category, out ActiveFiremakingCategory? category) || category == null) return;
             if (!ReferenceEquals(action.SelectedCategory, category))
             {
                 action.SelectCategory(category);
@@ -424,24 +442,26 @@ public partial class FiremakingRatesMod : IMod
         Refresh();
     }
 
-    // A click on the log's line would change what the Firemaking page shows: its category, when the page shows another
-    // one; the log, when the page shows another log of the category; or, for the log the page shows already (or a locked
-    // one of the category the page shows), the scroll of the page's list, when a scroll shows the log's whole button clear
-    // of this window and it is not so now (Native.Place). Read on every tick, for the line's look and its tooltip, and
-    // again at the click. sight: how the log's button stands when the page's list has it (null when it does not), which
-    // the tooltip says when no scroll shows it clear.
-    bool ClickChanges(ActiveFiremakingRecipe active, out CardSight? sight)
+    // A click on the log's line would change what the Firemaking page shows. While nothing burns: its category, when the
+    // page shows another one; the log, when the page shows another log of the category; or, for the log the page shows
+    // already (or a locked one of the category the page shows), the scroll of the page's list, when a scroll shows the
+    // log's whole button clear of this window and it is not so now (Native.Place). While a log burns, only that scroll.
+    // Read on every tick, for the line's look and its tooltip, and again at the click. sight: how the log's button stands
+    // when the page shows its category (null when it does not), which the tooltip says when no scroll shows it clear.
+    bool ClickChanges(ActiveFiremakingRecipe active, bool burning, out CardSight? sight)
     {
         sight = null;
         if (_clicksOff || !PageShown) return false;
         try
         {
             var action = _firemaking!.Action;
+            bool categoryShown = ReferenceEquals(action.SelectedCategory?.Data, active.Category);
             if (Native.Card(_page!, active) is { } card && card.IsVisibleInTree()) sight = Native.Place(card, Cover(), out _);
-            Opens opens = LogRates.ClickOpens(active, action);
+            else if (categoryShown) sight = CardSight.NotShown;
+            Opens opens = LogRates.ClickOpens(active, action, burning);
             if (opens == Opens.Nothing) return false;
-            if (!ReferenceEquals(action.SelectedCategory?.Data, active.Category))
-                return active.Category != null && action.ActiveCategories.ContainsKey(active.Category);
+            if (opens == Opens.Scroll) return sight == CardSight.Scroll;
+            if (!categoryShown) return active.Category != null && action.ActiveCategories.ContainsKey(active.Category);
             if (opens == Opens.Log && !ReferenceEquals(action.SelectedRecipe, active)) return true;
             return sight == CardSight.Scroll;
         }
@@ -457,13 +477,15 @@ public partial class FiremakingRatesMod : IMod
     Rect2? Cover() => _window is { IsAlive: true, Visible: true } window ? Native.Drawn(window.Root) : null;
 
     // Where the window opens while the player has not placed it himself (Woodcutting Rates' FirstPlace, from its review
-    // 4: in the middle of the screen the window lay over the page's cards, and nearly no line could be clicked). At the
-    // right side of the page, its right edge as far from the strip of round buttons as the strip is from the screen's
-    // edge, so it never covers a round button; then, of the two heights the page's list leaves for it (level with the
-    // list's top, or with its bottom above the game's bottom bar), the one where the most of the logs' buttons the list
-    // shows can be shown whole beside it (Native.Place: in sight, or after a scroll; the top when they are equal).
-    // Everything is measured from the page as it is drawn now: its list, its buttons, the strip, the screen and the bottom
-    // bar. Null when the list shows no button: the window then opens in the middle.
+    // 4: in the middle of the screen the window lay over the page's cards, and nearly no line could be clicked), keeping
+    // clear, where there is room, the parts of the page where a click shows its result: the part with the selected log and
+    // the bonfire's part (Native.Panels; the code review of turn 1, polish). Never over the strip of round buttons: its
+    // right edge at most as far left of the strip as the strip is from the screen's edge. The places tried, in this order:
+    // at the right side (as Woodcutting's), then with its right edge at the left edge of each such part; at each, the two
+    // heights the page's list leaves for it (level with the list's top, or with its bottom above the game's bottom bar).
+    // Of those, the one that leaves the most of those parts untouched, then where the most of the logs' buttons the list
+    // shows can be shown whole beside it (Native.Place: in sight, or after a scroll), then the first. Everything is
+    // measured from the page as it is drawn now. Null when the list shows no button: the window then opens in the middle.
     Vector2? FirstPlace(Vector2 size)
     {
         if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
@@ -478,17 +500,30 @@ public partial class FiremakingRatesMod : IMod
                 Rect2 buttons = Native.Drawn(strip);
                 right = buttons.Position.X - Math.Max(0, screen.End.X - buttons.End.X);
             }
-            float bottom = screen.End.Y - FooterHeight();
-            float x = Math.Max(screen.Position.X, right - size.X), lowest = Math.Max(screen.Position.Y, bottom - size.Y);
-            Vector2? best = null;
-            int most = -1;
-            foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
+            // Where a click shows its result. A game update that took these parts away only loses this preference.
+            List<Rect2> panels;
+            try { panels = Native.Panels(_page!); }
+            catch (Exception e) when (e is MissingMemberException or TypeLoadException)
             {
-                float y = Math.Clamp(top, screen.Position.Y, lowest);
-                var cover = new Rect2(x, y, size);
-                int room = cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
-                if (room > most) { most = room; best = new Vector2(x, y); }
+                panels = new List<Rect2>();
+                Report("The Firemaking page's part with the selected log or its bonfire's part was not found (the game was updated?): the window may open over them. " + e.Message);
             }
+            float bottom = screen.End.Y - FooterHeight();
+            float leftmost = screen.Position.X, rightmost = Math.Max(leftmost, right - size.X), lowest = Math.Max(screen.Position.Y, bottom - size.Y);
+            var xs = new List<float> { rightmost };
+            foreach (Rect2 panel in panels)
+                if (panel.Position.X - size.X >= leftmost) xs.Add(Math.Min(rightmost, panel.Position.X - size.X));
+            Vector2? best = null;
+            (int Clear, int Room) most = (-1, -1);
+            foreach (float x in xs)
+                foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
+                {
+                    float y = Math.Clamp(top, screen.Position.Y, lowest);
+                    var cover = new Rect2(x, y, size);
+                    int clear = panels.Count(p => !p.Grow(-1).Intersects(cover));
+                    int room = cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
+                    if (clear > most.Clear || (clear == most.Clear && room > most.Room)) { most = (clear, room); best = new Vector2(x, y); }
+                }
             return best?.Round();
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)

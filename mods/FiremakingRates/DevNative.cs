@@ -111,10 +111,6 @@ static class DevNative
     internal static extern VBoxContainer? ButtonLocked(CraftingRecipeButton button);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ProductQtyLabel")]
     internal static extern DoubleFormattedLabel? ButtonProductQuantity(CraftingRecipeButton button);
-    // The handlers of a log button's click (BaseButtonContainer.Pressed is an event of its own, not a signal), as Fishing
-    // Rates' request presses its spot buttons to compare them with a click on a line.
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "Pressed")]
-    internal static extern ref Action? PressedHandlers(BaseButtonContainer button);
 
     // An XP tag, its tooltip and the time it is bound to; a text tooltip's words.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SkillXpLabel")]

@@ -61,9 +61,9 @@ static class Words
 
     /// <summary>
     /// The whole hour of burning a log, as far as it is counted: the time of a log and the fires of an hour, the XP, the
-    /// logs burnt and how long the bank's last, what burning gives (coins, items with their chances, the bonfire time),
-    /// the gold of both, and the events the window does not count, by the game's names. nameOf gives the game's name of a
-    /// chance, when it has been read (BonusNames).
+    /// logs burnt and how long the bank's last, what a fire gives (coins, items with their chances), the gold of both,
+    /// and the events the window does not count, by the game's names. Nothing of the bonfire: what a fire adds to it is
+    /// not settled (LogRates.BonfireRule). nameOf gives the game's name of a chance, when it has been read (BonusNames).
     /// </summary>
     public static string Tooltip(LogRates t, Func<string, string?> nameOf)
     {
@@ -93,20 +93,17 @@ static class Words
         if (t.PreservationChance > 0 && t.Costs.Count + t.CurrencyCosts.Count > 0)
             lines.Add($"{Chance(t, LogRates.Preservation, nameOf)} ({Percent(t.PreservationChance)}) is counted in what is used.");
 
-        // What burning gives: the coins, the items with their chances, the doubling chance, the bonfire time.
+        // What a fire gives: the coins (on every fire, by the rule) and the items at their chances, the doubling chance.
         lines.Add("");
         if (t.Coins != null || t.Products.Count > 0)
         {
-            lines.Add("Every fire gives:");
+            lines.Add("What a fire gives:");
             if (t.Coins != null)
                 lines.Add($"  {t.CoinsEach:N0} {t.CoinsName} a fire" + (t.CoinsPerHour is { } coins ? $": {Number(coins)}" : ""));
             lines.AddRange(t.Products.Select(Item));
             if (t.DoublingChance > 0 && t.Products.Count > 0)
                 lines.Add($"{Chance(t, LogRates.Doubling, nameOf)} ({Percent(t.DoublingChance)}) is counted in the items, not the coins.");
         }
-        if (t.BonfireSeconds > 0)
-            lines.Add($"Bonfire time: {Seconds(t.BonfireSeconds)} a fire, by the game's value for this log" +
-                (t.BonfirePerHour is { } fire ? $": {Seconds(fire)} an hour." : "."));
 
         // The gold of both: what burning gives, and what the logs burnt would have sold for.
         lines.Add("");
@@ -146,18 +143,25 @@ static class Words
     static string Chance(LogRates t, string key, Func<string, string?> nameOf) =>
         t.Chances.Any(c => c.Key == key) && nameOf(key) is { } name ? name : BonusNames.Kind(key);
 
-    // What a click on the line does, when it changes what the Firemaking page shows; and, when the page's list has no room
-    // for the log's button clear of this window, that it has none (Woodcutting Rates' review 4). The sentence of no room
-    // is on two lines: on one it would be wider than Fishing Rates' widest.
+    // What a click on the line does, when it changes what the Firemaking page shows; while a log burns, that a click
+    // selects nothing (the rule of LogRates.ClickOpens); and, when the page's list has no room for the log's button clear
+    // of this window, that it has none (Woodcutting Rates' review 4), or that the list does not show it. The sentence of
+    // no room is on two lines: on one it would be wider than Fishing Rates' widest. "burn" is the mod's word until the
+    // light check has read the page's own ("Dev: words").
     static string? Click(LogRates t)
     {
         string? room = t.Sight switch
         {
             CardSight.UnderWindow => "The Firemaking page has no room for this log's button beside this window:\ndrag the window aside.",
             CardSight.NoRoom => "The Firemaking page has no room to show this log's whole button.",
+            CardSight.NotShown => "The Firemaking page's list does not show this log's button now.",
             _ => null,
         };
-        string? click = !t.Clickable ? t.HeldWhileBurning ? "While a log burns, a click does not change the Firemaking page." : null
+        string? click = t.Click == Opens.Scroll
+            ? t.Clickable ? "While you burn a log, a click only scrolls the Firemaking page's list to this log."
+                : t.OnPage ? null : "While you burn a log, a click selects nothing on the Firemaking page."
+            : t.AnyBurning ? "While you burn a log, a click selects nothing on the Firemaking page."
+            : !t.Clickable ? null
             : t.Click == Opens.Log && !t.OnPage ? "Click to open this log on the Firemaking page. Burning is not started."
             : t.Click != Opens.Nothing && !t.CategoryOnPage ? $"Click to open {t.CategoryName} on the Firemaking page. Burning is not started."
             : "Click to show this log in the Firemaking page's list.";
