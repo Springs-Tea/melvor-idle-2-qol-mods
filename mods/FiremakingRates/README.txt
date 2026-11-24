@@ -1,0 +1,56 @@
+FIREMAKING RATES {version}
+for Melvor Idle 2 (made for 0.11.6-alpha.1), needs Melvor Mod Loader
+
+Which log gives me the most per hour, and how many logs does an hour burn? On the
+Firemaking page, a round button on the right edge of the screen opens a window with one
+line per log you can see: its picture, its category, and:
+
+  - Time: how long one fire takes, the game's time to burn one log.
+  - Input: what an hour of fires takes from the bank, logs or lanterns; what your Input
+    Preservation Chance keeps is not counted.
+  - XP: Firemaking XP per hour.
+  - Cost: what the input of an hour would sell for, in gold.
+  - Gold: what burning gives in an hour, in gold: its coins, and what its items sell for.
+
+The numbers are counted the way Recipe Rates counts the same log, so where Recipe Rates
+writes a number under a log, this window has the same one: every fire gives the XP of the
+log's XP tag, takes the log (kept at your preservation chance), makes the log's items at
+their chances (the doubling chance doubles them) and gives its coins (not doubled). Nobody
+has measured them on a character's burning yet. Chances count as their long-run average.
+It is an estimate, not a promise.
+
+The best XP, gold and time are gold (the most XP and gold, the least time; a best of 0 is
+not marked; the input and the cost have no best); click a column's name to sort by it,
+and again to turn the order around. A log you cannot burn yet is greyed, with the level
+it needs. The log the Firemaking page shows has a lit outline. Hover a line for the whole
+hour: the time of a fire, the XP per hour and per fire, the input and how long the bank's
+lasts, what else a fire uses, the coins and items a fire gives with their chances, the
+gold and the cost of the hour, and the game's Firemaking events that may come, which are
+not counted. The bonfire is not counted: the window does not know yet what a fire adds to
+it.
+
+While you are not burning, click a line to open that log on the Firemaking page: the page
+shows the log's category and selects the log, as your own clicks there would, and its list
+scrolls until the log's button is in sight beside the window. As after your own click, the
+selected log is then the one the page shows and its Start button would start. Nothing is
+started, and the window stays open where it is. While you burn a log, a click selects
+nothing: on a log of the category the page shows it only scrolls the page's list to it.
+When the page has no room for the button beside the window, the line's tooltip says so:
+drag the window aside.
+
+Until you move it, the window opens beside the page's list of logs, where it leaves the
+selected log's Input and Output clear if it can. Drag the window to move it, drag its
+bottom right corner to resize it, fold it down to its title with the button beside the X.
+On another page it steps aside and comes back on the Firemaking page. Its place, size,
+fold and sort order are kept in settings.json in the mod's folder.
+
+INSTALL
+  Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),
+  so that the file ends up as  mods\FiremakingRates\FiremakingRates.dll
+
+UNINSTALL
+  Delete the folder mods\FiremakingRates
+
+A click on a line changes only what your own click on the Firemaking page would; nothing
+else of your game is changed.
+Unofficial, fan-made. Not affiliated with Games by Malcs or Jagex.

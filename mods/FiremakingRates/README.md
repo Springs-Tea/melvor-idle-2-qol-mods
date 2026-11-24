@@ -1,0 +1,184 @@
+<h1 align="center"><img src="../../docs/img/art/h-firemaking-rates.svg" alt="Firemaking Rates" width="720"></h1>
+
+<p align="center">
+  <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
+  &nbsp;
+  <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+</p>
+
+> Which log gives me the most per hour, and how many logs does an hour burn?
+
+![Every log and lantern with its category, the time of a fire, and what an hour burns, gives in Firemaking XP, costs and brings in gold, sorted by XP](../../docs/img/firemaking-rates.png)
+
+Every log has its own time to burn, its own XP, and some give coins or items on the side. Recipe Rates already
+writes the XP per hour under each log on the Firemaking page; the rest of the hour, how many logs it uses up,
+what they would sell for and what burning gives, you would work out log by log. Firemaking Rates puts the
+logs side by side: one line per log, with what an hour of burning it gives and costs your character, from the
+game's own numbers. Hover a line for the whole hour, and click it to open that log on the Firemaking page.
+
+## Contents
+
+- [Where it is](#where-it-is)
+- [What the window shows](#what-the-window-shows)
+- [The tooltip of a line](#the-tooltip-of-a-line)
+- [What is counted](#what-is-counted)
+- [Questions it answers](#questions-it-answers)
+- [Good to know](#good-to-know)
+- [When something is off](#when-something-is-off)
+- [Install](#install)
+
+## Where it is
+
+On the Firemaking page, a round button with the Firemaking icon joins the others on the right edge of the
+screen. Click it to open the window, and again, or the red X, to close it. On a window folded down to its
+title, the button opens it up again. It is lit while the window is open and not folded.
+
+The button is only there on the Firemaking page. On any other page the window steps aside; back on the
+Firemaking page, it is there again as you left it, open or folded.
+
+Until you move it, the window opens where the most of the logs' buttons in the page's list can be shown whole
+beside it, clear of the round buttons; of places as good, it takes one that leaves the selected log's Input
+and Output clear, then its Start Burning and the bonfire, and else the right side of the page. Drag the window
+to move it, drag its bottom right corner to resize it, or fold it down to its title with the button beside the
+X. It is never larger than fits above the game's bottom bar, and a list of more than 14 logs scrolls. Its
+place, size, fold and sort order are kept in `settings.json` in the mod's folder.
+
+## What the window shows
+
+One line per log the Firemaking page shows you, in the order of the page: the log's picture, its name, its
+category when the page has more than one, and:
+
+| Column | What it is |
+| --- | --- |
+| **Time** | How long one fire takes: the game's time to burn one log. |
+| **Input** | What an hour of fires takes from the bank, logs or lanterns, in the page's own word for it: the ones your Input Preservation Chance keeps are not counted. |
+| **XP** | Firemaking XP per hour. |
+| **Cost** | What the input of an hour would sell for, in gold: what you give up by burning it instead of selling it. |
+| **Gold** | What burning gives in an hour, in gold: its coins, and what the items it makes sell for (ash, charcoal, a lit lantern...). |
+
+- **The numbers are Recipe Rates' for the same log.** Where Recipe Rates writes a number under a log, or in
+  its XP tag's tooltip, this window has the same one. See [What is counted](#what-is-counted).
+- **The best XP, Gold and Time are gold**: the most XP and gold, the least time; a best of 0 is not marked.
+  Input and Cost have no best: you do not choose a log for them alone, since more input an hour, or a dearer
+  one, is as much a faster pace or a better log as a greater cost.
+- **Click a column's name to sort by it.** The first click puts the best logs on top, the next turns the
+  order around. "Log" goes back to the order of the page. The name the list is sorted by is gold, with the
+  game's small arrow after it.
+- **The log the Firemaking page shows** has the lit outline of a selected line, so it can be found in a sorted
+  list.
+- **While you are not burning, click a line to open that log on the Firemaking page**: the page shows the
+  log's category and selects the log, as its own category button and list of logs do, and its list scrolls
+  until the log's whole button is in sight beside the window, above or below it when the window lies across
+  the button's column. As after your own click there, the selected log is then the one the page shows, also in
+  its bonfire's part, and the one its Start button would start. Nothing is started, and the window stays open
+  where it is. A locked log opens its category only, and a log whose category is locked opens nothing. On the
+  log the page shows already, a click only scrolls the page's list to it, when its button is out of sight.
+  The pointer turns into a hand over a line a click changes something for.
+- **While you burn a log, a click selects nothing.** A selection could change what the page's Start button and
+  its bonfire use next, so the window never makes one then. On a log of the category the page shows, a click
+  only scrolls the page's list to the log's button; any other line does nothing. The line's tooltip says so.
+- **When the page's list has no room for a log's button beside the window**, the line's tooltip says so: drag
+  the window aside, off the page's list.
+
+![After a click on Willow Log's line: the Firemaking page shows Willow Log with its Input, Output and Grants beside the window](../../docs/img/firemaking-rates-clicked.png)
+
+- **A log you cannot burn yet is greyed**, with the Firemaking level it needs (`Lv 40`), or `Locked` when it
+  needs something else. Its numbers come from the game's own values for it like the others, and it is never
+  marked best. In a list sorted by a number, the locked logs come last.
+- Logs and categories the game keeps hidden from you are not listed until the game shows them.
+
+## The tooltip of a line
+
+Put the pointer on a line for the whole hour of burning that log. The numbers below are an example: a log of
+2.5 seconds and 10 XP, with a preservation chance of 5% and 5,000 of it in the bank.
+
+| Line | What it is |
+| --- | --- |
+| **Locked: ...** | What the log is missing, in the game's own words. Only on a locked log. |
+| **The log the Firemaking page shows.** | Only on the line with the lit outline. |
+| **The log you are burning.** | Only on the log your fire burns. |
+| **One fire every 2.5s: 1,440 fires an hour.** | The game's time to burn one log, with your bonuses. |
+| **Firemaking XP: 14,400 an hour, 10 a fire.** | Per hour, and for one fire: the XP the log's XP tag shows. |
+| **Input: 1,368 Oak Logs an hour; the bank has enough for 3h 39m.** | What leaves the bank in an hour, and how long the bank's stock of it lasts at that pace, in whole minutes. "The bank has not enough for one fire" when it has too few to start one. |
+| **Also used:** or **Also costs:** | What else a fire uses, if anything, per hour. |
+| **The preservation chance (5%) is counted in what is used.** | Only when you have one. Once the window has read it, the chance is named as the Firemaking page names it. |
+| **What a fire gives:**, and a line per thing | The coins a fire gives, and each item it can make, with its chance and how many an hour brings. |
+| **The doubling chance (10%) is counted in the items, not the coins.** | Only when you have one and the log makes items, named as the page names it once read. |
+| **Gold: 1,234 an hour, ...** | What burning gives in an hour, in gold. |
+| **Cost: 34,200 gold an hour, what the input would sell for.** | The Cost column's number (here for a log that sells for 25). |
+| **May also come while a log burns, not counted:**, and a line per event | The game's Firemaking events that may come while this log burns, by the game's names, with what each gives. |
+| **Click to open this log on the Firemaking page. Burning is not started.** | What a click on the line does while you are not burning. On a locked log: "Click to open *its category* on the Firemaking page". Not there when a click changes nothing. |
+| **While you burn a log, a click only scrolls the Firemaking page's list to this log.** | Instead, while you burn, on a log of the category the page shows whose button is out of sight. |
+| **While you burn a log, a click selects nothing on the Firemaking page.** | Instead, while you burn, on the other lines but the lit one. |
+| **The Firemaking page has no room for this log's button beside this window: drag the window aside.** | On two lines, when no scroll of the page's list shows the log's whole button clear of the window. |
+| **The Firemaking page's list does not show this log's button now.** | When the page shows the log's category but not its button. |
+
+![The tooltip of Normal Log: the time of a fire, the XP, the logs an hour burns, what a fire gives, the doubling chance, the gold and the cost](../../docs/img/firemaking-rates-tooltip.png)
+
+## What is counted
+
+The numbers start from the game's own values for each log: the time to burn it, the XP, what a fire uses (the
+log, and anything else), the preservation and doubling chances, the items a fire can make with their chances,
+the coins it gives, and the sell prices. They already hold your level, equipment, potions and every other
+bonus, so the list moves with them.
+
+| Rule | Where it comes from |
+| --- | --- |
+| A fire burns one log in the log's time; the fires of an hour are an hour over it. | The game's value for the log; the hour is the mod's. |
+| Every fire gives the XP of the log's XP tag. | Recipe Rates' rule, which writes the same number under the log. Not measured yet. |
+| Every fire takes the log's cost, and the preservation chance keeps it. | Recipe Rates' rule. Not measured yet. |
+| Every fire makes each of the log's items at its chance, and the doubling chance doubles them. | Recipe Rates' arithmetic, on the game's own list of a log's items. Recipe Rates itself reads another list, which is empty for Firemaking, so it shows none of these items. Not measured yet. |
+| Every fire gives the log's coins, not doubled. | Recipe Rates' rule, which lists the coins apart from its "Sell value". Not measured yet. |
+| Gold is the gold coins and what the items sell for; Cost is what the input sells for. | The game's sell prices; the sums are the mod's. |
+| The bonfire is not counted. | The window does not know yet what a fire adds to it, nor the unit of the game's number for it, so it shows nothing of it. |
+| The Firemaking events are not counted. | The window does not know how often the game rolls them. |
+| Chances count as their long-run average. | The mod's. |
+
+Mastery XP has no column: Firemaking keeps no mastery XP per log in this game (its Mastery Guild counts
+ranks, points and tasks).
+
+## Questions it answers
+
+- **Which log do I burn for XP?** The gold number under XP.
+- **How many logs does an hour burn, and how long will my bank last?** The Input column, and the "Input"
+  line of the tooltip.
+- **Is burning worth more than selling?** The Cost column, beside the Gold column.
+- **What else does a fire bring?** The "What a fire gives" lines of the tooltip, each with its chance.
+- **What do I need to burn that log?** The greyed line's level, and its tooltip.
+- **Where is that log on the Firemaking page?** Click its line.
+
+## Good to know
+
+- It is an estimate, not a promise: chances average out over many fires, not over ten.
+- The numbers are counted the way Recipe Rates counts them; nobody has measured them on a character's
+  burning yet.
+- The bonfire, the game's Firemaking events and its rare events are not counted.
+- The window starts nothing. While you are not burning, a click on a line selects the log's category and the
+  log on the Firemaking page, as your own clicks there would, and scrolls its list; while you burn, it selects
+  nothing and only scrolls the list.
+
+## When something is off
+
+| You see | What it means |
+| --- | --- |
+| No round button on the Firemaking page | It comes a moment after the page opens. If it never comes, look for `[FiremakingRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
+| `-` in a line | The game gives no time for that log yet. |
+| A line without a picture | The game has no picture for that log yet, only its grey stand-in, and the window shows none rather than the stand-in. |
+| "The preservation chance" instead of the game's name | The window has not read the name from the Firemaking page's list of the selected log's bonuses yet: it does once that list shows one. |
+| A line's tooltip says the page has no room for the log's button beside this window | The window lies over the page's list of logs. Drag the window aside. |
+| A click on a line only scrolls, or does nothing | You are burning a log: a click selects nothing then. |
+| A click on a line opens nothing while you are not burning | `MelvorModLoader.log` says why when a game update changed the Firemaking page: "did not take the category" or "A click on a line opens nothing from now on". The numbers still work. |
+| No button and no window at all | Look for `[FiremakingRates] Stopped` in `MelvorModLoader.log`: the mod switched itself off after a game update. |
+
+## Install
+
+<p>Get the zip from <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases">Releases</a>.</p>
+
+1. Install the [Melvor Mod Loader](https://www.nexusmods.com/melvoridle2/mods/2) (0.1.3 or newer).
+2. Open the game folder: Steam > right-click Melvor Idle 2 > Manage > Browse local files.
+3. Extract the mod's zip there, so the file ends up as `mods\FiremakingRates\FiremakingRates.dll`.
+4. Start the game. `MelvorModLoader.log` in the game folder has a line `Mod loaded: FiremakingRates`.
+
+To update, extract the new zip over the old one. To remove the mod, delete `mods\FiremakingRates`.
+A click on a line changes only what your own click on the Firemaking page would; nothing else of your game is
+changed.

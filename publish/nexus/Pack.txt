@@ -11,12 +11,12 @@ REQUIREMENT
 Melvor Mod Loader, 0.1.3 or newer
 
 SUMMARY (the short line under the name)
-Fourteen quality-of-life mods in one zip: a combat simulator, where items come from and go to, an item encyclopedia, the hour at recipes, fishing spots, rocks, trees and thieving targets, skill bonus sources, a constellation overview, a recap of time away, combat goals, kill and dungeon counters. They look like the game and never change your save.
+Fifteen quality-of-life mods in one zip: a combat simulator, where items come from and go, an item encyclopedia, the hour at recipes, fishing spots, rocks, trees, logs, thieving targets, skill bonus sources, a constellation overview, a recap of time away, combat goals, kill and dungeon counters. They look like the game and never change your save.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Quality of Life Mods[/b][/size]
-Fourteen mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all fourteen.
+Fifteen mods that show what the game already knows but does not tell you. Each one is also a page of its own, if you only want some of them: this zip is all fifteen.
 
 [list]
 [*][b]Combat Simulator[/b]: what an hour of each fight gives, uses and risks, worked out by running the game's own combat on a hidden copy of your character. Compare loadouts, items and spells, find the best place to train a skill, look at earlier scans again.
@@ -26,6 +26,7 @@ Fourteen mods that show what the game already knows but does not tell you. Each 
 [*][b]Fishing Rates[/b]: every fishing spot side by side, with its fish: time per catch, and catches, Fishing XP, gold and bait per hour, the best of each column in gold, and the whole hour in each line's tooltip. A click on a line takes the Fishing page to that spot.
 [*][b]Mining Rates[/b]: every rock side by side: time per ore, and ore, Mining XP and gold per hour by the game's own rule for breaking a rock, the best of each column in gold, and the whole hour in each line's tooltip. A click on a line shows that rock's card on the Mining page.
 [*][b]Woodcutting Rates[/b]: every tree side by side: time per log, and logs, Woodcutting XP and gold per hour, with the hits a cut takes and the XP of a cut as measured in the game, the best of each column in gold, and the whole hour in each line's tooltip. A click on a line shows that tree's card on the Woodcutting page.
+[*][b]Firemaking Rates[/b]: every log and lantern side by side: time per fire, and what an hour burns, gives in Firemaking XP, costs and brings in gold, the best of each column in gold, and the whole hour in each line's tooltip. A click on a line opens that log on the Firemaking page while nothing burns.
 [*][b]Thieving Overview[/b]: every Thieving target of every place you have found in one list: success, time per try, and XP, gold, rare items and food per hour, Safe or Risky, the best of each column in gold, and the whole hour in each line's tooltip. Best for an item finds the targets that give it, and View Possible Rewards gets the number per hour of each reward.
 [*][b]Skill Bonuses[/b]: where a skill's bonuses come from. A round button on a skill page opens a window with every stat of the page's stats panel and, under it, every item, pet, shop purchase, constellation and other source the game counts, with what each one gives.
 [*][b]Astrology Overview[/b]: your constellations in one window, those with a node choice ready first, then the shortest study time to the next unlock, with the knowledge it needs, the bonus every minor node gives, and what a locked one still misses.
