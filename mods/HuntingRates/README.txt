@@ -16,18 +16,22 @@ a character's own hunting. An escape sends you back to tracking with more steps 
 how many is known only where every reading of it gives the same number; elsewhere a column
 shows "-", and a note under the list says why. For now that is most animals. A line is
 also "-" until the Hunting page has written how many surveys a hunt of that animal takes:
-select the animal there once.
+select the animal there once. The window reads what the page writes whenever the page is on
+the screen, window open or not, and keeps it for each of your characters in readings.json,
+so a line keeps its numbers from one game to the next; the tooltip says "as the Hunting page
+last wrote it" for a number kept from an earlier game.
 
 Hover a line for the whole hour of that animal: the surveys of a hunt, the steps of tracking
 and the time of one, the time and chance of a try of the trap, the chance to try again, what
 an escape costs, the time of a catch, the Hunting XP and the journal XP, the output with the
 chance of each item, the rare species in one line, the trap and the bait with how long the
 bank's last, the gold, and what is not counted: the chance to skip a step, the preservation
-chance, what surveying finds, and what the animal's level adds to the average. A rare
+chance, what surveying finds, and what the animal's level adds to the average (the middle
+of XP and output was measured on 6 catches of Yellowtail Bird, level 1 to 7). A rare
 species you have never trapped and a collectable you have never found are not named, as the
 journal does. An animal you have not discovered yet gives nothing away: only its name as the
-page writes it, its location and what it needs. An animal you have never trapped is a black
-shape, as its card on the page draws it.
+page writes it, its location and what it needs. An animal you have never trapped is drawn as
+a black shape until the page has drawn its card, then in the card's own colour.
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. An animal you cannot hunt yet is greyed, with the level it needs.
@@ -44,7 +48,8 @@ Until you move it, the window opens at the corner of the Hunting page where the 
 its animals and locations stay in sight beside it. Drag the window to move it, drag its
 bottom right corner to resize it, fold it down to its title with the button beside the X.
 On another page it steps aside and comes back on the Hunting page. Its place, size, fold
-and sort order are kept in settings.json in the mod's folder.
+and sort order are kept in settings.json in the mod's folder, what the page wrote in
+readings.json; deleting that only brings back the "-" until the page shows the animals again.
 
 INSTALL
   Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),

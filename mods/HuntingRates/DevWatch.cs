@@ -35,28 +35,30 @@ namespace HuntingRates;
 // At its start it says, from the window's own numbers for the animal hunted, how many catches, tries, failed tries,
 // escapes, steps and hunts the minutes asked will bring, the count of each that 9 watches of 10 reach (DevReach: the
 // hunt played by the window's own numbers), and NOT ENOUGH, with the minutes to ask, for a count they do not reach
-// (lesson 59, review 6). The page is read on every tick while the watch runs, so the surveys and the XP range of the
-// animal come in whenever the Hunting page is on the screen. Every frame with an event is one "Dev: hunt" line, with
-// the time since the line before on the real clock and on the game's. It ends when the minutes are up or after two
-// minutes without an event of a hunt, with one line per question for every animal hunted, each with a verdict in
-// capitals. A link that held without exception is judged on its events (every step, every try, every escape), not on
-// whole hunts; a mean or a chance is judged with a tolerance from its own spread (twice its standard error), never a
-// fixed share. The questions are the links of a catch the window's hour rests on (AnimalRates.HuntRule, UseRule,
-// XpRule, OutputRule): the surveys of a hunt against both readings of SurveysPerHunt and the page's most; a tracking
-// step (moved on by one, never back but for the reset after a catch, none skipped) and its time against the page's
-// range, on the real clock and the game's; the steps a hunt needs; a try against the trapping chance; a failed try
-// against the reattempt chance; an escape against every reading of EscapeSteps, naming the readings that still tie; the
-// traps and bait of a try against the preservation chance; the XP and the journal XP; the XP of a catch beside the
-// animal's level and the size the journal recorded (the page says levels raise the average); the survey finds, by the
-// bank's counts over the whole watch, against the surveys counted; the output of a catch against the catch's share of
-// the XP; the time of each hunt against its own surveys, steps and tries (tight: the escapes, which make most of a
-// hunt's spread, are taken out); and the time of a catch against the window's by every reading still open, within the
-// larger of the spread seen and the one the window's numbers give a hunt (the start line says how close the minutes
-// asked can hold it). Then the game's own tracker (HuntingEntity.Tracker) for every period that lies inside the watch,
-// spent on one animal and holding at least FewestCatches catches, beside the window's hour, each number within twice
-// its own spread (DevPeriodSpread). Its last line says it stopped listening and changed nothing. Every listener runs
-// inside a try, and all are taken off when it ends, on Stop (with the done file, DevStopped) and on another character
-// (DevUnwatchAll).
+// (lesson 59, review 6). The mod reads the page on every tick it is on the screen, watch or not (ReadPage), and keeps
+// what it read from earlier games (readings.json), so the surveys and the XP range of the animal are there whenever the
+// page has shown them for this character. Every frame with an event is one "Dev: hunt" line, with the time since the
+// line before on the real clock and on the game's. It ends when the minutes are up or after two minutes without an
+// event of a hunt, with one line per question for every animal hunted, each with a verdict in capitals. A link that
+// held without exception is judged on its events (every step, every try, every escape), not on whole hunts; a mean or a
+// chance is judged with a tolerance from its own spread (twice its standard error), never a fixed share. The questions
+// are the links of a catch the window's hour rests on (AnimalRates.HuntRule, UseRule, XpRule, OutputRule): the surveys
+// of a hunt against both readings of SurveysPerHunt and the page's most; a tracking step (moved on by one, never back
+// but for the reset after a catch, none skipped) and its time against the page's range, on the real clock and the
+// game's; the steps a hunt needs; a try against the trapping chance; a failed try against the reattempt chance; an
+// escape against every reading of EscapeSteps, naming the readings that still tie; the traps and bait of a try against
+// the preservation chance; the XP and the journal XP; the XP of a catch beside the animal's level and the size the
+// journal recorded (the page says levels raise the average), the middle with its tolerance; the survey finds, by the
+// bank's counts over the whole watch, against what every reading of when a survey finds expects, naming each reading
+// that fits; the output of a catch against the catch's share of the XP; the time of each hunt against its own surveys,
+// steps and tries (tight: the escapes, which make most of a hunt's spread, are taken out); and the time of a catch
+// against the window's by every reading still open, within the larger of the spread seen and the one the window's
+// numbers give a hunt (the start line says how close the minutes asked can hold it). Then the game's own tracker
+// (HuntingEntity.Tracker) for every period that lies inside the watch, spent on one animal and holding at least
+// FewestCatches catches, beside the window's hour, each number within twice its own spread (DevPeriodSpread); a period
+// longer than the watch says how long a watch takes it in (the 30-minute period: 31 minutes, its cycle and one sample).
+// Its last line says it stopped listening and changed nothing. Every listener runs inside a try, and all are taken off
+// when it ends, on Stop (with the done file, DevStopped) and on another character (DevUnwatchAll).
 public partial class HuntingRatesMod
 {
     const string WatchRequestFile = "huntingwatch.request", WatchDoneFile = "huntingwatch.done";
@@ -204,8 +206,8 @@ public partial class HuntingRatesMod
         AnimalRates ours = ReadAnimal(hunted);
         DevLog($"watch | listening; the animal hunted {hunted.Animal.Id} at {hunted.Location?.Location?.Id}, in state {hunted.State}, step {hunted.CurrentStep} of {hunted.RequiredSteps}, " +
             $"tracks {hunted.Tracks}, trap fails {hunted.TrapFailCount}, survey fails {DevSurveyFails(hunted)}; its numbers {w.Start[hunted]}; the page's surveying range " +
-            $"{(ours.SurveysMost is { } most ? $"1 to {R(Math.Round(most, 3))} surveys" : "NOT READ (the Hunting page's panel has not shown this animal; the watch reads it whenever the page is on the screen)")}; " +
-            $"the XP range of a catch {(ours.XpRange is { } range ? $"{R(range.Low)}..{R(range.High)}" : "NOT READ (the Hunting page has not shown this animal's card)")}; " +
+            $"{(ours.SurveysMost is { } most ? $"1 to {R(Math.Round(most, 3))} surveys{(ours.SurveysRemembered ? " as the page last wrote them in an earlier game" : "")}" : "NOT READ (the Hunting page's panel has not shown this animal for this character; the mod reads it whenever the page is on the screen)")}; " +
+            $"the XP range of a catch {(ours.XpRange is { } range ? $"{R(range.Low)}..{R(range.High)}{(ours.XpRangeRemembered ? " as the page last wrote it in an earlier game" : "")}" : "NOT READ (the Hunting page has not shown this animal's card for this character)")}; " +
             $"the game's clock: {tickWords}; " +
             (w.Bank == null ? "the bank NOT FOUND: the items, traps and bait are not read"
                 : $"read from the bank's counts: {w.Watched.Count} items, this animal's trap {ours.Trap?.Id ?? "none"} {(ours.Trap != null ? w.StartCounts.GetValueOrDefault(ours.Trap) : 0)}, " +
@@ -279,15 +281,16 @@ public partial class HuntingRatesMod
                 : $" | NOT ENOUGH for: {string.Join(", ", short_.Select(n => $"{n.What} (9 watches of 10 reach {n.Reached} of {n.Count}; ask {(n.Ask is { } ask ? ask.ToString(CultureInfo.InvariantCulture) : "more than 60")} minutes)"))}"));
     }
 
-    // How surveying's finds can be judged in the minutes asked: their chance on every survey, the finds expected, and the
-    // minutes after which no find at all would say "never" (3 expected: none then happens in 1 watch of 20).
+    // How surveying's finds can be judged in the minutes asked: their chance on every survey, the finds expected, and
+    // the minutes after which no find at all rules out a find on every survey (3 expected: none then happens in 1 watch
+    // of 20).
     static string DevFindsReach(AnimalRates a, double surveysPerMinute, int minutes)
     {
         double perSurvey = a.SurveyFinds.Sum(d => d.Chance);
         if (perSurvey <= 0) return " | the survey finds: this animal's surveys find nothing";
         double expected = minutes * surveysPerMinute * perSurvey;
-        return $" | the survey finds: {R(Math.Round(perSurvey, 3))} a survey, about {R(Math.Round(expected, 1))} expected in {minutes} minutes; none at all says " +
-            $"\"never\" once 3 are expected ({Words.Seconds(3 / (surveysPerMinute * perSurvey) * 60)})";
+        return $" | the survey finds: {R(Math.Round(perSurvey, 3))} a survey, about {R(Math.Round(expected, 1))} expected in {minutes} minutes if every survey can find; " +
+            $"none at all rules that out once 3 are expected ({Words.Seconds(3 / (surveysPerMinute * perSurvey) * 60)}); the other readings expect fewer";
     }
 
     // The counts of a watch of these minutes that 9 watches of 10 reach, in the order of DevWatchEnough's needs (tracking
@@ -834,10 +837,9 @@ public partial class HuntingRatesMod
         if (w.Open != null && w.Open.Frame != (long)Engine.GetProcessFrames()) DevFlushMoment(w);
         ulong now = Time.GetTicksMsec();
         if (w.Open == null && now - w.LastRead >= BankReadEvery) DevBankRead(w, null);
-        // The Hunting page's surveying and XP ranges, read whenever the page is on the screen during the watch (ReadPage only
-        // reads), not only at its start and end (review 6).
-        try { ReadPage(); }
-        catch (Exception e) { DevLog($"watch | the page could not be read: {e.GetType().Name}: {e.Message}"); }
+        // The Hunting page's surveying and XP ranges are read by the mod's own tick whenever the page is on the screen
+        // (ReadPage, before this request's turn), with one line when it cannot read them: the watch has no read of its
+        // own there, so nothing is logged on every tick (the code review of turn 7, smaller point 4).
         if (w.Failed) DevWatchEnd("a listener failed");
         else if (now - w.Since >= w.Length) DevWatchEnd($"the {w.Length / 60000} minutes are up");
         else if (now - w.LastEvent >= WatchIdle) DevWatchEnd($"two minutes without an event of a hunt (hunting {(w.Action.IsStarted ? "started" : "stopped")})");
@@ -1035,8 +1037,13 @@ public partial class HuntingRatesMod
         // the animal's level and the size the journal recorded, so that a later turn can count what a level adds.
         var levels = xps.Select(x => x.Level).Distinct().ToList();
         int sameAsStat = xps.Count(x => double.IsFinite(x.Stat) && Math.Abs(x.Xp / x.Each - x.Stat) <= 0.005);
+        // The middle with its tolerance (fault 4 of turn 7): about 10 catches leave about 18%, so "fits" never reads as
+        // more.
+        double middleWithin = double.IsFinite(shareTol) && rangeMiddle > 0 ? shareTol / rangeMiddle : double.NaN;
+        string within = double.IsFinite(middleWithin) ? $" WITHIN {R(Math.Round(middleWithin * 100, 1))}%" : "";
         Say("XP and the animal's level", xps.Count < FewestCatches ? $"NOT DECIDED ({xps.Count} CATCHES)"
-                : (double.IsFinite(shareTol) && double.IsFinite(rangeMiddle) && Math.Abs(shareMean - rangeMiddle) <= shareTol ? "THE MIDDLE HOLDS" : "THE MIDDLE DOES NOT HOLD") +
+                : !double.IsFinite(rangeMiddle) ? "NOT DECIDED (THE PAGE'S RANGE NOT READ)"
+                : (double.IsFinite(shareTol) && Math.Abs(shareMean - rangeMiddle) <= shareTol ? $"THE MIDDLE FITS{within}" : $"THE MIDDLE DOES NOT FIT{within}") +
                   $" AT ANIMAL LEVEL {string.Join(" TO ", new[] { levels.Min(), levels.Max() }.Distinct().Select(l => l?.ToString() ?? "-"))}" +
                   (sameAsStat == xps.Count ? ", A CATCH'S SHARE IS THE SIZE THE JOURNAL RECORDED" : ""),
             $"[{string.Join(", ", xps.Select(x => $"{N(x.Xp / x.Each)} at {x.Level?.ToString() ?? "-"}, size {N(x.Stat)}"))}]; the share equals the journal's size on {sameAsStat} of {xps.Count}");
@@ -1046,17 +1053,33 @@ public partial class HuntingRatesMod
             $"a step [{string.Join(", ", seen.JournalStep.Distinct().Select(j => N(j)))}] on {seen.JournalStep.Count} frames, a catch [{string.Join(", ", seen.JournalCatch.Distinct().Select(j => N(j)))}] " +
             $"on {seen.JournalCatch.Count}, {seen.JournalElsewhere} elsewhere; the game's bases {ours.JournalTrackingXp} and {ours.JournalTrappingXp}");
 
-        // The survey finds: what the bank gained of each item this animal's surveys can find, over the whole watch, against
-        // the surveys counted by the game's own count and each item's chance (a count at its chance: twice its spread, at
-        // least one). No find where 3 or more were expected is "never"; where fewer were, nothing is decided.
+        // The survey finds: what the bank gained of each item this animal's surveys can find, over the whole watch,
+        // against what each reading of when a survey can find expects, by the game's own count of the surveys and each
+        // item's chance (fault 3 of turn 7, lesson 59: the verdict names every reading the count fits, and settles none
+        // alone): on every survey; only on a failed survey (every survey of a hunt but the one that found the tracks);
+        // once a hunt (or only on the survey that found the tracks, which expects the same); never. A count fits a
+        // reading within twice its spread, at least one; no find at all fits a reading that expects fewer than 3 (none
+        // then comes in 1 watch of 20 or more), and "never" fits only no find.
         int surveysCounted = surveyed.Sum(h => h.Surveys ?? 0);
-        double findsExpected = surveysCounted * ours.SurveyFinds.Sum(d => d.Chance * d.Each);
+        var huntsSurveyed = surveyed.Where(h => h.Surveys is > 0).ToList();
+        double perSurvey = ours.SurveyFinds.Sum(d => d.Chance * d.Each);
         int findsSeen = ours.SurveyFinds.Select(d => d.Item).Distinct().Sum(item => w.Bank == null ? 0 : Math.Max(0, w.Counts.GetValueOrDefault(item) - w.StartCounts.GetValueOrDefault(item)));
-        double findsTol = Math.Max(1, 2 * Math.Sqrt(findsExpected));
+        var findReadings = new (string Name, double Expected)[]
+        {
+            ("ON EVERY SURVEY", surveysCounted * perSurvey),
+            ("ONLY ON A FAILED SURVEY", huntsSurveyed.Sum(h => h.Surveys!.Value - 1) * perSurvey),
+            ("ONCE A HUNT", huntsSurveyed.Count * perSurvey),
+            ("NEVER", 0),
+        };
+        bool Fits(double expected) => expected <= 0 ? findsSeen == 0
+            : findsSeen == 0 ? expected < 3 : Math.Abs(findsSeen - expected) <= Math.Max(1, 2 * Math.Sqrt(expected));
+        var findsFit = findReadings.Where(r => Fits(r.Expected)).Select(r => r.Name).ToList();
         Say("the survey finds", ours.SurveyFinds.Count == 0 ? "NOT DECIDED (THIS ANIMAL'S SURVEYS FIND NOTHING)" : w.Bank == null ? "NOT DECIDED (THE BANK NOT READ)"
-                : findsSeen == 0 ? findsExpected >= 3 ? $"NO FIND IN {surveysCounted} SURVEYS: NEVER" : $"NOT DECIDED (NONE, {N(findsExpected, 2)} EXPECTED)"
-                : Math.Abs(findsSeen - findsExpected) <= findsTol ? "FINDS AS THEIR CHANCE ON EVERY SURVEY" : "FINDS NOT AS THEIR CHANCE",
-            $"{findsSeen} found in the bank over the watch, {N(findsExpected, 2)} expected on the {surveysCounted} surveys counted (within {N(findsTol, 2)}); " +
+                : findsFit.Count == 0 ? $"{findsSeen} FOUND: NO READING FITS"
+                : findsFit.Count == 1 ? $"{findsSeen} FOUND: ONLY \"{findsFit[0]}\" FITS"
+                : $"{findsSeen} FOUND: {findsFit.Count} READINGS FIT ({string.Join(", ", findsFit)})",
+            $"{findsSeen} found in the bank over the watch; on the {surveysCounted} surveys counted in {huntsSurveyed.Count} hunts, each reading expects " +
+            $"{string.Join(", ", findReadings.Select(r => $"{r.Name.ToLowerInvariant()} {N(r.Expected, 2)} (within {N(r.Expected <= 0 ? 0 : Math.Max(1, 2 * Math.Sqrt(r.Expected)), 2)})"))}; " +
             $"[{string.Join(", ", ours.SurveyFinds.Select(d => $"{d.Item.Id} {R(d.Chance)} x{d.Quantity}"))}]");
 
         // The output of a catch: each product against the game's quantity times the catch's share of the XP, rounded down
@@ -1210,7 +1233,11 @@ public partial class HuntingRatesMod
                 string compared = "";
                 if (watched != null)
                 {
-                    if (!inside) compared = watched * 1000 < period.CycleDuration ? " | starts before the watch: not compared" : w.AnimalChanged || w.Seen.Count != 1 ? " | not one animal throughout: not compared" : " | not compared";
+                    // A period is inside a watch at least its cycle and one sample long (the code review of turn 7,
+                    // smaller point 5: the 30-minute period needs 1,806 s, a 31-minute watch).
+                    if (!inside) compared = watched * 1000 < period.CycleDuration + period.SamplePeriod
+                            ? $" | starts before the watch: not compared (a watch of {R(Math.Ceiling((period.CycleDuration + period.SamplePeriod) / 60000.0))} minutes takes it in)"
+                        : w.AnimalChanged || w.Seen.Count != 1 ? " | not one animal throughout: not compared" : " | not compared";
                     else if (ours?.CatchesPerHour is { } perHour && ours.PerCatch is { } k)
                     {
                         // The catches the period holds by the window's hour; too few, and nothing is judged.

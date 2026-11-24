@@ -30,9 +30,9 @@ namespace HuntingRates;
 //   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod HuntingRates -Request hunting.request -Produces hunting.done -Out <folder>
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
 // everything back; "fail=click" fails the step right after the click, so that the put-back of what the click changed is
-// shown (code review 1). Built on Woodcutting Rates' request (mods/WoodcuttingRates/Dev.cs) as merged; the page's parts it
-// changes, who owns each, how each is put back and the hunt guard are in DevPage.cs, the pointer on the page's parts in
-// DevAims.cs.
+// shown (code review 1), and "fail=counted" the step right after the click that opens the counted line (step 4a). Built
+// on Woodcutting Rates' request (mods/WoodcuttingRates/Dev.cs) as merged; the page's parts it changes, who owns each,
+// how each is put back and the hunt guard are in DevPage.cs, the pointer on the page's parts in DevAims.cs.
 // Lesson 56: nothing is selected while a hunt runs. "A hunt runs" (AnimalRates.IsHunting, the window's own test) is read again right
 // before every press that selects and every put-back of a selection; while one runs, those are not made and are said
 // (NOT PUT BACK for what the request owned). The check is meant to run while the character is not hunting; run while he
@@ -57,6 +57,12 @@ namespace HuntingRates;
 //     named; shot-hunting-panel-tooltip.png.
 //  4. A picture of the screen without the window; presses the round button, and opens the window up with its own button
 //     if it opened folded; the round button must be lit.
+// 4a. "Dev: card" at his location (the page's cards as he left them: a never-trapped card and a trapped one, if his
+//     location has them; "Dev: card | seen" says which were seen). Then, while no hunt runs, a counted line (review 7,
+//     point 2): the line of an animal whose escape the window counts (Yellowtail Bird on his character), clicked as a
+//     player clicks it, so that the page's panel writes its surveys and its card its XP range; "Dev: counted" reads
+//     its hour back (NOT COUNTED if it stays "-"). While a hunt runs, it opens nothing and says so; when the page
+//     shows that animal already, it clicks nothing.
 //  5. "Dev: row" (raw, counted, the time of a catch by every reading still open, drawn, tooltip), "Dev: game" (the
 //     panel's labels beside ours, its surveying range against the most surveys the window counts, its bonus rows, and the
 //     animal's trap, bait, trapless, journal and fail bonuses beside its stats), "Dev: card" (every card: name, picture,
@@ -66,7 +72,8 @@ namespace HuntingRates;
 //     crop-hunting-window-end.png.
 //  6. The tooltip of a line whose hour is counted, when there is one (shot-hunting-tooltip.png), and the tooltip of the
 //     name with the longest tip (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and
-//     crop-hunting-sorted.png.
+//     crop-hunting-sorted.png. Then the page put back from the counted line's click, by the same put-back as after the
+//     click of step 8 (AddPageBack).
 //  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the click
 //     after has to show the hunt again by the page's own button.
 //  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's, which
@@ -86,7 +93,8 @@ namespace HuntingRates;
 //     the pointer, and says in its last line what was put back, NOT AS IT WAS for anything that is not, NOT PUT BACK for
 //     what lesson 56 kept it from putting back, NOT READ BACK for what could not be read. A change of the hunt or of a
 //     choice is the request's fault only when the guard saw it in the window of one of its presses; otherwise it is said
-//     as the player's or the game's.
+//     as the player's or the game's. readings.json (what the page wrote, which the mod keeps per character) is left as
+//     the page wrote it, not put back: it is no choice of the player's, and the done line says what it holds.
 // A step that fails jumps to 10. If the mod stops while a request runs, or another character is opened, the done file says
 // so and settings.json is written back from the copy (DevStopped, DevReset).
 public partial class HuntingRatesMod
@@ -114,6 +122,8 @@ public partial class HuntingRatesMod
     bool _devSettingsRead;
     // True while a click on a line runs its presses (ShowOnPage, ClickStepNow): the game's events raised then are the click's.
     bool _devInClick;
+    // What readings.json held for this character when the request began (DevReadingsWords).
+    (int All, int Surveys, int Xp) _devReadingsAtStart;
 
     // What the request found, to be put back as it was.
     sealed record DevBefore(GamePage? Page, bool Wanted, bool Shown, bool? Folded, bool? Lit, string? Settings, DevPageWas Hunting);
@@ -251,7 +261,32 @@ public partial class HuntingRatesMod
         if (_devAt < _devSteps.Count) return;
         string words = _devPutBackWords ?? "the read back did not run to its end; on the way: " +
             (_devOnTheWay.Count == 0 ? "nothing said" : string.Join(" | ", _devOnTheWay));
-        DevEnd($"{_devFailure ?? "ok"}; put back: {words}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
+        DevEnd($"{_devFailure ?? "ok"}; put back: {words}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}; " +
+            DevReadingsWords());
+    }
+
+    // What the mod keeps of the page's words for this character (readings.json), now and at the request's start: the
+    // animals, those with surveys, those with an XP range.
+    (int All, int Surveys, int Xp) DevReadingsNow() =>
+        (_remembered.Count, _remembered.Values.Count(r => r?.SurveysMost != null), _remembered.Values.Count(r => r?.XpLow != null));
+
+    string DevReadingsWords()
+    {
+        var (all, surveys, xp) = DevReadingsNow();
+        var start = _devReadingsAtStart;
+        // What is on disk, written first if it waits for its five seconds: the file a game start reads them back from.
+        string disk;
+        try
+        {
+            WriteReadings();
+            var mine = ModFiles.ReadJson<Readings>(ReadingsFile, _ctx.Log).Characters?.GetValueOrDefault(_rememberedOf ?? "");
+            disk = mine == null ? all == 0 ? "nothing on disk for this character, as kept" : "NOTHING ON DISK FOR THIS CHARACTER"
+                : $"on disk {mine.Count}, {mine.Values.Count(r => r?.SurveysMost != null)} and {mine.Values.Count(r => r?.XpLow != null)}" +
+                  (mine.Count == all ? "" : "  NOT AS KEPT");
+        }
+        catch (Exception e) { disk = $"on disk NOT READ ({e.GetType().Name}: {e.Message})"; }
+        return $"readings.json, the page's words the mod keeps, left as the page wrote them (no choice of the player's): {all} animals of this character, " +
+            $"{surveys} with surveys, {xp} with an XP range; at the request's start {start.All}, {start.Surveys} and {start.Xp}; {disk}";
     }
 
     void DevEnd(string result)
@@ -310,6 +345,8 @@ public partial class HuntingRatesMod
         _devOrigin = _devOriginWait = null;
         _devOnTheWay.Clear();
         _devHis.Clear();
+        _devCardsNever.Clear();
+        _devCardsTrapped.Clear();
         _devFocusAfter = null;
         _devPressFrame = -1;
         _devAnimalBackFrame = -1;
@@ -322,6 +359,7 @@ public partial class HuntingRatesMod
         var action = _hunting.Action;
         _devSettingsCopy = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
         _devSettingsRead = true;
+        _devReadingsAtStart = DevReadingsNow();
         var before = new DevBefore(DevNative.CurrentPage(view)?.Item1, _wanted, _window is { IsAlive: true, Visible: true },
             _window is { IsAlive: true } ? _window.Minimised : null, GodotObject.IsInstanceValid(_opener) ? _opener!.ButtonPressed : null,
             _devSettingsCopy, DevPageNow());
@@ -332,7 +370,8 @@ public partial class HuntingRatesMod
             $"{(before.Folded == true ? ", folded" : "")}, round button {(before.Lit is { } lit ? lit ? "lit" : "unlit" : "not made yet")}, settings.json " +
             (before.Settings == null ? "not there" : $"{before.Settings.Length} characters: {before.Settings}") +
             $" | {huntAtStart} | the page: {DevPageWords(before.Hunting)} | the choices: {choicesAtStart} | the real pointer at {DisplayServer.MouseGetPosition()}" +
-            $" | {DevHuntRunsWords()}" + (DevHuntRuns ? " | A HUNT RUNS: nothing will be selected, and the click only proves that it selects nothing" : ""));
+            $" | {DevHuntRunsWords()}" + (DevHuntRuns ? " | A HUNT RUNS: nothing will be selected, and the click only proves that it selects nothing" : "") +
+            $" | {DevReadingsWords()}");
 
         Add("open the Hunting page", () =>
         {
@@ -409,6 +448,73 @@ public partial class HuntingRatesMod
             if (_opener?.ButtonPressed != true) throw new InvalidOperationException("The round button is not lit while the window is open.");
             return true;
         });
+        // Review 7, point 2: a counted line, made by the request itself while no hunt runs, before the pictures. The
+        // cards of his own location first (point 4: a never-trapped card and a trapped one, where his location has
+        // them), since the click opens the counted animal's location. The line is the first one of an animal whose
+        // escape the window counts, open, discovered and selectable from its line (Yellowtail Bird on his character),
+        // clicked through the window's own click as a player clicks it; the page is put back after the pictures
+        // (AddPageBack, "the page back after the counted line").
+        AnimalRates? counted = null;
+        ActiveHuntingAnimal? countedAnimal = null;
+        ulong countedSince = 0;
+        Add("the cards at his location", () =>
+        {
+            if (!DevFramesDrawn()) return false;
+            Refresh();
+            DevCards("his location");
+            return true;
+        });
+        Add("a counted line to open", () =>
+        {
+            Refresh();
+            var open = _list!.DevLines().Select(l => l.Animal).Where(a => !a.Locked && a.Discovered && a.HasTime && a.EscapeAdds != null && a.TrapFailBonuses == false &&
+                a.Click == AnimalRates.Opens.Animal).ToList();
+            DevLog($"counted | the lines whose escape the window counts: [{string.Join(", ", open.Select(a => $"{a.Animal.LocalId}{(a.SecondsPerCatch != null ? " counted" : " -")}" +
+                $"{(a.OnPage ? " (the page shows it)" : "")}{(a.Clickable ? "" : " not clickable")}"))}]");
+            AnimalRates? pick = open.FirstOrDefault(a => a.OnPage) ?? open.FirstOrDefault(a => a.Clickable);
+            if (pick == null) { DevLog("counted | no such line can be opened: nothing is clicked, and a counted line shows only if the page wrote it before"); return true; }
+            countedAnimal = pick.Active;
+            if (DevHuntRuns) { DevLog($"counted | A HUNT RUNS: the line of {pick.Animal.Id} is not opened, and nothing is selected"); return true; }
+            if (pick.OnPage) { DevLog($"counted | the page shows {pick.Animal.Id} already: nothing is clicked"); return true; }
+            counted = pick;
+            _list.DevScroll.EnsureControlVisible(DevLineOf(pick));
+            DevLog($"counted | the line of {pick.Animal.Id} at {pick.Active.Location?.Location?.Id} is clicked; before: {DevSelection(pick)}");
+            return true;
+        });
+        Add("open the counted line", () =>
+        {
+            if (counted == null) return true;
+            // Read again at the press: a hunt he starts meanwhile is left alone (lesson 56), and the window's click
+            // itself selects nothing while one runs (ShowOnPage).
+            if (DevHuntRuns)
+            {
+                DevLog($"counted | A HUNT RUNS now: the line of {counted.Animal.Id} is not clicked");
+                counted = null;
+                return true;
+            }
+            AnimalRates line = counted;
+            bool? pressed = DevPagePress(() => DevClickLine(line), before.Hunting, $"the click on the counted line of {line.Animal.Id}");
+            if (pressed != null) return pressed.Value;
+            counted = null;
+            return true;
+        }, PointerStepTime);
+        Add("the counted line read back", () =>
+        {
+            if (countedAnimal == null) return true;
+            if (Waiting() || !DevFramesDrawn()) return false;
+            if (countedSince == 0) countedSince = Time.GetTicksMsec();
+            // The panel's surveys are read by the mod's own tick, from two process frames after the animal was first
+            // seen selected (ReadPage): a few ticks at most.
+            AnimalRates now = ReadAnimal(countedAnimal);
+            if (now.SecondsPerCatch == null && Time.GetTicksMsec() - countedSince < 3000) return false;
+            Refresh();
+            DevLog($"counted | {now.Animal.Id}: {DevSelection(now)}; the surveys {(now.SurveysMost is { } most ? $"1 to {R(Math.Round(most, 3))}" : "NOT READ")}" +
+                $"{(now.SurveysRemembered ? " as the page last wrote them in an earlier game" : "")}, the XP range {(now.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")}" +
+                $"{(now.XpRangeRemembered ? " as the page last wrote it in an earlier game" : "")}; a catch every {(now.SecondsPerCatch is { } t ? Words.Seconds(t) : "-")}, " +
+                $"{(now.CatchesPerHour is { } c ? Words.Number(c) : "-")} an hour, XP {(now.XpPerHour is { } x ? Words.Number(x) : "-")}, gold {(now.GoldPerHour is { } g ? Words.Number(g) : "-")}, " +
+                $"traps {(now.TrapsPerHour is { } tr ? Words.Number(tr) : "-")}{(now.SecondsPerCatch == null ? "  NOT COUNTED" : "")}");
+            return true;
+        });
         Add("numbers", () =>
         {
             Refresh();
@@ -416,7 +522,8 @@ public partial class HuntingRatesMod
             if (rows == 0) throw new InvalidOperationException("The window lists no animal.");
             DevLog($"note | under the list: '{_list!.DevNote}'");
             DevGame();
-            DevCards();
+            DevCards("the page now");
+            DevCardsSeen();
             DevWords();
             DevSpiders();
             DevHidden();
@@ -511,6 +618,8 @@ public partial class HuntingRatesMod
             Shot("sorted", crop: true);
             return true;
         });
+        // The page put back from the counted line's click, by the put-back of the click below (review 7, point 2).
+        AddPageBack("the page back after the counted line", () => !DevOwnsAny, "counted | the page put back:");
 
         // The journal by the page's own button, then a click on a line, then (while no hunt runs) the page's own location
         // and card buttons for the same animal, to compare. The page is put back after each, by the rule of DevPage.cs.
@@ -1034,6 +1143,8 @@ public partial class HuntingRatesMod
             // "fail=click" fails the step right after the click, so that what the click changed is put back by the failure
             // path (code review 1).
             if (name == "click") name = "the animal shown";
+            // "fail=counted" fails the step right after the click that opens the counted line (review 7, point 2).
+            else if (name == "counted") name = "the counted line read back";
             if (_devSteps.Take(_devPutBackAt).Any(s => s.Name == name))
             {
                 _devFailOnPurpose = name;
@@ -1253,8 +1364,16 @@ public partial class HuntingRatesMod
         }
     }
 
+    // The cards "Dev: card" has seen in this request, never trapped and trapped (review 7, point 4).
+    readonly HashSet<string> _devCardsNever = new(), _devCardsTrapped = new();
+
+    // Which cards were seen: at least one never-trapped card and one trapped are wanted beside their lines.
+    void DevCardsSeen() =>
+        DevLog($"card | seen | never trapped [{string.Join(", ", _devCardsNever)}], trapped [{string.Join(", ", _devCardsTrapped)}]" +
+            (_devCardsNever.Count == 0 ? "  NO NEVER-TRAPPED CARD SEEN" : "") + (_devCardsTrapped.Count == 0 ? "  NO TRAPPED CARD SEEN" : ""));
+
     // Every card of the page's list against its line, and the page's order of locations and animals against the window's.
-    void DevCards()
+    void DevCards(string when)
     {
         try
         {
@@ -1270,7 +1389,8 @@ public partial class HuntingRatesMod
                 Color cardTint = icon != null ? icon.Modulate * icon.SelfModulate : Colors.White;
                 string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" +
                     (l.Animal.PictureTint.IsEqualApprox(cardTint) ? "" : "  CARD AND LINE DIFFER") : "NO LINE";
-                DevLog($"card | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times" +
+                if (animal?.JournalEntry is { IsDiscovered: true } known) (known.TimesTrapped == 0 ? _devCardsNever : _devCardsTrapped).Add(animal.Animal.LocalId);
+                DevLog($"card | {when} | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times" +
                     $"{(animal?.JournalEntry is { IsDiscovered: true } entry && (entry.TimesTrapped == 0) != (cardTint.R + cardTint.G + cardTint.B < 0.05f) ? "  NOT AS THE READING (BLACK WHILE NEVER TRAPPED)" : "")}" +
                     $" | the card's name '{Native.NameOf(card)?.Text}', picture " +
                     $"{DevTexture(icon?.Texture)} shown {icon?.IsVisibleInTree()} modulate {icon?.Modulate}/{icon?.SelfModulate}, spider icon {icon?.IsArachnophobiaModeIcon}, " +
@@ -1281,7 +1401,7 @@ public partial class HuntingRatesMod
             var action = _hunting!.Action;
             string pageOrder = string.Join(", ", Native.Cards(_page!).Select(c => Native.AnimalOf(c)?.Animal.LocalId ?? "?"));
             string ourOrder = string.Join(", ", ReadAnimals().Where(a => ReferenceEquals(a.Active.Location, action.SelectedLocation)).Select(a => a.Animal.LocalId));
-            DevLog($"order | the page's list of {action.SelectedLocation?.Location?.Id ?? "none"}: [{pageOrder}]; ours: [{ourOrder}]{(pageOrder == ourOrder ? "" : "  DIFFER")}");
+            DevLog($"order | {when} | the page's list of {action.SelectedLocation?.Location?.Id ?? "none"}: [{pageOrder}]; ours: [{ourOrder}]{(pageOrder == ourOrder ? "" : "  DIFFER")}");
             if (Native.TrackingView(_page!) is { } view && Native.LocationSelect(view) is { } select && Native.LocationButtons(select) is { } buttons)
             {
                 var shown = buttons.Where(b => GodotObject.IsInstanceValid(b.Value) && b.Value.IsVisibleInTree()).OrderBy(b => b.Value.GetIndex()).Select(b => b.Key.LocalId).ToList();

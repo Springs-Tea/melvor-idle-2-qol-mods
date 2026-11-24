@@ -33,7 +33,8 @@ location buttons stay in sight beside it, then its panel of the animal selected;
 the hunt in progress. Drag the window to move it, drag its bottom right corner to resize it, or fold it down
 to its title with the button beside the X. It is never larger than fits above the game's bottom bar, and a
 list of more than 14 animals scrolls. Its place, size, fold and sort order are kept in `settings.json` in the
-mod's folder.
+mod's folder, and what the Hunting page writes for each animal of each of your characters in `readings.json`
+(see below).
 
 ## What the window shows
 
@@ -53,10 +54,15 @@ animals): the animal's picture, its name, its location, and:
   many is known only where every reading of it gives the same number (see
   [What is counted](#what-is-counted)).
   - It is also `-` until the Hunting page has written how many surveys a hunt of that animal takes: its panel
-    writes it for the animal selected there, so select the animal there once.
+    writes it only for the animal selected there, so select the animal there once.
   - It is `-` for a trap whose bonuses change the chance after a failed try.
   - XP alone is `-` until the page has shown the animal's card, which writes the range of its XP: open its
-    location once. The window keeps what it has read for as long as the game runs.
+    location once.
+  - The window reads what the page writes whenever the Hunting page is on the screen, with the window open
+    or not, and keeps it in `readings.json` for each of your characters, so a line keeps its numbers from one
+    game to the next. The tooltip says "as the Hunting page last wrote it" for a number kept from an earlier
+    game; the page writes it again whenever it shows that animal. The note under the list says it in one
+    line: select an animal once on the Hunting page, and its line keeps what the page writes.
 - **The best number of each column is gold**: the shortest time, the most catches, XP and gold. Traps has no
   best, since the fastest animal always uses the most.
 - **Click a column's name to sort by it.** The first click puts the best animals on top, the next turns the
@@ -80,7 +86,10 @@ animals): the animal's picture, its name, its location, and:
 - **An animal you have not discovered yet** gives nothing away: its line has its name as the Hunting page
   writes it (by the game's own word for something not found until the page has shown its location), its
   location and what it needs, no picture until the page draws one, and no numbers.
-- **An animal you have never trapped** is a black shape, as its card on the Hunting page draws it.
+- **An animal you have never trapped** is drawn as a black shape until the Hunting page has drawn its card.
+  That is the window's reading of the page: the cards of never-trapped animals it has been checked against so
+  far were black. Once the page has drawn the card, the line has the card's own colour, kept from game to
+  game.
 - **The game's setting for players who do not want to see spiders** is followed: with it on, a spider's line
   shows the picture the game shows instead, or none, never the spider.
 
@@ -95,14 +104,16 @@ is not counted. A line of the tooltip that would be longer than the screen allow
 | **The animal the Hunting page shows.** | Only on the line with the lit outline. |
 | **The animal you are hunting now.** | Only while you hunt it. |
 | **Tool: ...** | The tool the animal is tracked with, as its card on the page writes it once the page has shown it, or the page's own words for an animal that needs none. |
-| **Surveying: 3.84s a survey, 1 to 3 until the tracks are found.** | The time of a survey with your bonuses, and how many a hunt takes, as the page writes it for this animal. |
+| **Surveying: 3.84s a survey, 1 to 3 until the tracks are found.** | The time of a survey with your bonuses, and how many a hunt takes, as the page writes it for this animal. Kept from an earlier game, it adds "as the Hunting page last wrote it". |
 | **Tracking: 4 to 8 steps of 10s to 12.4s each.** | The number of steps and the time of one, with your bonuses. |
 | **Trapping: 7.65s to 11.05s a try, 45% success; Trapping Reattempt Chance 6%.** | The time of a try of the trap and its chance, and the chance to try again, by the page's name for it. |
 | **An escape: back to tracking, with 4 more steps, 1.15 escapes a catch.** | Where an escape takes you, how many steps it adds, and how many escapes a catch takes. Where the window does not know the steps yet, the numbers its readings give. |
 | **A catch every 2m 27s on average, worked out by a rule measured in the game: 24.5 an hour.** | The time of a catch and the catches of an hour; where they cannot be counted, what the window does not know. |
-| **Hunting XP: 11,433 an hour, 467 a catch, the middle of 234 to 701.** | The XP of a catch, the middle of the range the animal's card writes, and of an hour. Before the page has shown the card, the game's XP before its range. |
+| **Hunting XP: 11,433 an hour, 467 a catch, the middle of 234 to 701.** | The XP of a catch, the middle of the range the animal's card writes, and of an hour. Before the page has ever shown the card, the game's XP before its range. Kept from an earlier game, it adds "as the Hunting page last wrote it". |
+| **The middle of XP and output was measured on 6 catches of Yellowtail Bird, level 1 to 7.** | What the window's middles rest on: the animal, its level then, and the catches. The page says an animal's level raises the average, so at a higher level both can be low. |
 | **Journal XP: 504 an hour, 1 a tracking step and 10 a catch.** | The animal's journal XP, and of an hour. |
-| **Every catch, a chance of, with your Output Doubling Chance (2%):** | The animal's output with the chance of each item, how many it brings, and how many an hour. |
+| **Every catch, a chance of:** | The animal's output with the chance of each item, how many it brings, and how many an hour. |
+| **The doubling chance (2%) is counted in the output.** | Your doubling chance, in the output of an hour and its gold. |
 | **A rare species on 1% of catches: ...** | Each species in one line, with its share of the rare ones, "(locked)" for one that cannot come yet, and what it brings besides. A species you have never trapped and a collectable you have never found are not named, as the journal does. |
 | **Trap:** and **Bait:** | The trap selected for the animal, or that you hunt it without one; its bait, and whether you use it. Each with an hour of it and how long what is in the bank lasts. |
 | **Gold: 1,497 an hour, what the output sells for.** | What an hour's output sells for in gold; where an hour cannot be counted, what one catch's output sells for. |
@@ -125,7 +136,7 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 
 | Rule | Where it comes from |
 | --- | --- |
-| A hunt starts with surveys until the tracks are found, as many as the middle of the range the page writes for surveying ("3.84s - 11.52s" is one to three surveys: two). | The game's own words, and the window's middle of the range. The Hunting page writes it only for the animal selected there, and no number of the game's gives it, so an animal it has not been written for shows `-`. Measured: 2, 1, 2, 3, 1 and 1 surveys, never more than three. |
+| A hunt starts with surveys until the tracks are found, as many as the middle of the range the page writes for surveying ("3.84s - 11.52s" is one to three surveys: two). | The game's own words, and the window's middle of the range. The Hunting page writes it only for the animal selected there, and no number of the game's gives it, so an animal it has never been written for shows `-`. The window keeps it from game to game. Measured: 2, 1, 2, 3, 1 and 1 surveys, never more than three. |
 | Then tracking: every step takes one tracking interval and moves on by one; no step fails. | Measured: 62 of 62 steps. The tracking chance does not make a step fail. |
 | The chance to skip a tracking step is not counted. | Measured: no step was seen skipped in 62, where about 3 were to be expected. What it does is not known yet. |
 | Every number of steps in the game's range is as likely, and every time in a range: the window takes the middle of each. | The window's own, as Fishing Rates takes the middle of a catch time. |
@@ -137,7 +148,7 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 | The chances of a try count as they are now. A trap whose bonuses change the chance after a failed try is not counted. | The window's own: what those bonuses do is not known yet. |
 | Every try takes one trap and one bait from the bank, whether it catches or not, preserved or not. Your Input Preservation Chance is not counted. | Measured: 13 tries took 13 traps and 13 Seed Bait, and none was kept. Fishing Rates measured that a preserved bait is still taken from the bank. The bait of a hunt without a trap is not counted: it was not measured. |
 | Hunting XP comes with a catch only, the middle of the range the animal's card writes. | Measured: XP on 6 of 6 catches and with nothing else, 467.7 on average against the middle, 467.25. The game keeps that range only on the card, so the window reads it there. |
-| What an animal's level adds to the average XP and output is not counted. | The game's own words: "Animal Levels increase the average Skill XP & Item quantity output." How much a level adds is not known yet; the measure above was at a low level. |
+| What an animal's level adds to the average XP and output is not counted. | The game's own words: "Animal Levels increase the average Skill XP & Item quantity output." How much a level adds is not known yet: the middle above was measured on 6 catches of Yellowtail Bird at an animal level from 1 to 7 (it was level 1 before that watch and level 7 after it), and the tooltip and the XP and Gold columns say so. |
 | The journal XP is the animal's base: for every tracking step and for every catch. | Measured: 1 on each of 62 steps and 10 on each of 6 catches, the game's base values for Yellowtail Bird. |
 | The output comes with a catch, each item at its chance; the doubling chance doubles it, not the rare extras. | Measured: the output came on 6 of 6 catches and at no other time. The doubling is the window's reading of the game's words for it, "Your chance to double the output". |
 | What a survey can find is not counted. | No find came in the 10 surveys watched, where 1 was to be expected, and the game has a switch by its name that may turn them off. |
@@ -163,6 +174,8 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 - Hunting has no mastery XP in this game (its Mastery Guild counts tasks), so there is no column for it. An
   animal's journal XP is in the tooltip.
 - Gold is not profit: traps and bait are not taken off.
+- `readings.json` holds only what the Hunting page wrote, never anything of your save. Deleting it only
+  brings back the `-` until the page shows those animals again.
 - The window starts nothing. While you are not hunting, a click on a line changes which location and animal
   the Hunting page selects, through the page's own buttons; while you hunt, it selects nothing. It also shows
   the hunt instead of the journal. Hunting, traps, bait and hunting without a trap are left as they are.
@@ -173,8 +186,9 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 | --- | --- |
 | No round button on the Hunting page | It comes a moment after the page opens. If it never comes, look for `[HuntingRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
 | `-` on most lines | The window does not know how many steps an escape adds for those animals yet: the note under the list says so. |
-| `-` on a line, with "how many surveys a hunt takes" in the note | Select that animal on the Hunting page once: its panel writes the time of surveying, which the window reads. |
-| "before the range its card writes, not shown on the page yet" | Open that animal's location on the Hunting page once: the window reads the range on its card. |
+| `-` on a line, with "how many surveys a hunt takes" in the note | Select that animal on the Hunting page once: its panel writes how many surveys a hunt takes, which the window reads and keeps. |
+| "before the range its card writes, not shown on the page yet" | Open that animal's location on the Hunting page once: the window reads the range on its card and keeps it. |
+| "as the Hunting page last wrote it" | The number was read in an earlier game and kept in `readings.json`. The window reads it again whenever the page shows that animal; if your bonuses changed since, select the animal once. |
 | A line without a picture | The game has no picture for that animal yet, only its grey stand-in; the animal is not discovered yet; or the spider setting is on and the page has not shown its own picture for a spider yet. |
 | A click on a line does nothing while you hunt | As meant: while a hunt runs, a click selects nothing. |
 | A click on a line opens nothing at all | `MelvorModLoader.log` says "A click on a line opens nothing from now on", or that a page button "did not" do what its click does: a game update changed the Hunting page. |

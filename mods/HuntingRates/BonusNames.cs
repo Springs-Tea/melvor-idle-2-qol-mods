@@ -12,7 +12,7 @@ namespace HuntingRates;
 
 /// <summary>
 /// The game's own names of an animal's chances that the tooltip names (the chance to skip a tracking step, to reattempt
-/// a trap, to double the output, to preserve): read from the Hunting page's lists of an animal's bonuses
+/// a trap, to preserve): read from the Hunting page's lists of an animal's bonuses
 /// (HuntingActionStatsView, in the panel of the selected animal and of the hunt in progress), where each row
 /// (ModifierStatLabel) shows one stat under the name the game gives it. Copied from Woodcutting Rates
 /// (mods/WoodcuttingRates/BonusNames.cs), itself Fishing Rates'. Until a name has been read (a list is filled once the
@@ -25,9 +25,8 @@ sealed class BonusNames
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Stats")]
     static extern ModifierStatNodes? Nodes(ModifierStatLabel label);
 
-    public const string Skip = "SkipTrackingStepChance", Reattempt = "TrappingReattemptChance", Doubling = "DoublingChance",
-        Preservation = "PreservationChance";
-    static readonly string[] Keys = [Skip, Reattempt, Doubling, Preservation];
+    public const string Skip = "SkipTrackingStepChance", Reattempt = "TrappingReattemptChance", Preservation = "PreservationChance";
+    static readonly string[] Keys = [Skip, Reattempt, Preservation];
 
     readonly Dictionary<string, string> _names = new();
     readonly Tempo _again = new(5000);
@@ -38,7 +37,6 @@ sealed class BonusNames
     {
         Skip => "Chance to skip a tracking step",
         Reattempt => "Chance to try a trap again",
-        Doubling => "Doubling chance",
         _ => "Preservation chance",
     };
 
@@ -73,7 +71,6 @@ sealed class BonusNames
             HuntingActionStats stats = animal.Active.Stats;
             if (stats.SkipTrackingStepChance != null) keys.TryAdd(stats.SkipTrackingStepChance, Skip);
             if (stats.TrappingReattemptChance != null) keys.TryAdd(stats.TrappingReattemptChance, Reattempt);
-            if (stats.DoublingChance != null) keys.TryAdd(stats.DoublingChance, Doubling);
             if (stats.PreservationChance != null) keys.TryAdd(stats.PreservationChance, Preservation);
         }
         // Every list of an animal's bonuses on the page, and in each its rows; a row's own parts are not looked through.

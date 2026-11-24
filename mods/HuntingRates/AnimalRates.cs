@@ -28,13 +28,13 @@ enum SurveysPerHunt
 }
 
 /// <summary>
-/// How many tracking steps an escape adds to the steps still needed: which of the game's numbers it is. Every number the
-/// game's members give that is 4 on Yellowtail Bird (steps 4 to 8, its own 4 to 8 before bonuses), where 7 of 7 escapes
-/// added 4 (check-3-watch), is a reading: the fewest, the width and half the most, each with your bonuses
-/// (HuntingActionStats.TrackingSteps) and before them (HuntingAnimal.BaseMinTrackingSteps, BaseMaxTrackingSteps). The
-/// readings that 4 rules out (the most, the middle, the steps a hunt needs at its start) are not here. On most other
-/// animals the readings differ, so the window counts an escape there only where every reading still open gives one number
-/// (<see cref="HuntRule.Escape"/>); the watch on such an animal rules readings out.
+/// How many tracking steps an escape adds to the steps still needed: which of the game's numbers it is. Every number
+/// the game's members give that is 4 on Yellowtail Bird (steps 4 to 8, its own 4 to 8 before bonuses), where 7 of 7
+/// escapes added 4 (check-3-watch), is a reading: the fewest, the width and half the most (rounded down and up), each
+/// with your bonuses (HuntingActionStats.TrackingSteps) and before them (HuntingAnimal.BaseMinTrackingSteps,
+/// BaseMaxTrackingSteps). The readings that 4 rules out (the most, the middle, the steps a hunt needs at its start) are
+/// not here. On most other animals the readings differ, so the window counts an escape there only where every reading
+/// still open gives one number (<see cref="HuntRule.Escape"/>); the watch on such an animal rules readings out.
 /// </summary>
 enum EscapeSteps
 {
@@ -44,12 +44,16 @@ enum EscapeSteps
     Width,
     /// <summary>Half the most tracking steps with your bonuses, rounded down.</summary>
     HalfMost,
+    /// <summary>Half the most tracking steps with your bonuses, rounded up.</summary>
+    HalfMostUp,
     /// <summary>The animal's own fewest steps, before your bonuses (HuntingAnimal.BaseMinTrackingSteps).</summary>
     BaseFewest,
     /// <summary>The animal's own most steps less its own fewest, before your bonuses (BaseMaxTrackingSteps - BaseMinTrackingSteps).</summary>
     BaseWidth,
     /// <summary>Half the animal's own most steps before your bonuses (HuntingAnimal.BaseMaxTrackingSteps), rounded down.</summary>
     HalfBaseMost,
+    /// <summary>Half the animal's own most steps before your bonuses, rounded up.</summary>
+    HalfBaseMostUp,
     /// <summary>
     /// 4 on every animal, no member of the game's: a fixed number of steps is a rule only once it is measured on at least
     /// two animals whose step ranges differ (the orchestrator's decision, review 6), so this reading alone never counts an
@@ -141,11 +145,22 @@ sealed class AnimalRates
         "62 steps, 13 tries, 7 escapes and 6 catches of Yellowtail Bird");
 
     /// <summary>
-    /// The animals a fixed number of steps for an escape (<see cref="EscapeSteps.Four"/>) was measured on. It becomes a
-    /// rule only when the list holds two animals whose step ranges differ; until then a line whose escape rests on it alone
-    /// is "-" (review 6, the orchestrator's decision). Yellowtail Bird: 7 of 7 escapes added 4 (check-3-watch).
+    /// The animals a fixed number of steps for an escape (<see cref="EscapeSteps.Four"/>) was measured on, each with
+    /// its steps then (with your bonuses: the fewest and the most). It becomes a rule only when two of them have step
+    /// ranges that differ (<see cref="FourIsRule"/>); until then a line whose escape rests on it alone is "-" (review
+    /// 6, the orchestrator's decision). Yellowtail Bird: 7 of 7 escapes added 4, its steps 4 to 8 (check-3-watch).
     /// </summary>
-    public static readonly string[] FourMeasuredOn = ["Yellowtail Bird"];
+    public static readonly (string Animal, int Fewest, int Most)[] FourMeasuredOn = [("Yellowtail Bird", 4, 8)];
+
+    /// <summary>A fixed 4 is a rule: it was measured on two animals whose step ranges differ.</summary>
+    public static bool FourIsRule => FourMeasuredOn.Select(m => (m.Fewest, m.Most)).Distinct().Count() >= 2;
+
+    /// <summary>
+    /// What the middle of the XP range was measured on (review 7, point 3): the animal, the animal levels it was at
+    /// (Yellowtail Bird was level 1 in check-5 and level 7 in check-6, and check-3-watch ran between them), and the
+    /// catches. The XP and Gold tips and the tooltip name it, since the page says levels raise the average.
+    /// </summary>
+    public static readonly (string Animal, int FromLevel, int ToLevel, int Catches) XpMiddleMeasuredOn = ("Yellowtail Bird", 1, 7, 6);
 
     /// <summary>
     /// What a try takes from the bank, and what backs it: set here, in this one place. Measured by the same watch: 13 tries
@@ -275,6 +290,11 @@ sealed class AnimalRates
     /// </summary>
     public double? SurveysMost { get; private set; }
     /// <summary>
+    /// The surveys, or the XP range, are as the Hunting page last wrote them in an earlier game, not read in this one.
+    /// </summary>
+    public bool SurveysRemembered { get; private set; }
+    public bool XpRangeRemembered { get; init; }
+    /// <summary>
     /// The location's chance by the name of insights (HuntingLocation.BaseInsightsChance): logged, and no reading of a
     /// survey any more (the watch saw 1.7 surveys a hunt, not 200).
     /// </summary>
@@ -338,7 +358,7 @@ sealed class AnimalRates
         {
             if (HuntRule is not { } hunt || EscapeReadings is not { Count: > 0 } readings || readings.Any(n => n != readings[0])) return null;
             bool fourAlone = hunt.Reading.Escape.All(r => r == EscapeSteps.Four);
-            return fourAlone && FourMeasuredOn.Length < 2 ? null : readings[0];
+            return fourAlone && !FourIsRule ? null : readings[0];
         }
     }
 
@@ -355,9 +375,11 @@ sealed class AnimalRates
         EscapeSteps.Fewest => fewest,
         EscapeSteps.Width => most - fewest,
         EscapeSteps.HalfMost => most / 2,
+        EscapeSteps.HalfMostUp => (most + 1) / 2,
         EscapeSteps.BaseFewest => baseFewest,
         EscapeSteps.BaseWidth => baseMost - baseFewest,
         EscapeSteps.HalfBaseMost => baseMost / 2,
+        EscapeSteps.HalfBaseMostUp => (baseMost + 1) / 2,
         _ => 4,
     };
 
@@ -453,12 +475,16 @@ sealed class AnimalRates
         location?.Location is { } l && l.DisplayRequirements?.AreMet != false && (!l.OnlyShowWhenRecipesAvailable || location.UnlockedRecipeCount > 0);
 
     /// <param name="look">The name, picture and its colour the list shows (HuntingRatesMod.Look).</param>
-    /// <param name="surveysMost">The most surveys a hunt takes as the page wrote it for this animal, or null (HuntingRatesMod.SurveysFor).</param>
+    /// <param name="surveysMost">
+    /// The most surveys a hunt takes as the page wrote it for this animal, or null, and whether that is remembered from
+    /// an earlier game rather than read in this one (HuntingRatesMod.SurveysFor).
+    /// </param>
     /// <param name="failBonuses">Whether a trap has bonuses after a failed try, null when they cannot be read (HuntingRatesMod.FailBonuses).</param>
     /// <param name="hidden">The game's word for something not found yet, for a rare species never trapped and a collectable never found.</param>
     /// <param name="huntRuns">A hunt runs (<see cref="IsHunting"/>), read once for every line.</param>
     public static AnimalRates Read(ActiveHuntingAnimal active, HuntingEntity hunting, (string Name, Texture2D? Picture, Color Tint) look,
-        (double, double)? xpRange, double? surveysMost, Func<Item, bool?> failBonuses, Func<Item, long> inBank, string hidden, bool huntRuns)
+        ((double, double) Range, bool Remembered)? xpRange, (double Most, bool Remembered)? surveysMost, Func<Item, bool?> failBonuses, Func<Item, long> inBank,
+        string hidden, bool huntRuns)
     {
         HuntingAnimal animal = active.Animal;
         HuntingActionStats stats = active.Stats;
@@ -473,7 +499,8 @@ sealed class AnimalRates
             LocationOnPage = ReferenceEquals(action.SelectedLocation, active.Location),
             Hunted = huntRuns && ReferenceEquals(action.CurrentAnimal, active),
             HuntRuns = huntRuns,
-            XpRange = xpRange,
+            XpRange = xpRange?.Range,
+            XpRangeRemembered = xpRange?.Remembered == true,
         };
         ConditionGroup?[] groups = [location?.Requirements, animal.Requirements];
         if (groups.Any(g => g?.AreMet == false))
@@ -485,7 +512,11 @@ sealed class AnimalRates
         r.Click = ClickOpens(active);
 
         r.SurveySeconds = stats.SurveyInterval.Value / Ms;
-        if (surveysMost is { } most && double.IsFinite(most) && most >= 1) r.SurveysMost = most;
+        if (surveysMost is { Most: var most, Remembered: var remembered } && double.IsFinite(most) && most >= 1)
+        {
+            r.SurveysMost = most;
+            r.SurveysRemembered = remembered;
+        }
         r.Insights = Fraction(location?.BaseInsightsChance ?? 0);
         r.SurveyXpBase = location?.BaseSurveyingExperience ?? 0;
         var (stepsMin, stepsMax) = stats.TrackingSteps.Value;

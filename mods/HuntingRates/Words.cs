@@ -70,8 +70,10 @@ static class Words
         : a.TrapFailBonuses == true ? "what your trap's bonuses after a failed try do"
         : a.TrapFailBonuses == null ? "your trap's bonuses after a failed try, which could not be read"
         : a.EscapeAdds == null ? "how many tracking steps an escape adds"
-        : a.SurveysMost == null ? "how many surveys a hunt takes"
+        : a.SurveysMost == null ? SurveysUnknown
         : "the time of a catch";
+
+    const string SurveysUnknown = "how many surveys a hunt takes";
 
     /// <summary>
     /// Why whole columns of the window show "-", said once, under the list, as Thieving Overview says why (OverviewView's
@@ -95,10 +97,13 @@ static class Words
         if (unknown.Count == 0) return "";
         string columns = dashes.Count == 1 ? dashes[0] + " shows" : string.Join(", ", dashes.Take(dashes.Count - 1)) + " and " + dashes[^1] + " show";
         string said = unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
-        // Where the surveys come from, so that the player knows what to do: select the animal on the page.
-        string surveys = open.Any(a => a.SurveysMost == null && a.SecondsPerCatch == null && a.EscapeAdds != null)
-            ? " The Hunting page writes the surveys of a hunt for the animal its panel shows: select it there once." : "";
-        return $"{columns} - where the window does not know {said}.{surveys} Hover a line for the game's own numbers of each step.";
+        // How such a line gets its numbers, in one sentence (review 7, point 1), when a line lacks only what the page
+        // writes: the surveys come from the page's panel of the animal selected, and nowhere else, the XP range from
+        // the animal's card or that panel; the window reads both whenever the page is on the screen and keeps them from
+        // then on (HuntingRatesMod.ReadPage). Selecting the animal shows both.
+        bool fromPage = open.Any(a => Unknown(a) == SurveysUnknown || (a.SecondsPerCatch != null && a.XpPerHour == null && a.XpRange == null));
+        string fill = fromPage ? " Select an animal once on the Hunting page and its line keeps what the page writes." : "";
+        return $"{columns} - where the window does not know {said}.{fill} Hover a line for the game's own numbers of each step.";
     }
 
     /// <summary>
@@ -155,13 +160,20 @@ static class Words
 
         lines.Add("");
         lines.Add(XpLine(a));
+        // What the middle of the XP and of the output rests on, until a watch at a higher animal level settles what
+        // levels add (review 7, point 3).
+        if (a.XpPerCatch != null || a.Products.Any(d => d.PerHour != null)) lines.Add(MiddleLine());
         if (a.JournalTrackingXp + a.JournalTrappingXp > 0)
             lines.Add(a.JournalXpPerHour is { } journal ? $"Journal XP: {Number(journal)} an hour, {a.JournalTrackingXp:N0} a tracking step and {a.JournalTrappingXp:N0} a catch."
                 : $"Journal XP: {a.JournalTrackingXp:N0} a tracking step and {a.JournalTrappingXp:N0} a catch.");
         if (a.Products.Count > 0)
         {
-            lines.Add(a.Doubling > 0 ? $"Every catch, a chance of, with your {names.Of(BonusNames.Doubling)} ({Percent(a.Doubling)}):" : "Every catch, a chance of:");
+            lines.Add("Every catch, a chance of:");
             lines.AddRange(a.Products.Select(d => Item(d, "catch", "catches")));
+            // As Fishing Rates and Woodcutting Rates say it, only where a number of the tooltip has it in: the output's
+            // hour, or its gold.
+            if (a.Doubling > 0 && (a.Products.Any(d => d.PerHour != null) || a.CatchGold > 0))
+                lines.Add($"The doubling chance ({Percent(a.Doubling)}) is counted in the output.");
         }
         if (RareLine(a) is { } rare) lines.Add(rare);
         lines.Add(TrapLine(a));
@@ -201,13 +213,25 @@ static class Words
     }
 
     // The surveys of a hunt as the page writes them: one survey's time, and from one to the most the page's surveying
-    // range holds, until the tracks are found; the middle of that is what a catch counts.
+    // range holds, until the tracks are found; the middle of that is what a catch counts. Kept from an earlier game, it
+    // says so (review 7, point 1).
     static string SurveyLine(AnimalRates a)
     {
         if (a.SurveysMost is not { } most) return $"Surveying: {Seconds(a.SurveySeconds)} a survey; how many, the page writes when its panel shows it.";
         string upTo = Math.Abs(most - Math.Round(most)) < 0.01 ? $"{Math.Round(most):N0}" : Number(most);
-        return most < 1.005 ? $"Surveying: {Seconds(a.SurveySeconds)}, one survey until the tracks are found."
-            : $"Surveying: {Seconds(a.SurveySeconds)} a survey, 1 to {upTo} until the tracks are found.";
+        string line = most < 1.005 ? $"Surveying: {Seconds(a.SurveySeconds)}, one survey until the tracks are found"
+            : $"Surveying: {Seconds(a.SurveySeconds)} a survey, 1 to {upTo} until the tracks are found";
+        return a.SurveysRemembered ? line + ",\n  " + LastWrote + "." : line + ".";
+    }
+
+    // Said of what the page wrote in an earlier game, kept in the mod's own file (HuntingRatesMod.Reading).
+    const string LastWrote = "as the Hunting page last wrote it";
+
+    // What the middle of the XP range, and of the output's ranges, was measured on (AnimalRates.XpMiddleMeasuredOn).
+    static string MiddleLine()
+    {
+        var m = AnimalRates.XpMiddleMeasuredOn;
+        return $"  The middle of XP and output was measured on {m.Catches} catches of {m.Animal}, level {m.FromLevel} to {m.ToLevel}.";
     }
 
     // An escape: back to tracking with more steps to go, how many by the readings no watch has ruled out, and how many
@@ -282,16 +306,17 @@ static class Words
 
     // The XP as Fishing Rates writes it ("Fishing XP: 8,470 an hour, 17 a catch."): the XP of a catch is the middle of the
     // range the animal's card writes on the Hunting page, and comes with a catch only (XpRule, measured: lesson 55). The
-    // game keeps that range in no member an animal has, only in the card's view, so before the page has shown the card
-    // there is the game's XP before it, and no hour.
+    // game keeps that range in no member an animal has, only in the card's view, so before the page has ever shown the
+    // card for this character there is the game's XP before it, and no hour. A range kept from an earlier game says so.
     static string XpLine(AnimalRates a)
     {
         if (a.XpRange is not { } range || a.XpMiddle is not { } middle)
             return $"Hunting XP: {Number(a.XpEach)} before the range its card writes, not shown on the page yet.";
         string shown = NumberRange(a.XpEach * range.Low, a.XpEach * range.High);
-        if (a.XpPerCatch is not { } xp) return $"Hunting XP: {shown}, as the page writes it; when it is added is not known yet.";
-        return a.XpPerHour is { } hour ? $"Hunting XP: {Number(hour)} an hour, {Number(xp)} a catch, the middle of {shown}."
-            : $"Hunting XP: {Number(xp)} a catch, the middle of {shown}.";
+        string kept = a.XpRangeRemembered ? ",\n  " + LastWrote : "";
+        if (a.XpPerCatch is not { } xp) return $"Hunting XP: {shown}{(a.XpRangeRemembered ? kept : ", as the page writes it")}; when it is added is not known yet.";
+        return a.XpPerHour is { } hour ? $"Hunting XP: {Number(hour)} an hour, {Number(xp)} a catch, the middle of {shown}{kept}."
+            : $"Hunting XP: {Number(xp)} a catch, the middle of {shown}{kept}.";
     }
 
     // What backs a rule, in plain words: the number is always worked out by the mod, from the animal's own numbers by a

@@ -45,9 +45,11 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
                 "The middle of the game's range of every time and of the steps", .. HuntTip()]), 58,
             a => a.SecondsPerCatch, Words.Seconds, Better.Less),
         new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
-        new("xp", "XP", Lines(["Hunting XP per hour: the middle of the XP range the animal's card writes", .. Measured(AnimalRates.XpRule), .. LevelTip()]), 66,
+        new("xp", "XP", Lines(["Hunting XP per hour: the middle of the XP range the animal's card writes,",
+                "as the Hunting page last wrote it, kept from one game to the next", .. Measured(AnimalRates.XpRule), MiddleTip(), .. LevelTip()]), 66,
             a => a.XpPerHour, Words.Number, Better.More),
         new("gold", "Gold", Lines(["What the output of an hour sells for, rare extras too but no collectable", .. Measured(AnimalRates.OutputRule),
+                MiddleTip(), "Not counted: what an animal's level adds to the output",
                 AnimalRates.SurveyFindsRule == null ? "Not counted: what surveying finds, which no watch has seen yet" : "",
                 "Not counted: the extras of a rare species still locked"]), 66,
             a => a.GoldPerHour, Words.Number, Better.More),
@@ -71,7 +73,7 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
             foreach (string line in hunt.Quote.Split('\n')) yield return $"\"{line}\"";
             yield return "Otherwise the animal escapes back to tracking: measured";
         }
-        yield return "The surveys of a hunt: as the Hunting page writes them for that animal";
+        yield return "The surveys of a hunt: as the Hunting page last wrote them for that animal";
         yield return "\"-\" where the window does not know how many steps an escape adds";
     }
 
@@ -83,6 +85,14 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         yield return use.Reading.Kept ? "Traps taken from the bank per hour, less what is preserved" : "Traps taken from the bank per hour: one every try, preserved or not";
         if (use.Seen.Length > 0) yield return "Measured: " + use.Seen;
         if (!use.Reading.Kept) yield return "Not counted: your Input Preservation Chance, which kept none of them";
+    }
+
+    // What the middle of the XP range and of the output was measured on (AnimalRates.XpMiddleMeasuredOn): the animal,
+    // its levels then, and the catches (review 7, point 3).
+    static string MiddleTip()
+    {
+        var m = AnimalRates.XpMiddleMeasuredOn;
+        return $"The middle measured on {m.Catches} catches of {m.Animal}, at animal level {m.FromLevel} to {m.ToLevel}";
     }
 
     // What the animal's level adds to the average XP: the page's own words, and that the window does not count it.
