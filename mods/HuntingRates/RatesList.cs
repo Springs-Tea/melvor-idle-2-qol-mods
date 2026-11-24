@@ -28,52 +28,58 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
 
     /// <summary>
     /// The columns, left to right: the issue's (#72), with Fishing Rates' names and widths where they mean the same, and
-    /// Traps where Fishing Rates has Bait (what an hour uses: every hunt with a trap needs one; the bait, which only some
-    /// animals have switched on, is in the tooltip). Mastery XP is not a column: Hunting keeps no mastery XP per action by
-    /// the game's names (its Mastery Guild, HuntingEntity.MasteryGuild, counts ranks, points and tasks); an animal's
-    /// journal XP has base values only (HuntingAnimal.BaseJournalTrackingExperience, BaseJournalTrappingExperience), which
-    /// the tooltip names. Every column rests on how a hunt's links join (AnimalRates.ChainRule); Traps also on when traps
-    /// are used up (UseRule), XP on the XP of a catch within the page's range. While a rule is not settled, what rests on it
-    /// is "-" and the note under the list says why, once. A tip's line is never longer than Fishing Rates' longest (82
-    /// characters): Godot's tooltip does not wrap.
+    /// Traps where Fishing Rates has Bait (what an hour uses: every try of a trap uses one; the bait, which only some
+    /// animals have switched on, is in the tooltip, and is used as often). Mastery XP is not a column: Hunting keeps no
+    /// mastery XP per action by the game's names (its Mastery Guild, HuntingEntity.MasteryGuild, counts ranks, points and
+    /// tasks); an animal's journal XP, which the watch measured at its base values, is in the tooltip. Every column rests on
+    /// how a hunt's links join (AnimalRates.HuntRule, measured), Traps also on what a try uses (UseRule, measured), XP on
+    /// when the XP comes (XpRule, measured) and the page's range of it, Gold on when the output comes (OutputRule,
+    /// measured). What a column cannot count for an animal is "-", and the note under the list says why, once. A tip's
+    /// line is never longer than Fishing Rates' longest (82 characters): Godot's tooltip does not wrap.
     /// </summary>
     public static List<RateColumn> For() =>
     [
-        new("time", "Time", string.Join("\n", ChainTip("Seconds for one catch: surveying, tracking and trapping, escapes too")), 58,
+        new("time", "Time", Lines(["Seconds for one catch: surveying, tracking and trapping, escapes too",
+                "The middle of the game's range of every time and of the steps", .. HuntTip()]), 58,
             a => a.SecondsPerCatch, Words.Seconds, Better.Less),
-        new("catches", "Catches", string.Join("\n", ChainTip("Animals caught per hour")), 66, a => a.CatchesPerHour, Words.Number, Better.More),
-        new("xp", "XP", string.Join("\n", ChainTip("Hunting XP per hour, the middle of the range the page writes", XpTip())), 66,
+        new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
+        new("xp", "XP", Lines(["Hunting XP per hour: the middle of the XP range the page writes, on every catch", .. Measured(AnimalRates.XpRule)]), 66,
             a => a.XpPerHour, Words.Number, Better.More),
-        new("gold", "Gold", string.Join("\n", ChainTip("What the output and the finds of an hour sell for", OutputTip())), 66,
+        new("gold", "Gold", Lines(["What the output and the finds of an hour sell for", .. Measured(AnimalRates.OutputRule)]), 66,
             a => a.GoldPerHour, Words.Number, Better.More),
-        // Every hunt with a trap uses them, so the fastest animal uses the most: that is no reason to call any the best.
-        new("traps", "Traps", string.Join("\n", ChainTip("Traps used per hour; none for an animal hunted without one")), 58,
-            a => a.Trapless ? 0 : a.TrapsPerHour, Words.Number, Better.Neither),
+        // Every try uses one, so the fastest animal uses the most: that is no reason to call any the best.
+        new("traps", "Traps", Lines(["Traps used per hour, less what is preserved; none when hunted without a trap", .. UseTip()]), 58,
+            a => a.TrapsPerHour, Words.Number, Better.Neither),
     ];
 
-    // A column's tip, and what backs the chain of a catch once it is settled (and what else the column rests on): the
-    // game's words quoted, or what was measured.
-    static IEnumerable<string> ChainTip(string first, IEnumerable<string>? more = null)
+    static string Lines(IEnumerable<string> lines) => string.Join("\n", lines.Where(l => l.Length > 0));
+
+    // How a hunt's links join, and what backs it: what the watch counted, and the game's words for a failed try.
+    static IEnumerable<string> HuntTip()
     {
-        yield return first;
-        if (AnimalRates.ChainRule is { } chain)
-            foreach (string line in Backed("How the steps of a hunt join", chain.Source, chain.Seen, chain.Quote)) yield return line;
-        foreach (string line in more ?? []) yield return line;
+        if (AnimalRates.HuntRule is not { } hunt) yield break;
+        yield return $"How the steps of a hunt join: {(hunt.Source == RuleSource.Measured ? "measured in the game" : "by the game's own words")}";
+        if (hunt.Seen.Length > 0) yield return "Measured: " + hunt.Seen;
+        if (hunt.Quote.Length > 0)
+        {
+            yield return "A failed try is tried again, or the animal escapes, by the game's words:";
+            foreach (string line in hunt.Quote.Split('\n')) yield return $"\"{line}\"";
+        }
+        yield return "\"-\" where the window does not know how many steps an escape adds";
     }
 
-    // When the XP is added, once settled (lesson 55: never assumed).
-    static IEnumerable<string> XpTip() => AnimalRates.XpRule is { } xp ? Backed("The XP comes with a catch", xp.Source, xp.Seen, xp.Quote) : [];
-
-    // When the output comes, once settled.
-    static IEnumerable<string> OutputTip() => AnimalRates.OutputRule is { } output ? Backed("The output comes with a catch", output.Source, output.Seen, output.Quote) : [];
-
-    static IEnumerable<string> Backed(string what, RuleSource source, string seen, string quote)
+    // What a try uses up, and the game's words for what is preserved.
+    static IEnumerable<string> UseTip()
     {
-        yield return $"{what}: {(source == RuleSource.Measured ? "measured in the game" : "by the game's own words")}";
-        if (source == RuleSource.Measured && seen.Length > 0) yield return "Measured: " + seen;
-        if (quote.Length > 0)
-            foreach (string line in quote.Split('\n'))
-                yield return $"\"{line}\"";
+        if (AnimalRates.UseRule is not { } use) yield break;
+        if (use.Seen.Length > 0) yield return "Measured: " + use.Seen;
+        if (use.Reading.Kept && use.Quote.Length > 0) yield return $"Preserved by the game's words: \"{use.Quote}\"";
+    }
+
+    // What was measured for a rule, in one line ("" when nothing was).
+    static IEnumerable<string> Measured<T>(Settled<T>? rule)
+    {
+        if (rule is { Source: RuleSource.Measured, Seen.Length: > 0 }) yield return "Measured: " + rule.Seen;
     }
 }
 

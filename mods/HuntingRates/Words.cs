@@ -47,6 +47,32 @@ static class Words
     static string NumberRange(double low, double high) => high - low < 0.05 ? Number(low) : $"{Number(low)} to {Number(high)}";
 
     /// <summary>
+    /// How long a stock lasts, in whole minutes, as Fishing Rates writes how long its bait lasts (its Words.Whole, itself
+    /// Recipe Rates' "Materials for 2h 15m"): the bank changes with every try, and a tooltip that ticks would be drawn again
+    /// all the time.
+    /// </summary>
+    static string Whole(double seconds)
+    {
+        if (seconds >= 100 * 3600) return $"{seconds / 3600:N0}h";
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : $"{t.Minutes}m";
+    }
+
+    // "what is in the bank lasts 4h 3m", as Fishing Rates says it of its bait.
+    static string Lasts(long inBank, double perHour) => inBank <= 0 ? "none is in the bank" : perHour <= 0 ? "none is used up"
+        : inBank / perHour * 3600 < 60 ? "what is in the bank lasts less than a minute" : $"what is in the bank lasts {Whole(inBank / perHour * 3600)}";
+
+    // What keeps the time of a catch from being counted for an animal that can be hunted, in the words of the note and of
+    // the tooltip; null when it is counted.
+    static string? Unknown(AnimalRates a) =>
+        a.SecondsPerCatch != null ? null
+        : AnimalRates.HuntRule == null ? "how surveying, tracking and trapping join into a catch"
+        : a.TrapFailBonuses ? "what your trap's bonuses after a failed try do"
+        : a.EscapeAdds == null ? "how many tracking steps an escape adds"
+        : a.SurveysMost == null ? "how many surveys a hunt takes"
+        : "the time of a catch";
+
+    /// <summary>
     /// Why whole columns of the window show "-", said once, under the list, as Thieving Overview says why (OverviewView's
     /// note), or "" when no line of an animal that can be hunted has one; and where the game's own numbers are meanwhile.
     /// It says what the window does not know, never what the game does not say: nobody has read all the game's words.
@@ -59,28 +85,37 @@ static class Words
         if (open.Any(a => a.SecondsPerCatch == null)) dashes.AddRange(["Time", "Catches"]);
         if (open.Any(a => a.XpPerHour == null)) dashes.Add("XP");
         if (open.Any(a => a.GoldPerHour == null)) dashes.Add("Gold");
-        if (open.Any(a => !a.Trapless && a.TrapsPerHour == null)) dashes.Add("Traps");
+        if (open.Any(a => a.TrapsPerHour == null)) dashes.Add("Traps");
         if (dashes.Count == 0) return "";
-        var unknown = new List<string>();
-        if (AnimalRates.ChainRule == null) unknown.Add("how surveying, tracking and trapping join into a catch");
-        if (AnimalRates.XpRule == null) unknown.Add("when the XP is added");
-        if (AnimalRates.OutputRule == null) unknown.Add("when the output comes");
-        if (AnimalRates.UseRule == null) unknown.Add("when traps and bait are used up");
+        var unknown = open.Select(Unknown).OfType<string>().Distinct().ToList();
+        // XP alone: the range the page writes on the animal's card, read once the page has shown it.
+        if (open.Any(a => a.SecondsPerCatch != null && a.XpPerHour == null && a.XpRange == null))
+            unknown.Add("the XP range of a catch, which the Hunting page writes on the animal's card");
+        if (unknown.Count == 0) return "";
         string columns = dashes.Count == 1 ? dashes[0] + " shows" : string.Join(", ", dashes.Take(dashes.Count - 1)) + " and " + dashes[^1] + " show";
-        string said = unknown.Count == 0 ? "the XP range the page writes for some animals"
-            : unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
-        return $"{columns} -: the window does not know {said} yet. Hover a line for the game's own numbers of each step.";
+        string said = unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
+        // Where the surveys come from, so that the player knows what to do: select an animal on the page.
+        string surveys = open.Any(a => a.SurveysMost == null && a.SecondsPerCatch == null) ? " The Hunting page writes the surveys of a hunt for the animal it selects." : "";
+        return $"{columns} - where the window does not know {said}.{surveys} Hover a line for the game's own numbers of each step.";
     }
 
     /// <summary>
-    /// The game's numbers of an animal, grouped the way the Hunting page's panel groups them: the three steps of a hunt
-    /// (its interval displays and the trapping chance), the XP, the output, the trap and the bait; then the catch and the
-    /// gold as far as the window counts them, and what a click does. An animal not discovered yet gives away nothing but
-    /// what the page's list shows of it: its name as the page writes it, its location and its lock (review 1, fault 9).
-    /// names gives the game's name of a chance where it has been read (BonusNames); noTool the page's words for an animal
-    /// that needs no tool.
+    /// The whole hour of an animal, grouped the way the Hunting page's panel groups its numbers: the links of a hunt (its
+    /// interval displays, the trapping chance, an escape) and the catch they make, the XP, the output, the trap and the
+    /// bait, and the gold, each with its hour where the window counts it; then what a click does. An animal not discovered
+    /// yet gives away nothing but what the page's list shows of it: its name as the page writes it, its location and its
+    /// lock (review 1, fault 9). names gives the game's name of a chance where it has been read (BonusNames); noTool the
+    /// page's words for an animal that needs no tool.
     /// </summary>
-    public static string Tooltip(AnimalRates a, BonusNames names, string? noTool)
+    public static string Tooltip(AnimalRates a, BonusNames names, string? noTool) => Joined(TooltipLines(a, names, noTool));
+
+#if DEVTOOLS
+    /// <summary>Development: the tooltip's lines longer than Fishing Rates' longest, before they are wrapped.</summary>
+    public static List<string> DevOverlong(AnimalRates a, BonusNames names, string? noTool) =>
+        TooltipLines(a, names, noTool).SelectMany(l => l.Split('\n')).Where(l => l.Length > MostWide).ToList();
+#endif
+
+    static List<string> TooltipLines(AnimalRates a, BonusNames names, string? noTool)
     {
         var lines = new List<string> { a.Location.Length > 0 ? $"{a.Name} ({a.Location})" : a.Name };
         if (a.Locked) lines.Add(a.Needs == "Locked" ? "Locked" : "Locked: " + a.Needs);
@@ -90,7 +125,7 @@ static class Words
         {
             lines.Add("Not discovered yet.");
             AddClick(lines, a);
-            return Joined(lines);
+            return lines;
         }
         // The tool in the card's own words once the page has shown the card, as the page writes a tool it lacks too; for an
         // animal that needs none, the page's own words for that, without "Tool:" (code review 2).
@@ -100,28 +135,32 @@ static class Words
         {
             lines.Add("The game gives no time for a step of this hunt yet.");
             AddClick(lines, a);
-            return Joined(lines);
+            return lines;
         }
 
         lines.Add("");
-        lines.Add($"Surveying: {Seconds(a.SurveySeconds)} a survey.");
+        lines.Add(SurveyLine(a));
+        if (a.SurveysReadFor.Length > 0) lines.Add($"  As the Hunting page writes it for {a.SurveysReadFor}.");
         string steps = a.StepsMin == a.StepsMax ? $"{a.StepsMin:N0}" : $"{a.StepsMin:N0} to {a.StepsMax:N0}";
-        lines.Add($"Tracking: {steps} steps of {Range(a.StepMinSeconds, a.StepMaxSeconds)}, {Percent(a.TrackChance)} success each.");
-        if (a.SkipChance > 0) lines.Add($"  {names.Of(BonusNames.Skip)}: {Percent(a.SkipChance)}");
+        lines.Add($"Tracking: {steps} steps of {Range(a.StepMinSeconds, a.StepMaxSeconds)} each.");
+        // The game's name for the chance; the watch saw no step skipped in 62, so it is not counted (review 5).
+        if (a.SkipChance > 0) lines.Add($"  {names.Of(BonusNames.Skip)}: {Percent(a.SkipChance)}, not counted: no step was seen skipped.");
         lines.Add($"Trapping: {Range(a.TrapMinSeconds, a.TrapMaxSeconds)} a try, {Percent(a.TrapChance)} success" +
-            (a.Hunted ? " now: a failed try may change it." : "."));
+            (a.TrapFailBonuses ? " now: your trap changes it after a failed try." : "."));
         if (a.ReattemptChance > 0) lines.Add($"  {names.Of(BonusNames.Reattempt)}: {Percent(a.ReattemptChance)}");
-        lines.Add(a.SecondsPerCatch is { } time && a.CatchesPerHour is { } catches && AnimalRates.ChainRule is { } chain
-            ? $"A catch every {Seconds(time)} on average, {How(chain.Source)}: {Number(catches)} an hour."
-            : "A catch: not counted, the window does not know how these steps join.");
+        lines.Add(EscapeLine(a));
+        lines.Add(a.SecondsPerCatch is { } time && a.CatchesPerHour is { } catches && AnimalRates.HuntRule is { } hunt
+            ? $"A catch every {Seconds(time)} on average, {How(hunt.Source)}: {Number(catches)} an hour."
+            : $"A catch: not counted, the window does not know {Unknown(a)}.");
 
         lines.Add("");
         lines.Add(XpLine(a));
         if (a.JournalTrackingXp + a.JournalTrappingXp > 0)
-            lines.Add($"Journal XP, base: {a.JournalTrackingXp:N0} tracking, {a.JournalTrappingXp:N0} trapping.");
+            lines.Add($"Journal XP: {a.JournalTrackingXp:N0} a tracking step, {a.JournalTrappingXp:N0} a catch" +
+                (a.JournalXpPerHour is { } journal ? $": {Number(journal)} an hour." : "."));
         if (a.Products.Count > 0)
         {
-            lines.Add(AnimalRates.OutputRule == null ? "Output, each at its chance (on a catch: the window's reading):" : "Every catch, a chance of:");
+            lines.Add("Every catch, a chance of:");
             lines.AddRange(a.Products.Select(d => Item(d, "catch", "catches")));
         }
         if (a.Rare.Count > 0 && a.RareChance > 0)
@@ -135,28 +174,62 @@ static class Words
         }
         if (a.SurveyFinds.Count > 0)
         {
-            lines.Add("Surveying can find:");
+            lines.Add("Every survey, a chance of:");
             lines.AddRange(a.SurveyFinds.Select(d => Item(d, "survey", "surveys")));
         }
         if (a.Doubling > 0 && a.Products.Count > 0)
-            lines.Add($"{names.Of(BonusNames.Doubling)}: {Percent(a.Doubling)}, counted in the output only (the window's reading).");
+            lines.Add($"{names.Of(BonusNames.Doubling)}: {Percent(a.Doubling)}, counted in the output, not in the rare extras or finds.");
 
         lines.Add("");
-        lines.Add(a.Trapless ? "Hunted without a trap, as you chose for this animal."
-            : a.Trap != null ? $"Trap: {a.Trap.DisplayName.GetPluralText(1)}{(a.TrapType != null ? $" ({a.TrapType})" : "")}, {a.TrapsInBank:N0} in the bank" +
-                (a.TrapsPerHour is { } traps ? $", {Number(traps)} an hour." : ".")
-            : a.TrapType != null ? $"Trap: {a.TrapType}, none selected." : "Trap: none.");
-        if (a.Bait != null)
-            lines.Add($"Bait: {a.Bait.DisplayName.GetPluralText(2)}, " + (a.UseBait ? $"used, {a.BaitInBank:N0} in the bank" +
-                (a.BaitPerHour is { } bait ? $", {Number(bait)} an hour." : ".") : "not used for this animal."));
-        if (a.Preservation > 0 && AnimalRates.UseRule == null)
-            lines.Add($"  {names.Of(BonusNames.Preservation)}: {Percent(a.Preservation)}, what it keeps is not known yet");
+        lines.Add(TrapLine(a));
+        if (a.Bait != null) lines.Add(BaitLine(a));
+        if (a.Preservation > 0 && (a.TrapsPerHour is > 0 || a.BaitPerHour != null))
+            lines.Add($"  {names.Of(BonusNames.Preservation)}: {Percent(a.Preservation)}, counted in the {(a.BaitPerHour != null ? "traps and bait" : "traps")}.");
 
         if (a.GoldPerHour is { } gold) lines.AddRange(["", $"Gold: {Number(gold)} an hour, what the output, rare extras and finds sell for."]);
-        else if (a.CatchGold > 0) lines.AddRange(["", $"Gold: {Number(a.CatchGold)} for the output of one catch, by the window's reading."]);
+        else if (a.CatchGold > 0) lines.AddRange(["", $"Gold: {Number(a.CatchGold)} for the output of one catch."]);
         if (lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
         AddClick(lines, a);
-        return Joined(lines);
+        return lines;
+    }
+
+    // The surveys of a hunt as the page writes them: one survey's time, and from one to the most the page's surveying
+    // range holds, until the tracks are found; the middle of that is what a catch counts.
+    static string SurveyLine(AnimalRates a)
+    {
+        if (a.SurveysMost is not { } most) return $"Surveying: {Seconds(a.SurveySeconds)} a survey; how many a hunt takes, the page has not shown yet.";
+        string upTo = Math.Abs(most - Math.Round(most)) < 0.01 ? $"{Math.Round(most):N0}" : Number(most);
+        return most < 1.005 ? $"Surveying: {Seconds(a.SurveySeconds)}, one survey until the tracks are found."
+            : $"Surveying: {Seconds(a.SurveySeconds)} a survey, 1 to {upTo} until the tracks are found.";
+    }
+
+    // An escape: back to tracking with more steps to go, how many by the readings no watch has ruled out, and how many
+    // escapes a catch takes where that is counted.
+    static string EscapeLine(AnimalRates a)
+    {
+        string per = a.PerCatch is { } k ? $", {Number(k.Escapes)} a catch on average" : "";
+        if (a.EscapeAdds is { } adds) return $"An escape: back to tracking, with {adds:N0} more steps{per}.";
+        if (a.EscapeReadings is not { Count: > 0 } readings) return "An escape: back to tracking, with more steps to go.";
+        return $"An escape: back to tracking, with {readings.Min():N0} to {readings.Max():N0} more steps; how many here is not known yet.";
+    }
+
+    // The trap selected and an hour of it, as Fishing Rates writes its bait: the hour, and how long the bank's last.
+    static string TrapLine(AnimalRates a)
+    {
+        if (a.Trapless) return "Hunted without a trap, as you chose for this animal: no trap is used.";
+        if (a.Trap == null) return a.TrapType != null ? $"Trap: {a.TrapType}, none selected." : "Trap: none.";
+        string name = a.Trap.DisplayName.GetPluralText(1);
+        return a.TrapsPerHour is { } traps ? $"Trap: {name}, one a try: {Number(traps)} an hour; {Lasts(a.TrapsInBank, traps)}."
+            : $"Trap: {name}, one a try; {a.TrapsInBank:N0} in the bank.";
+    }
+
+    // The bait and an hour of it while it is switched on; without a trap its use was never watched, so it is not counted.
+    static string BaitLine(AnimalRates a)
+    {
+        string name = a.Bait!.DisplayName.GetPluralText(2);
+        if (!a.UseBait) return $"Bait: {name}, not used for this animal.";
+        if (a.BaitPerHour is { } bait) return $"Bait: {name}, one a try: {Number(bait)} an hour; {Lasts(a.BaitInBank, bait)}.";
+        return a.Trapless ? $"Bait: {name}, used; without a trap, how much is not known yet." : $"Bait: {name}, one a try; {a.BaitInBank:N0} in the bank.";
     }
 
     // The lines joined, each line longer than Fishing Rates' longest (94 characters) wrapped at its words, the rest of it
@@ -200,16 +273,17 @@ static class Words
         return best >= 0 ? best : line.IndexOf(' ', MostWide);
     }
 
-    // The XP as the page writes it (its XP tag, a range once the page has shown it) and, while no watch has settled it,
-    // that when it is added is not known (lesson 55); by the settled rule, the XP of a catch and of an hour.
+    // The XP as Fishing Rates writes it ("Fishing XP: 8,470 an hour, 17 a catch."): the XP of a catch is the middle of the
+    // range the page writes (its XP tag, a range once the page has shown it), and comes with a catch only (XpRule,
+    // measured: lesson 55). Before the page has shown the range, the game's XP before it, and no hour.
     static string XpLine(AnimalRates a)
     {
         if (a.XpRange is not { } range || a.XpMiddle is not { } middle)
-            return $"XP: {Number(a.XpEach)} Hunting XP before its range, which the page has not shown yet.";
+            return $"Hunting XP: {Number(a.XpEach)} before the range of a catch, which the page has not shown yet.";
         string shown = NumberRange(a.XpEach * range.Low, a.XpEach * range.High);
-        return a.XpPerCatch is { } xp
-            ? $"Hunting XP: {shown} a catch, {Number(xp)} in the middle" + (a.XpPerHour is { } hour ? $"; {Number(hour)} an hour." : ".")
-            : $"XP: {shown} Hunting XP, as the page writes it; when it is added is not known yet.";
+        if (a.XpPerCatch is not { } xp) return $"Hunting XP: {shown}, as the page writes it; when it is added is not known yet.";
+        return a.XpPerHour is { } hour ? $"Hunting XP: {Number(hour)} an hour, {Number(xp)} a catch, the middle of {shown}."
+            : $"Hunting XP: {Number(xp)} a catch, the middle of {shown}.";
     }
 
     // What backs a rule, in plain words: the number is always worked out by the mod, from the animal's own numbers by a
@@ -234,13 +308,15 @@ static class Words
         if (said.Count > 0) lines.AddRange(["", string.Join("\n", said)]);
     }
 
-    // "  Raw Hare Meat, 50% (2 each time): 120", with the number one brings when it is not one, and per hour where it is
-    // counted; a collectable says whether the journal has it. "Each time" while what the output and the finds come with is
-    // the window's reading (OutputRule not settled): no unit is said that nothing backs (code review 2).
+    // "  Feathers, 100% of catches (47 a catch): 1,104", as Fishing Rates and Woodcutting Rates write an item, with the
+    // number one brings when it is not one and an hour of it where that is counted; a collectable says whether the journal
+    // has it. "Each time" while what the output and the finds come with is not settled: no unit is said that nothing backs
+    // (code review 2).
     static string Item(AnimalRates.Drop d, string one, string many)
     {
-        string each = d.Quantity == 1 ? "" : AnimalRates.OutputRule == null ? $" ({d.Quantity:N0} each time)" : $" ({d.Quantity:N0} a {one})";
+        bool settled = AnimalRates.OutputRule != null;
+        string each = d.Quantity == 1 ? "" : settled ? $" ({d.Quantity:N0} a {one})" : $" ({d.Quantity:N0} each time)";
         string collectable = d.Collectable ? d.Found ? ", a collectable, found" : ", a collectable" : "";
-        return $"  {d.Name}, {Percent(d.Chance)}{each}{collectable}" + (d.PerHour is { } perHour ? $": {Number(perHour)} an hour" : "");
+        return $"  {d.Name}, {Percent(d.Chance)}{(settled ? $" of {many}" : "")}{each}{collectable}" + (d.PerHour is { } perHour ? $": {Number(perHour)}" : "");
     }
 }

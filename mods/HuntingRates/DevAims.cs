@@ -19,7 +19,7 @@ namespace HuntingRates;
 // (Tooltip.Targets, read by reflection as Woodcutting Rates reads it), and every control there with Godot's own tooltip
 // text; the pointer rests on each, in sight, until the game shows it filled, and its words are logged word for word, with
 // every number in them named against the animal's numbers ("Dev: card stats"). A tooltip not shown in 20 s is one line,
-// and the request goes on. These are the words the rules of the hour (AnimalRates.ChainRule, XpRule, OutputRule, UseRule)
+// and the request goes on. These are the words the rules of the hour (AnimalRates.HuntRule, XpRule, OutputRule, UseRule)
 // may be settled by.
 public partial class HuntingRatesMod
 {
@@ -217,9 +217,9 @@ public partial class HuntingRatesMod
         AnimalRates t = ReadAnimal(animal);
         var known = new List<(string Name, double Value)>
         {
-            ("the time of a survey in seconds", t.SurveySeconds), ("the location's insights chance", t.Insights), ("the location's base XP of a survey", t.SurveyXpBase),
+            ("the time of a survey in seconds", t.SurveySeconds), ("the most surveys the page writes", t.SurveysMost ?? double.NaN), ("the location's insights chance", t.Insights), ("the location's base XP of a survey", t.SurveyXpBase),
             ("the fewest tracking steps", t.StepsMin), ("the most tracking steps", t.StepsMax), ("the shortest step in seconds", t.StepMinSeconds),
-            ("the longest step in seconds", t.StepMaxSeconds), ("a step's success chance", t.TrackChance), ("the skip chance", t.SkipChance),
+            ("the longest step in seconds", t.StepMaxSeconds), ("the tracking success chance", t.TrackChance), ("the skip chance", t.SkipChance),
             ("the shortest trap try in seconds", t.TrapMinSeconds), ("the longest trap try in seconds", t.TrapMaxSeconds), ("a try's success chance", t.TrapChance),
             ("the reattempt chance", t.ReattemptChance), ("the rare species chance", t.RareChance), ("the doubling chance", t.Doubling),
             ("the preservation chance", t.Preservation), ("the XP before its range", t.XpEach), ("the XP range's low end", t.XpRange is { } r1 ? t.XpEach * r1.Low : double.NaN),

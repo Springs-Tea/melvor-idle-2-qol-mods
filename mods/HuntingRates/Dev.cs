@@ -57,13 +57,16 @@ namespace HuntingRates;
 //     named; shot-hunting-panel-tooltip.png.
 //  4. A picture of the screen without the window; presses the round button, and opens the window up with its own button
 //     if it opened folded; the round button must be lit.
-//  5. "Dev: row" (raw, counted, the time of a catch by every reading of the chain, drawn, tooltip), "Dev: game" (the
-//     panel's labels beside ours, its bonus rows, and the animal's trap, bait, trapless, journal and fail bonuses beside
-//     its stats), "Dev: card" (every card: name, picture, tool as drawn with its colour, its button), "order", "words",
-//     "spiders", "hidden", "discovery", "lit", "tips", "size", "room". "Dev: cut" over every label of the picture;
-//     crop-hunting-window.png and, when the list scrolls, crop-hunting-window-end.png.
-//  6. One tooltip (shot-hunting-tooltip.png) and the tooltip of the name with the longest tip
-//     (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and crop-hunting-sorted.png.
+//  5. "Dev: row" (raw, counted, the time of a catch by every reading still open, drawn, tooltip), "Dev: game" (the
+//     panel's labels beside ours, its surveying range against the most surveys the window counts, its bonus rows, and the
+//     animal's trap, bait, trapless, journal and fail bonuses beside its stats), "Dev: card" (every card: name, picture,
+//     tool as drawn with its colour, its button), "order", "words", "spiders", "hidden", "discovery", "lit", "tips",
+//     "heads" (every name's whole tip), "wrap" (every tooltip line longer than Fishing Rates' longest, WRAPPED), "size",
+//     "room". "Dev: cut" over every label of the picture; crop-hunting-window.png and, when the list scrolls,
+//     crop-hunting-window-end.png.
+//  6. The tooltip of a line whose hour is counted, when there is one (shot-hunting-tooltip.png), and the tooltip of the
+//     name with the longest tip (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and
+//     crop-hunting-sorted.png.
 //  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the click
 //     after has to show the hunt again by the page's own button.
 //  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's, which
@@ -453,7 +456,9 @@ public partial class HuntingRatesMod
         {
             if (_list!.DevScroll.ScrollVertical != 0) return false;
             var lines = _list.DevLines().ToList();
-            target = (lines.FirstOrDefault(l => !l.Animal.Locked && l.Animal.Discovered).Button ?? lines.FirstOrDefault().Button)
+            // A line with its hour counted, so the picture shows the hour's words; else the first one that can be hunted.
+            target = (lines.FirstOrDefault(l => !l.Animal.Locked && l.Animal.Discovered && l.Animal.SecondsPerCatch != null).Button
+                ?? lines.FirstOrDefault(l => !l.Animal.Locked && l.Animal.Discovered).Button ?? lines.FirstOrDefault().Button)
                 ?? throw new InvalidOperationException("No line to point at.");
             DevLog($"tooltip | the line pointed at: {lines.First(l => l.Button == target).Animal.Animal.Id}");
             _list.DevScroll.EnsureControlVisible(target);
@@ -1074,11 +1079,8 @@ public partial class HuntingRatesMod
                 $"icon {DevTexture((child as Button)?.Icon)} | tooltip '{(child as Control)?.TooltipText}'");
     }
 
-    static string DevReadingName(ChainRule rule) =>
-        $"{rule.Surveys}/{rule.Step}/{rule.Skip}/{rule.Trap}" + (AnimalRates.ChainRule?.Reading == rule ? " (THE SETTLED RULE)" : "");
-
-    // Every line: what the game gives (raw), what the mod counted from it, the time of a catch by every reading of the
-    // chain, what is drawn, and its tooltip.
+    // Every line: what the game gives (raw), what the mod counted from it, the time of a catch by every reading still open
+    // (DevReadings: the surveys of a hunt, the steps an escape adds), what is drawn, and its tooltip.
     int DevRows(string when)
     {
         int count = 0;
@@ -1098,22 +1100,30 @@ public partial class HuntingRatesMod
                 $"rare {R(s.RareSpeciesChance.Value)} (base {R(h.BaseRareSpeciesChance)}), doubling {R(s.DoublingChance?.Total.Value ?? double.NaN)}, " +
                 $"preservation {R(s.PreservationChance?.Total.Value ?? double.NaN)}, XP {R(s.Experience.XpToAdd.Value)} (base {h.BaseExperience}), insights {R(a.Active.Location?.Location?.BaseInsightsChance ?? double.NaN)}, " +
                 $"survey XP base {a.Active.Location?.Location?.BaseSurveyingExperience}, journal {h.BaseJournalTrackingExperience}/{h.BaseJournalTrappingExperience} at level {a.JournalLevel}, " +
+                $"the page's surveys 1 to {R(a.SurveysMost)}{(a.SurveysReadFor.Length > 0 ? $" (read for {a.SurveysReadFor})" : "")}, base fewest steps {h.BaseMinTrackingSteps}, " +
+                $"its trap's bonuses after a failed try {a.TrapFailBonuses}, " +
                 $"products [{Items(s.Products)}], survey finds [{Items(s.SurveyingProducts)}], tool {h.Tool?.Id ?? "none"}, trap type {h.TrapType?.Id ?? "none"}, " +
                 $"its trap {a.Trap?.Id ?? "none"} ({a.TrapsInBank} in the bank), trapless {a.Trapless} (enabled by the game {h.EnableTrapless}), bait {h.PreferredBait?.Id ?? "none"} " +
                 $"used {a.UseBait} ({a.BaitInBank} in the bank), its card's button {(Native.Card(_page!, a.Active) is { } cd && Native.CardButton(cd) is { } cb ? $"disabled {cb.Disabled}" : "not on the page")} | counted: XP range {(a.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")} " +
-                $"the middle {R(a.XpMiddle)} (a catch by the XP rule {R(a.XpPerCatch)}), catch gold {R(a.CatchGold)}, survey gold {R(a.SurveyGold)}, the chain {(AnimalRates.ChainRule is { } c ? $"{c.Reading}, {c.Source}" : "NOT SETTLED")}, " +
-                $"time per catch {R(a.SecondsPerCatch)}, catches/h {R(a.CatchesPerHour)}, XP/h {R(a.XpPerHour)}, gold/h {R(a.GoldPerHour)}, traps/h {R(a.TrapsPerHour)}, bait/h {R(a.BaitPerHour)} | " +
+                $"the middle {R(a.XpMiddle)} (a catch by the XP rule {R(a.XpPerCatch)}), catch gold {R(a.CatchGold)}, survey gold {R(a.SurveyGold)}, an escape adds " +
+                $"[{string.Join(", ", a.EscapeReadings ?? [])}] by [{string.Join(", ", Enum.GetValues<EscapeSteps>())}], so {R(a.EscapeAdds)}, a catch " +
+                $"{(a.PerCatch is { } k ? $"{R(Math.Round(k.Surveys, 3))} surveys, {R(Math.Round(k.Steps, 3))} steps, {R(Math.Round(k.Tries, 3))} tries, {R(Math.Round(k.Escapes, 3))} escapes" : "NOT COUNTED")}, " +
+                $"time per catch {R(a.SecondsPerCatch)}, catches/h {R(a.CatchesPerHour)}, XP/h {R(a.XpPerHour)}, journal XP/h {R(a.JournalXpPerHour)}, gold/h {R(a.GoldPerHour)}, " +
+                $"traps/h {R(a.TrapsPerHour)}, bait/h {R(a.BaitPerHour)} | " +
                 $"rare [{string.Join(", ", a.Rare.Select(sp => $"{sp.Name} {R(sp.Share)}{(sp.Locked.Length > 0 ? " locked" : "")} with [{string.Join(", ", sp.Extras.Select(DevDrop))}]"))}] | " +
                 $"picture {DevTexture(picture)} tint {a.PictureTint}{(picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : "")}");
-            DevLog($"row | {when} | {h.Id} | the time of a catch by each reading: " + string.Join(", ", AnimalRates.Readings.Select(rule =>
-                $"{DevReadingName(rule)} {(AnimalRates.Chain(rule, a) is { } t ? $"{R(Math.Round(t.Seconds, 3))} s ({R(Math.Round(t.Surveys, 3))} surveys)" : "never")}")));
+            var readings = DevReadings(a);
+            DevLog($"row | {when} | {h.Id} | the time of a catch by each reading still open: " + (readings.Count == 0 ? $"none ({DevWhyNot(a)})"
+                : string.Join(", ", readings.Select(r => $"{r.Name} {R(Math.Round(r.Catch.Seconds, 3))} s"))));
             DevLog($"row | {when} | drawn {drawn}");
             DevLog($"row | {when} | tooltip '{button.TooltipText}'");
         }
         var animals = ReadAnimals();
         DevLog($"rows | {when} | {count} lines, {DevRowsInSight()} in sight; the game has {_hunting!.Action.Animals.Count} animals at {_hunting.Action.Locations.Count} locations, " +
             $"{animals.Count} listed, {animals.Count(a => a.Locked)} locked, {animals.Count(a => !a.Discovered)} not discovered; columns [{string.Join(", ", _list.DevColumns)}]; " +
-            $"the chain by {(AnimalRates.ChainRule is { } chain ? $"{chain.Reading}, {chain.Source}" : "NO RULE")}, the uses by {(AnimalRates.UseRule is { } use ? $"{use.Reading}, {use.Source}" : "NO RULE")}" +
+            $"the hunt by {(AnimalRates.HuntRule is { } hunt ? $"{hunt.Reading.Surveys} and an escape by [{string.Join(", ", hunt.Reading.Escape)}], {hunt.Source}" : "NO RULE")}, " +
+            $"the uses by {(AnimalRates.UseRule is { } use ? $"{use.Reading}, {use.Source}" : "NO RULE")}, the XP by {(AnimalRates.XpRule is { } xp ? $"{xp.Reading}, {xp.Source}" : "NO RULE")}, " +
+            $"the output by {(AnimalRates.OutputRule is { } output ? $"{output.Reading}, {output.Source}" : "NO RULE")}; {animals.Count(a => a.SecondsPerCatch != null)} lines with a catch counted" +
             (count != animals.Count ? "  MISMATCH" : ""));
         return DevRowsInSight();
     }
@@ -1133,6 +1143,14 @@ public partial class HuntingRatesMod
         DevLog($"tips | {when} | the names' tips, the longest line of each: {string.Join(", ", heads.Select(h => $"{h.Text} {h.Line.Length}{Over(h.Line, FishingTipMost)}"))}" +
             $" | the lines' tooltips: {string.Join(", ", lines.Select(l => $"{l.LocalId} {l.Line.Length}{Over(l.Line, FishingTooltipMost)}"))}" +
             $" | the longest of all, {longest.Length}: '{longest}'");
+        // Every name's whole tip, as a player reads it on the name over a column.
+        foreach (Button head in _list.DevHeaders)
+            DevLog($"heads | {when} | '{head.Text}': '{head.TooltipText}'");
+        // The lines of a tooltip longer than Fishing Rates' longest before they are wrapped at their words (Words.Joined):
+        // WRAPPED with the line and how many lines it became.
+        var wrapped = _list.DevLines().SelectMany(l => Words.DevOverlong(l.Animal, _bonusNames, _noTool).Select(line => (l.Animal.Animal.LocalId, Line: line))).ToList();
+        DevLog($"wrap | {when} | " + (wrapped.Count == 0 ? $"no tooltip line is longer than {FishingTooltipMost} characters: none wrapped"
+            : string.Join(" | ", wrapped.Select(w => $"{w.LocalId} WRAPPED, {w.Line.Length} characters: '{w.Line}'"))));
     }
 
     // The page's panel of the animal selected, its own labels beside ours (DIFFER), and its list of bonuses as filled in.
@@ -1162,7 +1180,10 @@ public partial class HuntingRatesMod
                 $"{R(Native.XpLow(xp))}..{R(Native.XpHigh(xp))}, bound to the animal's stats {ReferenceEquals(Native.XpOf(xp), selected.Stats.Experience)}";
             string xpSame = xp != null && ours.XpRange is { } range ? Same(DevNative.XpMinLabel(xp).Value, ours.XpEach * range.Low, 0.51) + Same(DevNative.XpMaxLabel(xp).Value, ours.XpEach * range.High, 0.51) : "";
             DevLog($"game | the panel of {selected.Animal.Id}: its name '{DevNative.PanelName(panel).Text}', tool '{DevNative.PanelTool(panel).Text}' | surveying {R(survey.MinSeconds)}..{R(survey.MaxSeconds)} s " +
-                $"'{DevLabels(survey)}' against ours {R(ours.SurveySeconds)}{Same(survey.MinSeconds, ours.SurveySeconds, 0.005)} | tracking {R(track.MinSeconds)}..{R(track.MaxSeconds)} s " +
+                $"'{DevLabels(survey)}' against ours {R(ours.SurveySeconds)}{Same(survey.MinSeconds, ours.SurveySeconds, 0.005)}, the most surveys " +
+                $"{(survey.MinSeconds > 0 ? R(Math.Round(survey.MaxSeconds / survey.MinSeconds, 4)) : "-")} against ours {R(ours.SurveysMost)}" +
+                $"{(survey.MinSeconds > 0 && ours.SurveysMost is { } most ? Same(survey.MaxSeconds / survey.MinSeconds, most, 0.001) : "  NOT READ")}" +
+                $"{(ours.SurveysReadFor.Length > 0 ? $" (READ FOR {ours.SurveysReadFor})" : "")} | tracking {R(track.MinSeconds)}..{R(track.MaxSeconds)} s " +
                 $"'{DevLabels(track)}' against ours {R(ours.StepMinSeconds)}..{R(ours.StepMaxSeconds)}{Same(track.MinSeconds, ours.StepMinSeconds, 0.005)}{Same(track.MaxSeconds, ours.StepMaxSeconds, 0.005)} | " +
                 $"trapping {R(trap.MinSeconds)}..{R(trap.MaxSeconds)} s '{DevLabels(trap)}' against ours {R(ours.TrapMinSeconds)}..{R(ours.TrapMaxSeconds)}" +
                 $"{Same(trap.MinSeconds, ours.TrapMinSeconds, 0.005)}{Same(trap.MaxSeconds, ours.TrapMaxSeconds, 0.005)} | trapping chance '{chance.Text}' (value {R(chance.Value)}) against ours " +

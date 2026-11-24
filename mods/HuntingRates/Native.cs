@@ -6,8 +6,11 @@ using System.Runtime.CompilerServices;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Conditions;
 using GamesByMalcs.Melvor2.CustomControls;
+using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities.Hunting;
 using GamesByMalcs.Melvor2.Localization;
+using GamesByMalcs.Melvor2.Modifiers;
+using GamesByMalcs.Melvor2.StatDisplays;
 using GamesByMalcs.Melvor2.Utils;
 using Godot;
 
@@ -30,8 +33,8 @@ enum CardSight
 // its own (mods/WoodcuttingRates/Native.cs, from which Place, Drawn, Missing and Needs are copied unchanged). Only
 // member names and types from tools/ApiDump are used here. A member that is gone after a game update throws when it is
 // first used: for a click on a line that switches the clicks off with one line in the log (HuntingRatesMod.ClicksOff),
-// for what the list reads from the page (the look of an animal not discovered, the XP range) that is given up with one
-// line, elsewhere it stops the mod with one line. Nothing here presses or changes anything by itself; the page's own
+// for what the list reads from the page (the look of an animal not discovered, the XP range, the surveying range) that
+// is given up with one line, elsewhere it stops the mod with one line. Nothing here presses or changes anything by itself; the page's own
 // controls a click on a line goes through (a location's button, an animal's card button, the hunt's view button) are
 // pressed only by HuntingRatesMod, by the rule of its ShowOnPage. The page's buttons that start or stop a hunt
 // (HuntingSelectedRecipeContainer.CreateRecipeButton, HuntingCurrentRecipeContainer.StopButton) and its trap, bait and
@@ -97,6 +100,34 @@ internal static class Native
     // The page's words for an animal that needs no tool (HuntingAnimalTrackingView.s_noTool).
     [UnsafeAccessor(UnsafeAccessorKind.StaticField, Name = "s_noTool")]
     internal static extern ref LocalizedString NoToolWords(HuntingAnimalTrackingView? card);
+
+    // The time of surveying as the panel of the animal selected writes it, a range from one survey to the most a hunt
+    // takes ("Surveying: 3.84s - 11.52s"; HuntingSelectedRecipeContainer.SurveyingInterval, its MinSeconds and MaxSeconds).
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SurveyingInterval")]
+    internal static extern IntervalRangeDisplay? SurveyOf(HuntingSelectedRecipeContainer panel);
+
+    // What a trap's bonuses after a failed try hold (HuntingTrapCapability.FailBonuses, a ModifierTemplate whose values
+    // are internal: ModifierTemplate._baseValues).
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_baseValues")]
+    static extern ref List<ComponentModifierValue>? TemplateValues(ModifierTemplate template);
+    static bool _failValuesOff;
+
+    /// <summary>
+    /// A trap has bonuses that a failed try with it puts on the animal (HuntingTrapCapability.FailBonuses with values in
+    /// it), so that the next try's chance is not the one now. When its values cannot be read (the game was updated?), a
+    /// trap with such bonuses at all counts as having them: no catch is counted rather than a wrong one.
+    /// </summary>
+    internal static bool HasFailBonuses(Item trap)
+    {
+        if (!trap.Capabilities.TryGet(out HuntingTrapCapability? capability) || capability?.FailBonuses is not { } fail) return false;
+        if (_failValuesOff) return true;
+        try { return TemplateValues(fail) is { Count: > 0 }; }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            _failValuesOff = true;
+            return true;
+        }
+    }
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_orConditions")]
     static extern ref List<OrConditionGroup> Alternatives(ConditionGroup group);

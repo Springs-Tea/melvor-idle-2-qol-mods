@@ -19,13 +19,14 @@ namespace HuntingRates;
 /// <summary>
 /// Which animal gives what per hour. On the Hunting page a round button in the strip on the right edge of the screen
 /// opens a window with one line per animal the page can show: its picture, its name, its location, the time of a catch,
-/// and the catches, Hunting XP, gold and traps of an hour, from the game's own numbers for each animal (AnimalRates);
-/// what rests on a rule not settled (AnimalRates.ChainRule, UseRule, the XP range the page writes) is "-", and a note
-/// under the list says why. The best number of each column is gold, a click on a column's name sorts by it, the animal
-/// the Hunting page's panel shows has a lit outline, and a line's tooltip has the game's numbers of every step of a hunt
-/// and what a catch brings. A click on a line opens that animal on the Hunting page, as the player's own clicks there
-/// would (ShowOnPage); nothing is started or stopped from it. Built the way Woodcutting Rates is
-/// (mods/WoodcuttingRates/WoodcuttingRatesMod.cs), with Fishing Rates' click (mods/FishingRates, OpenOnPage).
+/// and the catches, Hunting XP, gold and traps of an hour, from the game's own numbers for each animal (AnimalRates), by
+/// the way a hunt's links join as the silent watch measured it (AnimalRates.HuntRule); what rests on a number not known
+/// for an animal (the steps an escape adds there, the page's surveying range, the XP range the page writes) is "-", and
+/// a note under the list says why. The best number of each column is gold, a click on a column's name sorts by it, the
+/// animal the Hunting page's panel shows has a lit outline, and a line's tooltip has the whole hour, link by link. A
+/// click on a line opens that animal on the Hunting page, as the player's own clicks there would (ShowOnPage); nothing
+/// is started or stopped from it. Built the way Woodcutting Rates is (mods/WoodcuttingRates/WoodcuttingRatesMod.cs),
+/// with Fishing Rates' click (mods/FishingRates, OpenOnPage).
 /// </summary>
 public partial class HuntingRatesMod : IMod
 {
@@ -86,6 +87,11 @@ public partial class HuntingRatesMod : IMod
     // while the page shows the cards (the animals of the location it shows); _looksOff once a member is gone.
     readonly Dictionary<ActiveHuntingAnimal, (string Name, Texture2D? Picture, Color Tint)> _looks = new(ReferenceEqualityComparer.Instance);
     readonly Dictionary<ActiveHuntingAnimal, (double Low, double High)> _xpRanges = new(ReferenceEqualityComparer.Instance);
+    // The most surveys a hunt takes as the page's panel writes it for an animal (its surveying range, high end over low
+    // end), kept per animal; the panel shows it only for the animal selected, so the last one read stands for the others,
+    // named in their tooltips (AnimalRates.SurveysReadFor).
+    readonly Dictionary<ActiveHuntingAnimal, double> _surveysMost = new(ReferenceEqualityComparer.Instance);
+    (double Most, string ReadFor)? _surveysLast;
     // The tool as each card writes it (HuntingAnimalTrackingView.TrackingTool), for the tooltip (review 1, fault 10).
     readonly Dictionary<ActiveHuntingAnimal, string> _toolWords = new(ReferenceEqualityComparer.Instance);
     Texture2D? _spiderPicture;
@@ -118,6 +124,9 @@ public partial class HuntingRatesMod : IMod
             // A development request's put-back of the animal, two process frames after its location's, as the click's own
             // steps (DevAnimalBackSoon).
             if (_devAnimalBackFrame >= 0 && frame >= _devAnimalBackFrame) DevAnimalBackSoon();
+            // The silent watch closes a frame with an event as soon as it is past, and reads the game's interval between
+            // events (DevWatchFrame); nothing while no watch runs.
+            if (_devHunts != null && !GameAccess.IsComputingOffline) DevWatchFrame(frame);
 #endif
             if (_clickStep is { } step && frame >= step.After) ClickNext();
             if (_scrollTo != null && frame >= _scrollAfter) ScrollToCard();
@@ -442,17 +451,34 @@ public partial class HuntingRatesMod : IMod
                 if (Native.XpViewOf(card) is { } xp) ReadXpRange(xp, animal);
                 if (Native.ToolOf(card)?.Text is { Length: > 0 } tool) _toolWords[animal] = StringUtils.StripBBCode(tool).Trim();
             }
-            if (Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() &&
-                Native.XpViewOf(panel) is { } panelXp && _hunting!.Action.SelectedAnimal is { } selected)
-                ReadXpRange(panelXp, selected);
+            if (Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() && _hunting!.Action.SelectedAnimal is { } selected)
+            {
+                if (Native.XpViewOf(panel) is { } panelXp) ReadXpRange(panelXp, selected);
+                if (Native.SurveyOf(panel) is { } survey) ReadSurveyRange(survey, selected);
+            }
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
         {
             _looksOff = true;
             Report("The Hunting page's list of animals could not be read (the game was updated?): an animal not discovered yet shows no " +
-                $"picture, and the XP range of a catch is not read. {e.Message}");
+                $"picture, and the XP range of a catch and the surveys of a hunt are not read. {e.Message}");
         }
     }
+
+    // The panel's surveying range, kept for the animal it shows: only when its low end is that animal's time of a survey,
+    // so a panel not yet drawn for a newly selected animal is never taken for it.
+    void ReadSurveyRange(GamesByMalcs.Melvor2.StatDisplays.IntervalRangeDisplay survey, ActiveHuntingAnimal animal)
+    {
+        double low = survey.MinSeconds, high = survey.MaxSeconds, one = animal.Stats.SurveyInterval.Value / 1000;
+        if (!double.IsFinite(low) || !double.IsFinite(high) || low <= 0.01 || high < low || Math.Abs(low - one) > 0.005) return;
+        _surveysMost[animal] = high / low;
+        // Named as the list names it, so that an animal not discovered yet is never named in another line's tooltip.
+        _surveysLast = (high / low, Look(animal).Name);
+    }
+
+    // The most surveys a hunt takes for an animal: as the page wrote it for that animal, or else the last one it wrote.
+    (double Most, string ReadFor)? SurveysFor(ActiveHuntingAnimal animal) =>
+        _surveysMost.TryGetValue(animal, out double most) ? (most, "") : _surveysLast;
 
     // The multipliers an XP view of the page is bound with, kept for the animal whose stats it shows.
     void ReadXpRange(GamesByMalcs.Melvor2.Components.Experience.ExperienceStatsXPView view, ActiveHuntingAnimal animal)
@@ -503,7 +529,8 @@ public partial class HuntingRatesMod : IMod
 
     // An animal's hour, with what the list reads from the page for it.
     AnimalRates ReadAnimal(ActiveHuntingAnimal animal) =>
-        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, InBank, _hiddenWord ?? NotFound, HuntRuns());
+        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, SurveysFor(animal), InBank,
+            _hiddenWord ?? NotFound, HuntRuns());
 
     // A hunt runs, by the one test the window and the development request share (AnimalRates.IsHunting).
     bool HuntRuns() => AnimalRates.IsHunting(_hunting!, _game);
@@ -908,6 +935,8 @@ public partial class HuntingRatesMod : IMod
         _pictures = null;
         _looks.Clear();
         _xpRanges.Clear();
+        _surveysMost.Clear();
+        _surveysLast = null;
         _toolWords.Clear();
         _spiderPicture = null;
     }

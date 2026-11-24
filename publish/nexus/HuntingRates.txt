@@ -14,12 +14,12 @@ PICTURES
 none yet
 
 SUMMARY (the short line under the name, at most 350 characters)
-Where do I hunt? On the Hunting page, a round button opens a window with one line per animal: its location, and time per catch, catches, Hunting XP, gold and traps per hour once the window knows how a hunt's steps join. Each line's tooltip has the game's numbers of every step of a hunt and of its output. A click opens the animal.
+Where do I hunt? On the Hunting page, a round button opens a window with one line per animal: its location, the time of a catch, and the catches, Hunting XP, gold and traps of an hour, from the game's own numbers. Each line's tooltip has the whole hour, step by step. A click opens the animal.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
 [size=5][b]Hunting Rates[/b][/size]
-Every animal has its own hunt: surveying until its tracks are found, a number of tracking steps, and a trap that may fail. Each step has its own time and chance, and the animal has its own output, with a chance at a rare species. To compare them you would open the animals one by one and add up the steps in your head. This window puts them side by side, with the game's own numbers for your character.
+Every animal has its own hunt: surveying until its tracks are found, a number of tracking steps, and a trap that may fail and let the animal escape. Each step has its own time and chance, and the animal has its own output, with a chance at a rare species. To compare them you would open the animals one by one and add up the steps in your head. This window puts them side by side, with the game's own numbers for your character.
 
 [size=4][b]Where it is[/b][/size]
 On the Hunting page, a round button with the Hunting icon joins the others on the right edge of the screen. Click it to open the window, and again, or the X, to close it. On any other page the window steps aside, and it is back as you left it when you return to Hunting.
@@ -27,26 +27,26 @@ On the Hunting page, a round button with the Hunting icon joins the others on th
 [size=4][b]What the window shows[/b][/size]
 One line per animal the Hunting page can show you, starting with the animal's picture and its location, and:
 [list]
-[*][b]Time[/b]: how long one catch takes, surveying, tracking and trapping together.
+[*][b]Time[/b]: how long one catch takes, surveying, tracking and trapping, escapes included.
 [*][b]Catches[/b]: animals caught per hour.
 [*][b]XP[/b]: Hunting XP per hour.
-[*][b]Gold[/b]: what the output and the finds of an hour sell for.
-[*][b]Traps[/b]: traps used per hour.
+[*][b]Gold[/b]: what the output, the rare extras and the finds of an hour sell for.
+[*][b]Traps[/b]: traps used per hour, less what is preserved.
 [/list]
-For now these columns show "-", and a note under the list says why: the window does not know yet how surveying, tracking and trapping join into a catch, when the XP is added, when the output comes, or when traps and bait are used up. No number of the game's says how the steps of a hunt add up, and the window does not guess.
-The best number of each column is in gold, once it has numbers. Click a column's name to sort by it; the first click puts the best animals on top. The animal the Hunting page shows has a lit outline. An animal you cannot hunt yet is greyed, with the level it needs. An animal you have not discovered yet gives nothing away: only its name as the page writes it, its location and what it needs. With the game's spider setting on, no spider is shown.
+How the steps of a hunt join into a catch is in no number of the game's: it was measured on a character's own hunting. An escape sends you back to tracking with more steps to go, and how many is known only where every reading of it gives the same number; elsewhere a column shows "-" rather than a guess, and a note under the list says why. For now that is most animals.
+The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best animals on top. The animal the Hunting page shows has a lit outline. An animal you cannot hunt yet is greyed, with the level it needs. An animal you have not discovered yet gives nothing away: only its name as the page writes it, its location and what it needs. With the game's spider setting on, no spider is shown.
 Click a line to open that animal on the Hunting page. While you are not hunting, its location and the animal are selected through the page's own buttons, as your own clicks there would. While you hunt, a click selects nothing, since that might change the hunt: it only shows the hunt instead of the journal, and the animal's card when the page shows its location. Nothing is started or stopped, and the window stays open.
 
 [size=4][b]In the tooltip of a line[/b][/size]
-The game's numbers of a hunt of that animal, grouped as the Hunting page's panel groups them: the time of a survey, the steps of tracking with the time and chance of one, the time and chance of a try of the trap, the chances to skip a step and to try the trap again, the XP as the page writes it, the tool, the output with the chance of each item, the rare species with their extra products, what a survey can find, the trap and the bait. A rare species you have never trapped and a collectable you have never found are not named, as the journal does.
+The whole hour of that animal, grouped as the Hunting page's panel groups its numbers: the surveys of a hunt, the steps of tracking and the time of one, the time and chance of a try of the trap, the chance to try again, what an escape costs, the time of a catch, the Hunting XP and the journal XP, the tool, the output with the chance of each item, the rare species with their extra products, what a survey can find, the trap and the bait with how long the bank's last, and the gold. A rare species you have never trapped and a collectable you have never found are not named, as the journal does.
 
 [size=4][b]What is counted[/b][/size]
-The numbers start from the game's own values for each animal, so whatever changes those changes the window too. The range of the XP is the one the Hunting page writes, read from the page. The window's own reading: the middle of each of the game's ranges, chances as their long-run average, the output coming with a catch, and the doubling chance on the output only. How the steps of a hunt join into a catch, when the XP is added, and when traps and bait are used up are not known yet: what rests on them shows "-".
+The numbers start from the game's own values for each animal, so whatever changes those changes the window too. The ranges of the XP and of the surveys of a hunt are the ones the Hunting page writes, read from the page. Measured on 15 minutes of hunting: every tracking step takes one interval and never fails; a failed try of the trap is tried again at the game's reattempt chance, otherwise the animal escapes back to tracking with more steps to go; every try uses one trap and one bait; the XP and the output come with a catch. The window's own reading: the middle of each of the game's ranges, chances as their long-run average, and the doubling chance on the output only.
 
 [size=4][b]Good to know[/b][/size]
 [list]
-[*]It is an estimate, not a promise: chances average out over many hunts.
-[*]Hunting has no mastery XP in this game, so there is no column for it. An animal's journal XP has base values only, which the tooltip names.
+[*]It is an estimate, not a promise: chances average out over many hunts. An escape costs several steps, so one hunt can take twice as long as the next.
+[*]Hunting has no mastery XP in this game, so there is no column for it. An animal's journal XP is in the tooltip.
 [*]Gold is not profit: traps and bait are not taken off.
 [*]The window starts nothing. While you are not hunting, a click on a line changes which location and animal the Hunting page selects, through the page's own buttons; while you hunt, it selects nothing. Hunting, traps, bait and hunting without a trap are left as they are.
 [*]An animal the game has no picture for yet shows none, rather than the game's grey stand-in.

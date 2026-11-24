@@ -21,42 +21,58 @@ namespace HuntingRates;
 // TracksChanged, CurrentStepChanged, RequiredStepsChanged, TrapFailCountChanged, AnimalTrapped and AnimalEscaped; the
 // action's CurrentTrapChanged, CurrentAnimalChanged and ItemAdded; the Hunting XP (ExperienceComponent.XpChanged) and the
 // hunted animal's journal XP (HuntingAnimalJournalEntry.Experience.XpChanged). The items, traps and bait are the bank's
-// counts of every item an animal can give or use, read after each frame with an event and four times a second between,
-// as Woodcutting Rates' watch reads them (the action's ItemAdded was never raised there; here it is logged beside the
-// counts as a witness). If the character is not hunting when it starts, it says so in one line and ends. It runs alone:
-// a light check sent meanwhile waits for it to end.
-//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod HuntingRates -Request huntingwatch.request -Produces huntingwatch.done -Text 15 -Seconds 1200 -Out <folder>
-// Every frame with an event is one "Dev: hunt" line, with the time since the line before: the animal, its state before
-// and after, its tracks, steps and trap fails, a catch or an escape, the XP and the journal XP, the items by the bank's
-// counts. It ends when the minutes are up or after two minutes without an event of a hunt, with one line per question
-// for every animal hunted, each with a verdict in capitals; NOT DECIDED below MostCatches catches. The questions are the
-// links of a catch the window's hour rests on (AnimalRates.ChainRule, UseRule, the XP of a catch): how many surveys a
-// hunt takes, what a failed tracking step costs, what a skipped step does, whether a failed trap is tried again, what
-// an escape leads to, what the XP and the journal XP come with, the XP of a catch against the page's range, when traps
-// and bait are used up, the items of a catch against ours, and the time of a catch against ours by every reading of the
-// chain. Then the game's own tracker (HuntingEntity.Tracker) over its periods beside ours. Its last line says it stopped
-// listening and changed nothing. Every listener runs inside a try, and all are taken off when it ends, on Stop (with the
-// done file, DevStopped) and on another character (DevUnwatchAll).
+// counts of every item an animal can give or use, read on the frame after each frame with an event and four times a second
+// between,
+// as Woodcutting Rates' watch reads them (the action's ItemAdded was never raised there, nor in check-3-watch; it is
+// logged beside the counts as a witness). The game's own clock is read at every event too: its tick
+// (TrackerComponent.CurrentTick, with the tracker periods' ticks over their milliseconds for the length of one), and the
+// interval its action timer runs (ActionComponent.ActionTimer, WaitTime, read on the frames between two events, where it
+// can only be the link's in progress: DevWatchFrame, on every process frame), so that a step that took longer on the real
+// clock than the page's longest (check-3-watch: 4 of 62) can be told from a step the game itself made longer. If the
+// character is not hunting when it starts, it says so in one line and ends. It runs alone: a light check sent meanwhile
+// waits for it to end.
+//   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod HuntingRates -Request huntingwatch.request -Produces huntingwatch.done -Text 25 -Seconds 1800 -Out <folder>
+// At its start it says, from the window's own numbers for the animal hunted, how many catches, tries, failed tries,
+// escapes, steps and hunts the minutes asked will bring, and the minutes each verdict needs (lesson 59), with NOT ENOUGH
+// for a verdict the minutes cannot reach. Every frame with an event is one "Dev: hunt" line, with the time since the line
+// before on the real clock and on the game's. It ends when the minutes are up or after two minutes without an event of a
+// hunt, with one line per question for every animal hunted, each with a verdict in capitals. A link that held without
+// exception is judged on its events (every step, every try, every escape), not on whole hunts; a mean or a chance is
+// judged with a tolerance from its own spread (twice its standard error), never a fixed share. The questions are the
+// links of a catch the window's hour rests on (AnimalRates.HuntRule, UseRule, XpRule, OutputRule): the surveys of a hunt
+// against both readings of SurveysPerHunt and the page's most; a tracking step (moved on by one, never back but for the
+// reset after a catch, none skipped) and its time against the page's range, on the real clock and the game's; the steps
+// a hunt needs; a try against the trapping chance; a failed try against the reattempt chance; an escape against every
+// reading of EscapeSteps; the traps and bait of a try against the preservation chance; the XP and the journal XP; the
+// output of a catch against the catch's share of the XP; the time of each hunt against its own surveys, steps and tries
+// (tight: the escapes, which make most of a hunt's spread, are taken out); and the time of a catch against the window's
+// by every reading still open, within the larger of the spread seen and the one the window's numbers give a hunt (the
+// start line says how close the minutes asked can hold it). Then the game's own tracker (HuntingEntity.Tracker) for
+// every period that lies inside the watch, spent on one animal, beside the window's hour. Its last line says it stopped
+// listening and changed nothing. Every listener runs inside a try, and all are taken off when it ends, on Stop (with
+// the done file, DevStopped) and on another character (DevUnwatchAll).
 public partial class HuntingRatesMod
 {
     const string WatchRequestFile = "huntingwatch.request", WatchDoneFile = "huntingwatch.done";
-    // Two minutes without an event of a hunt end the watch (the brief: a hunt's steps take seconds, a survey can take long).
+    // Two minutes without an event of a hunt end the watch: the longest link of a hunt (a step of 28 s) is far shorter.
     const ulong WatchIdle = 120000;
-    // Fewer catches than this decide nothing about the rates of a hunt (Woodcutting Rates' floor of about 30 was for hits;
-    // a catch takes tens of seconds, so fifteen minutes give tens of catches at most).
-    const int MostCatches = 10;
     const ulong BankReadEvery = 250;
+    // The fewest events of a kind a verdict is judged on (lesson 59: each verdict counts its own events). Fewer, and the
+    // verdict is NOT DECIDED with the number seen; the watch says at its start whether the minutes asked reach them.
+    const int FewestSteps = 20, FewestTries = 10, FewestFails = 10, FewestEscapes = 3, FewestHunts = 5, FewestCatches = 5;
 
-    // What the game did in one frame.
+    // What the game did in one frame, and the game's clock then.
     sealed class DevMoment
     {
         public long Frame;
         public ulong At;
+        public long? Tick;
         public ActiveHuntingAnimal? Animal;
         public readonly List<string> Order = new();
         public (HuntState From, HuntState To)? State;
         public readonly List<(int From, int To)> Steps = new();
-        public int? RequiredSteps, Tracks, TrapFails;
+        public int? Required, Tracks;
+        public (int From, int To)? TrapFails;
         public bool Trapped, Escaped;
         public double Xp, JournalXp;
         public int XpChanges, JournalXpChanges;
@@ -65,40 +81,68 @@ public partial class HuntingRatesMod
         public readonly List<string> Other = new();
     }
 
-    // One hunt: from a survey's start (or the watch's) to a catch or an escape.
+    // One step, one try of the trap: its time on the real clock and on the game's (NaN when not read), the interval the
+    // game's action timer ran for it, and the page's range when it began.
+    sealed record DevLink(double Real, double Game, double Set, double Min, double Max);
+    sealed record DevTry(string Outcome, DevLink Time, double Chance, double Reattempt, double Preservation, int Trap, int Bait, bool BaitOn);
+    sealed record DevEscape(int Was, int Now, HuntState? After, Dictionary<EscapeSteps, int> Readings);
+
+    // One hunt, from a catch (or the watch's start) to the next catch.
     sealed class DevHuntSeen
     {
+        public bool Whole;
+        public ulong StartAt;
+        public long? StartTick;
+        public int? Surveys, Required, RequiredMin, RequiredMax;
+        public double SurveyReal = double.NaN, SurveyGame = double.NaN;
+        public int Steps, Tries, Escapes;
+        // The middles of the page's ranges of every step and try of the hunt, each as it was when the link began, the time of
+        // one survey, and the spread the ranges give the hunt (each link anywhere in its range).
+        public double Middles, LinkVariance, SurveyEach = double.NaN;
+        public double Real = double.NaN, Game = double.NaN;
+    }
+
+    // Everything seen of one animal.
+    sealed class DevSeen
+    {
         public ActiveHuntingAnimal Animal = null!;
-        public ulong Start;
-        public readonly Dictionary<HuntState, double> Seconds = new();
-        public int? Required;
-        public int StepUps, StepBacks, MostStep, TrapFails, SurveyXps, TrackXps, TrapXps;
-        // The game's own count of the surveys that found no tracks (ActiveHuntingAnimal._surveyFails), the most it read
-        // while this hunt surveyed: the surveys of the hunt are these and the one that found them (code review 1, fault 8).
-        public int? SurveyFails;
-        // The same count when the hunt began: whether the game resets it with every hunt is read from these (said in the
-        // summary), and the surveys of a hunt are the rise within it and the one that found the tracks.
-        public int? SurveyFailsStart;
-        public double SurveyXp, TrackXp, TrapXp, CatchXp, JournalXp;
-        public bool Caught, Escaped, Whole;
-        public HuntState? EscapedIn;
-        public HuntState? After;
-        public readonly Dictionary<Item, int> Items = new(ReferenceEqualityComparer.Instance);
-        public readonly Dictionary<Item, int> CatchItems = new(ReferenceEqualityComparer.Instance);
+        public readonly List<(DevLink Time, int By)> Steps = new();
+        public int StepsBack, Resets;
+        public readonly List<DevTry> Tries = new();
+        public readonly List<DevEscape> Escapes = new();
+        public readonly List<DevHuntSeen> Hunts = new();
+        public DevHuntSeen Now = new();
+        public readonly List<(double Xp, double Each, double Low, double High)> CatchXp = new();
+        public int XpElsewhere;
+        public double XpElsewhereSum;
+        public readonly List<double> JournalStep = new(), JournalCatch = new();
+        public int JournalElsewhere;
+        public readonly List<(Dictionary<Item, int> Items, double Share)> Catches = new();
+        public readonly Dictionary<Item, int> OutputElsewhere = new(ReferenceEqualityComparer.Instance);
+        public int TrapElsewhere, BaitElsewhere;
     }
 
     sealed class DevHuntWatch
     {
-        public ulong Since, LastEvent, Length, StateSince;
+        public ulong Since, LastEvent, Length;
+        public long? SinceTick;
+        public double TickMs = double.NaN;
         public HuntingActionComponent Action = null!;
         public readonly List<Action> Off = new();
         public readonly List<DevMoment> Moments = new();
-        public readonly List<DevHuntSeen> Hunts = new();
-        public DevHuntSeen? Now;
-        public HuntState? StateNow;
+        public readonly Dictionary<ActiveHuntingAnimal, DevSeen> Seen = new(ReferenceEqualityComparer.Instance);
         public DevMoment? Open;
         public ulong LastLine;
-        public bool Failed;
+        public bool Failed, AnimalChanged;
+        // The last frame with an event: when, the game's tick, and what ran from then on (the interval of the action timer,
+        // the page's ranges, the chances, the steps needed), for the link that ends at the next event.
+        public ulong LastAt;
+        public long? LastTick;
+        public long LastEventFrame;
+        public bool HaveLast;
+        public double LastSet = double.NaN, LastChance, LastReattempt, LastPreservation;
+        public (double Min, double Max) LastStep, LastTrap;
+        public int LastRequired;
         public GamesByMalcs.Melvor2.Entities.Bank.BankEntity? Bank;
         public readonly List<Item> Watched = new();
         public readonly Dictionary<Item, int> StartCounts = new(ReferenceEqualityComparer.Instance);
@@ -133,26 +177,141 @@ public partial class HuntingRatesMod
             return;
         }
         var w = new DevHuntWatch { Action = action, Since = Time.GetTicksMsec(), Length = (ulong)minutes * 60000 };
-        w.LastEvent = w.LastLine = w.StateSince = w.Since;
-        w.StateNow = action.CurrentAnimal.State;
+        w.LastEvent = w.LastLine = w.Since;
+        w.TickMs = DevTickMs(out string tickWords);
+        w.SinceTick = DevTick();
         foreach (ActiveHuntingAnimal animal in action.Animals.Values)
             if (animal != null) w.Start[animal] = DevAnimalStats(animal);
         DevBankStart(w);
         _devHunts = w;
         DevWatchListen(w);
         ActiveHuntingAnimal hunted = action.CurrentAnimal;
-        // The hunt in progress when the watch begins is not whole: it is counted from its next start. The page's cards are
-        // read (only read) for the XP range of a catch, when the Hunting page is on the screen.
-        w.Now = new DevHuntSeen { Animal = hunted, Start = w.Since, Whole = false };
+        // The hunt in progress when the watch begins is not whole: its hunt counts from its catch on. What runs now is the
+        // last "event" a link is timed from, but only once a first event has been seen, so a link is never timed from the
+        // watch's own start.
+        DevRemember(w, hunted, null);
+        w.HaveLast = false;
         ReadPage();
         AnimalRates ours = ReadAnimal(hunted);
         DevLog($"watch | listening; the animal hunted {hunted.Animal.Id} at {hunted.Location?.Location?.Id}, in state {hunted.State}, step {hunted.CurrentStep} of {hunted.RequiredSteps}, " +
-            $"tracks {hunted.Tracks}, trap fails {hunted.TrapFailCount}, survey fails {DevSurveyFails(hunted)}; its numbers {w.Start[hunted]}; the XP range of a catch " +
-            $"{(ours.XpRange is { } range ? $"{R(range.Low)}..{R(range.High)}" : "NOT READ (the Hunting page was not on the screen with this animal's location)")}; " +
+            $"tracks {hunted.Tracks}, trap fails {hunted.TrapFailCount}, survey fails {DevSurveyFails(hunted)}; its numbers {w.Start[hunted]}; the page's surveying range " +
+            $"{(ours.SurveysMost is { } most ? $"1 to {R(Math.Round(most, 3))} surveys{(ours.SurveysReadFor.Length > 0 ? $" (READ FOR {ours.SurveysReadFor})" : "")}" : "NOT READ (the Hunting page's panel has not shown an animal)")}; " +
+            $"the XP range of a catch {(ours.XpRange is { } range ? $"{R(range.Low)}..{R(range.High)}" : "NOT READ (the Hunting page has not shown this animal's card)")}; " +
+            $"the game's clock: {tickWords}; " +
             (w.Bank == null ? "the bank NOT FOUND: the items, traps and bait are not read"
                 : $"read from the bank's counts: {w.Watched.Count} items, this animal's trap {ours.Trap?.Id ?? "none"} {(ours.Trap != null ? w.StartCounts.GetValueOrDefault(ours.Trap) : 0)}, " +
                   $"bait {ours.Bait?.Id ?? "none"} ({(ours.UseBait ? "used" : "not used")}) {(ours.Bait != null ? w.StartCounts.GetValueOrDefault(ours.Bait) : 0)}"));
-        DevTracker("at the start", null);
+        DevWatchEnough(ours, minutes);
+        DevTracker("at the start", w, null);
+    }
+
+    // What the minutes asked bring by the window's own numbers for the animal hunted, and the minutes each verdict needs
+    // (lesson 59): NOT ENOUGH for a verdict they cannot reach.
+    void DevWatchEnough(AnimalRates ours, int minutes)
+    {
+        var readings = DevReadings(ours);
+        if (readings.Count == 0)
+        {
+            DevLog($"watch | what {minutes} minutes give: NOT KNOWN, the window cannot count a catch of {ours.Animal.LocalId} ({DevWhyNot(ours)}); the verdicts judge what comes");
+            return;
+        }
+        var slowest = readings.OrderByDescending(r => r.Catch.Seconds).First();
+        AnimalRates.Catch k = slowest.Catch;
+        double perMinute = 60 / k.Seconds, catches = minutes * perMinute;
+        double fails = k.Tries - 1;
+        // A number of minutes as the window writes a time: "4m 30s", "1h 5m".
+        static string Minutes(double minutes) => !double.IsFinite(minutes) || minutes <= 0 ? "never" : Words.Seconds(minutes * 60);
+        var needs = new List<(string What, int Count, double PerMinute)>
+        {
+            ("tracking steps", FewestSteps, perMinute * k.Steps), ("tries of the trap", FewestTries, perMinute * k.Tries),
+            ("failed tries", FewestFails, perMinute * fails), ("escapes", FewestEscapes, perMinute * k.Escapes),
+            // The hunt in progress at the start is not whole: one catch more than the hunts.
+            ("whole hunts", FewestHunts + 1, perMinute), ("catches", FewestCatches, perMinute),
+        };
+        var short_ = needs.Where(n => n.PerMinute <= 0 || n.Count / n.PerMinute > minutes).ToList();
+        // Telling the two readings of a hunt's surveys apart: their gap against twice the standard error of a mean of hunts,
+        // the spread of a hunt's surveys by the reading of the chance up to the page's most.
+        double middle = ours.SurveysMost is { } most ? (1 + most) / 2 : double.NaN;
+        double chance = ours.SurveysMost is { } most2 ? AnimalRates.SurveysUpToMost(ours.TrackChance, most2) : double.NaN;
+        double spread = ours.SurveysMost is { } most3 ? DevSurveySpread(ours.TrackChance, most3) : double.NaN;
+        double gap = Math.Abs(middle - chance);
+        double huntsApart = gap > 1e-9 && double.IsFinite(spread) ? Math.Ceiling(Math.Pow(4 * spread / gap, 2)) : double.NaN;
+        // How many failed tries it takes to see a try again at least once in 20 watches of 21 at the reattempt chance, and
+        // how many tries to see a trap kept at the preservation chance.
+        static double SeeOnce(double p) => p > 0 && p < 1 ? Math.Ceiling(Math.Log(0.05) / Math.Log(1 - p)) : double.NaN;
+        double failsToSee = SeeOnce(ours.ReattemptChance), triesToSee = SeeOnce(ours.Preservation);
+        var escapeValues = readings.Select(r => r.Escape).Distinct().ToList();
+        // How closely the whole hunts of the minutes asked can hold the time of a catch: twice the standard error of a mean of
+        // that many hunts, a hunt's spread by the window's own numbers (DevHuntSpread).
+        double huntSpread = DevHuntSpread(ours, slowest.Escape), wholeHunts = Math.Max(1, catches - 1);
+        double within = 2 * huntSpread / Math.Sqrt(wholeHunts);
+        DevLog($"watch | what {minutes} minutes of {ours.Animal.LocalId} give by the window's numbers: a catch every " +
+            $"{string.Join(" or ", readings.Select(r => $"{R(Math.Round(r.Catch.Seconds, 1))} s ({r.Name})"))}; at the slowest about {R(Math.Round(catches, 1))} catches, " +
+            $"{R(Math.Round(catches * k.Tries, 1))} tries, {R(Math.Round(catches * fails, 1))} failed tries, {R(Math.Round(catches * k.Escapes, 1))} escapes, " +
+            $"{R(Math.Round(catches * k.Steps, 1))} steps and {R(Math.Round(catches, 1))} hunts | each verdict needs: " +
+            string.Join(", ", needs.Select(n => $"{n.Count} {n.What} ({Minutes(n.PerMinute > 0 ? n.Count / n.PerMinute : 0)})")) +
+            $" | the surveys of a hunt: the two readings, {R(Math.Round(middle, 3))} and {R(Math.Round(chance, 3))} a hunt, need about {R(huntsApart)} hunts " +
+            $"({(double.IsFinite(huntsApart) ? Minutes(huntsApart / perMinute) : "-")}) to be told apart: this watch says whether each fits" +
+            $" | a failed try again at the reattempt chance {R(ours.ReattemptChance)}: seen at least once in about {R(failsToSee)} failed tries " +
+            $"({(double.IsFinite(failsToSee) && fails > 0 ? Minutes(failsToSee / (perMinute * fails)) : "-")}) | a trap or bait kept at the preservation chance " +
+            $"{R(ours.Preservation)}: seen at least once in about {R(triesToSee)} tries ({(double.IsFinite(triesToSee) ? Minutes(triesToSee / (perMinute * k.Tries)) : "-")})" +
+            $" | an escape's steps: {(escapeValues.Count == 1 ? $"every reading gives {escapeValues[0]} on this animal, so it cannot tell them apart" : $"the readings give {string.Join(", ", ours.EscapeReadings!.Distinct())} here: one escape tells them apart")}" +
+            $" | the time of a catch: a hunt's spread is {R(Math.Round(huntSpread, 1))} s by the window's numbers, so {R(Math.Round(wholeHunts, 1))} whole hunts hold it within " +
+            $"{R(Math.Round(within, 1))} s ({R(Math.Round(100 * within / k.Seconds, 1))}%): a reading further off than that is ruled out; the links are judged closer, each on its events" +
+            (short_.Count == 0 ? " | ENOUGH for every verdict but the surveys' readings"
+                : $" | NOT ENOUGH for: {string.Join(", ", short_.Select(n => $"{n.What} (ask {(n.PerMinute > 0 ? Math.Ceiling(n.Count / n.PerMinute) : double.NaN)} minutes)"))}"));
+    }
+
+    // Every way the window could count a catch of this animal by the readings still open: both readings of the surveys of a
+    // hunt, and every reading of an escape's steps (EscapeSteps), each with its name.
+    static List<(string Name, int Escape, AnimalRates.Catch Catch)> DevReadings(AnimalRates a)
+    {
+        var all = new List<(string, int, AnimalRates.Catch)>();
+        if (a.TrapFailBonuses) return all;
+        foreach (SurveysPerHunt surveys in Enum.GetValues<SurveysPerHunt>())
+            foreach (var group in Enum.GetValues<EscapeSteps>().GroupBy(reading => AnimalRates.EscapeStepsBy(reading, a)))
+                if (AnimalRates.Chain(a, surveys, group.Key) is { } k)
+                    all.Add(($"{surveys}, an escape {group.Key} by {string.Join("/", group)}", group.Key, k));
+        return all;
+    }
+
+    static string DevWhyNot(AnimalRates a) => a.TrapFailBonuses ? "its trap has bonuses after a failed try"
+        : a.SurveysMost == null ? "the page's surveying range is not read" : !a.HasTime ? "the game gives no time" : "no catch would come";
+
+    // The spread of a hunt's time (its standard deviation, in seconds) by the window's numbers, for an escape of this many
+    // steps: the surveys (by the chance up to the page's most), the steps needed (every number in the range as likely),
+    // the fails before a catch (each try catching at the trapping chance), the escapes among them (not tried again at the
+    // reattempt chance), and every step and try anywhere in its range; the steps and the tries move together with the
+    // fails. NaN when the window cannot count the animal.
+    static double DevHuntSpread(AnimalRates a, double escape)
+    {
+        if (a.SurveysMost is not { } most || a.TrapChance <= 1e-9) return double.NaN;
+        double q = a.TrapChance, r = a.ReattemptChance;
+        double fails = (1 - q) / q, failsVar = (1 - q) / (q * q);
+        double escapesVar = fails * r * (1 - r) + (1 - r) * (1 - r) * failsVar;
+        int values = a.StepsMax - a.StepsMin + 1;
+        double steps = a.StepsMiddle + escape * fails * (1 - r), stepsVar = (values * values - 1) / 12.0 + escape * escape * escapesVar;
+        double step = a.StepSeconds, stepVar = Math.Pow(a.StepMaxSeconds - a.StepMinSeconds, 2) / 12;
+        double trap = a.TrapSeconds, trapVar = Math.Pow(a.TrapMaxSeconds - a.TrapMinSeconds, 2) / 12;
+        double survey = DevSurveySpread(a.TrackChance, most) * a.SurveySeconds;
+        double variance = survey * survey + steps * stepVar + step * step * stepsVar + (fails + 1) * trapVar + trap * trap * failsVar +
+            2 * step * trap * escape * (1 - r) * failsVar;
+        return Math.Sqrt(Math.Max(0, variance));
+    }
+
+    // The spread of a hunt's surveys when each finds the tracks at a chance and the last of the page's range always does.
+    static double DevSurveySpread(double chance, double most)
+    {
+        int last = Math.Max(1, (int)Math.Round(most));
+        double mean = 0, square = 0, reach = 1;
+        for (int k = 1; k <= last; k++)
+        {
+            double p = k == last ? reach : reach * chance;
+            mean += k * p;
+            square += k * k * p;
+            reach *= 1 - chance;
+        }
+        return Math.Sqrt(Math.Max(0, square - mean * mean));
     }
 
     static int? DevSurveyFails(ActiveHuntingAnimal animal)
@@ -161,7 +320,34 @@ public partial class HuntingRatesMod
         catch (Exception) { return null; }
     }
 
-    // The bank and every item an animal can give or use (its products, survey finds, rare extras, its trap and its bait),
+    // The game's tick now (TrackerComponent.CurrentTick), or null when it cannot be read.
+    long? DevTick()
+    {
+        try { return _hunting!.Tracker.CurrentTick; }
+        catch (Exception) { return null; }
+    }
+
+    // How long one tick of the game is, in milliseconds: a tracker period's milliseconds over its ticks, and the action
+    // timer's interval over its ticks beside it.
+    double DevTickMs(out string words)
+    {
+        double byTracker = double.NaN, byTimer = double.NaN;
+        try
+        {
+            if (_hunting!.Tracker.Periods.FirstOrDefault(p => p.CycleTicks > 0) is { } period) byTracker = period.CycleDuration / period.CycleTicks;
+        }
+        catch (Exception) { }
+        try
+        {
+            var timer = _hunting!.Action.ActionTimer;
+            if (timer.WaitTicks > 0) byTimer = timer.WaitTime / timer.WaitTicks;
+        }
+        catch (Exception) { }
+        words = $"one tick {R(byTracker)} ms by the tracker, {R(byTimer)} ms by the action timer, the tick now {DevTick()?.ToString() ?? "NOT READ"}";
+        return double.IsFinite(byTracker) ? byTracker : byTimer;
+    }
+
+    // The bank and every item an animal can give or use (its products, survey finds, rare extras, its traps and its bait),
     // with its count now (Woodcutting Rates' DevBankStart).
     void DevBankStart(DevHuntWatch w)
     {
@@ -202,9 +388,9 @@ public partial class HuntingRatesMod
     static string DevAnimalStats(ActiveHuntingAnimal a)
     {
         HuntingActionStats s = a.Stats;
-        return $"survey {R(s.SurveyInterval.Value)} ms, steps {s.TrackingSteps.Value}, step {s.TrackingInterval.Value} ms at {R(s.TrackingSuccessChance.Value)}, " +
-            $"skip {R(s.SkipTrackingStepChance?.Total.Value ?? 0)}, trap {s.TrappingInterval.Value} ms at {R(s.TrappingSuccessChance.Value)}, reattempt " +
-            $"{R(s.TrappingReattemptChance?.Total.Value ?? 0)}, rare {R(s.RareSpeciesChance.Value)}, XP {R(s.Experience.XpToAdd.Value)}, doubling " +
+        return $"survey {R(s.SurveyInterval.Value)} ms, steps {s.TrackingSteps.Value} (base fewest {a.Animal.BaseMinTrackingSteps}), step {s.TrackingInterval.Value} ms, " +
+            $"tracking chance {R(s.TrackingSuccessChance.Value)}, skip {R(s.SkipTrackingStepChance?.Total.Value ?? 0)}, trap {s.TrappingInterval.Value} ms at {R(s.TrappingSuccessChance.Value)}, " +
+            $"reattempt {R(s.TrappingReattemptChance?.Total.Value ?? 0)}, rare {R(s.RareSpeciesChance.Value)}, XP {R(s.Experience.XpToAdd.Value)}, doubling " +
             $"{R(s.DoublingChance?.Total.Value ?? 0)}, preservation {R(s.PreservationChance?.Total.Value ?? 0)}, trap {a.SelectedTrap?.Id ?? "none"}, bait {a.UseBait}, trapless {a.TraplessEnabled}";
     }
 
@@ -231,26 +417,18 @@ public partial class HuntingRatesMod
                 DevMoment m = DevMomentNow(w, a);
                 m.State = (m.State?.From ?? e.OldValue, e.NewValue);
                 m.Order.Add("state");
-                DevStateChanged(w, a, e.OldValue, e.NewValue);
             });
             EventHandler<ValueChangedEventArgs<int>> step = (_, e) => Safe(() =>
             {
                 DevMoment m = DevMomentNow(w, a);
                 m.Steps.Add((e.OldValue, e.NewValue));
                 m.Order.Add("step");
-                if (w.Now is { } h && ReferenceEquals(h.Animal, a))
-                {
-                    if (e.NewValue > e.OldValue) h.StepUps += e.NewValue - e.OldValue;
-                    else if (e.NewValue < e.OldValue) h.StepBacks++;
-                    h.MostStep = Math.Max(h.MostStep, e.NewValue);
-                }
             });
             EventHandler<ValueChangedEventArgs<int>> required = (_, e) => Safe(() =>
             {
                 DevMoment m = DevMomentNow(w, a);
-                m.RequiredSteps = e.NewValue;
+                m.Required = e.NewValue;
                 m.Order.Add("required");
-                if (w.Now is { } h && ReferenceEquals(h.Animal, a) && e.NewValue > 0) h.Required = e.NewValue;
             });
             EventHandler<ValueChangedEventArgs<int>> tracks = (_, e) => Safe(() =>
             {
@@ -261,9 +439,8 @@ public partial class HuntingRatesMod
             EventHandler<ValueChangedEventArgs<int>> fails = (_, e) => Safe(() =>
             {
                 DevMoment m = DevMomentNow(w, a);
-                m.TrapFails = e.NewValue;
+                m.TrapFails = (m.TrapFails?.From ?? e.OldValue, e.NewValue);
                 m.Order.Add("trap fails");
-                if (w.Now is { } h && ReferenceEquals(h.Animal, a) && e.NewValue > e.OldValue) h.TrapFails += e.NewValue - e.OldValue;
                 // The trapping chance after a failed try, and what the failed try has put on the animal: the trap's fail
                 // bonuses may change the chance from one try to the next (code review 1, fault 7).
                 if (e.NewValue > e.OldValue) DevLog($"hunt | {a.Animal.LocalId} after a failed try: {DevTrapNow(a)}");
@@ -273,14 +450,12 @@ public partial class HuntingRatesMod
                 DevMoment m = DevMomentNow(w, a);
                 m.Trapped = true;
                 m.Order.Add("TRAPPED");
-                if (w.Now is { } h && ReferenceEquals(h.Animal, a)) h.Caught = true;
             });
             EventHandler<HuntingAnimalEventArgs> escaped = (_, _) => Safe(() =>
             {
                 DevMoment m = DevMomentNow(w, a);
                 m.Escaped = true;
                 m.Order.Add("ESCAPED");
-                if (w.Now is { } h && ReferenceEquals(h.Animal, a)) { h.Escaped = true; h.EscapedIn = a.State; }
             });
             a.StateChanged += state;
             a.CurrentStepChanged += step;
@@ -315,8 +490,7 @@ public partial class HuntingRatesMod
         EventHandler<ValueChangedEventArgs<double>> xp = (_, e) => Safe(() =>
         {
             DevMoment m = DevMomentNow(w, action.CurrentAnimal);
-            double gained = e.NewValue - e.OldValue;
-            m.Xp += gained;
+            m.Xp += e.NewValue - e.OldValue;
             m.XpChanges++;
             m.Order.Add("xp");
         });
@@ -332,6 +506,7 @@ public partial class HuntingRatesMod
             DevMoment m = DevMomentNow(w, e.NewValue);
             m.Other.Add($"the animal hunted {e.NewValue?.Animal.Id ?? "none"}");
             m.Order.Add("animal");
+            w.AnimalChanged = true;
         });
         EventHandler<ValueChangedEventArgs<Item>> trap = (_, e) => Safe(() =>
         {
@@ -352,34 +527,34 @@ public partial class HuntingRatesMod
         });
     }
 
-    // A hunt's state changed: the time of the state before goes to the hunt; a new survey after a catch or an escape (or
-    // from the state the hunt was in when it stopped) starts the next hunt, which is whole.
-    void DevStateChanged(DevHuntWatch w, ActiveHuntingAnimal a, HuntState from, HuntState to)
-    {
-        ulong now = Time.GetTicksMsec();
-        if (w.Now is { } h && ReferenceEquals(h.Animal, a))
-        {
-            h.Seconds[from] = h.Seconds.GetValueOrDefault(from) + (now - w.StateSince) / 1000.0;
-            if ((h.Caught || h.Escaped) && h.After == null) h.After = to;
-            if (to == HuntState.Surveying && from != HuntState.Surveying)
-            {
-                w.Hunts.Add(h);
-                w.Now = new DevHuntSeen { Animal = a, Start = now, Whole = true, SurveyFailsStart = DevSurveyFails(a) };
-                DevLog($"hunt | {a.Animal.LocalId} a new hunt: {DevTrapNow(a)}; the game's count of failed surveys {DevSurveyFails(a)?.ToString() ?? "not read"}");
-            }
-        }
-        else if (to == HuntState.Surveying) w.Now = new DevHuntSeen { Animal = a, Start = now, Whole = true };
-        w.StateSince = now;
-        w.StateNow = to;
-    }
-
     DevMoment DevMomentNow(DevHuntWatch w, ActiveHuntingAnimal? animal)
     {
         long frame = (long)Engine.GetProcessFrames();
         if (w.Open is { } open && open.Frame == frame) { open.Animal ??= animal; return open; }
         DevFlushMoment(w);
         w.LastEvent = Time.GetTicksMsec();
-        return w.Open = new DevMoment { Frame = frame, At = Time.GetTicksMsec(), Animal = animal };
+        return w.Open = new DevMoment { Frame = frame, At = Time.GetTicksMsec(), Tick = DevTick(), Animal = animal };
+    }
+
+    // What runs from this frame on, for the link that ends at the next event: the interval of the game's action timer, the
+    // page's ranges and chances, the steps needed.
+    void DevRemember(DevHuntWatch w, ActiveHuntingAnimal a, DevMoment? m)
+    {
+        HuntingActionStats s = a.Stats;
+        w.LastAt = m?.At ?? Time.GetTicksMsec();
+        w.LastTick = m?.Tick ?? DevTick();
+        w.LastEventFrame = m?.Frame ?? (long)Engine.GetProcessFrames();
+        w.HaveLast = true;
+        // The next link's interval is read in the frames after this one (DevWatchFrame).
+        w.LastSet = double.NaN;
+        var (stepMin, stepMax) = s.TrackingInterval.Value;
+        var (trapMin, trapMax) = s.TrappingInterval.Value;
+        w.LastStep = (stepMin / 1000, stepMax / 1000);
+        w.LastTrap = (trapMin / 1000, trapMax / 1000);
+        w.LastChance = s.TrappingSuccessChance.Value;
+        w.LastReattempt = s.TrappingReattemptChance?.Total.Value ?? 0;
+        w.LastPreservation = s.PreservationChance?.Total.Value ?? 0;
+        w.LastRequired = a.RequiredSteps;
     }
 
     void DevFlushMoment(DevHuntWatch w)
@@ -387,40 +562,159 @@ public partial class HuntingRatesMod
         if (w.Open is not { } m) return;
         w.Open = null;
         DevBankRead(w, m);
-        // The game's count of failed surveys, while the hunt surveys.
-        if (w.Now is { } surveying && w.StateNow == HuntState.Surveying && DevSurveyFails(surveying.Animal) is { } surveyFails)
-            surveying.SurveyFails = Math.Max(surveying.SurveyFails ?? 0, surveyFails);
         if (w.Moments.Count < 20000) w.Moments.Add(m);
-        // What the frame brought goes to its hunt: the one caught or escaped in it, even when the frame's own change of state
-        // has started the next hunt already; the XP by the state the frame began in, a catch's apart.
-        DevHuntSeen? h = (m.Trapped || m.Escaped) && w.Now is not { Caught: true } && w.Now is not { Escaped: true } ? w.Hunts.LastOrDefault() ?? w.Now : w.Now;
-        if (h != null)
-        {
-            foreach (var (item, quantity) in m.Items)
-            {
-                h.Items[item] = h.Items.GetValueOrDefault(item) + quantity;
-                if (m.Trapped) h.CatchItems[item] = h.CatchItems.GetValueOrDefault(item) + quantity;
-            }
-            h.JournalXp += m.JournalXp;
-            if (m.Trapped) h.CatchXp += m.Xp;
-            else if (m.XpChanges > 0)
-                switch (m.State?.From ?? w.StateNow)
-                {
-                    case HuntState.Surveying: h.SurveyXp += m.Xp; h.SurveyXps += m.XpChanges; break;
-                    case HuntState.Tracking: h.TrackXp += m.Xp; h.TrackXps += m.XpChanges; break;
-                    default: h.TrapXp += m.Xp; h.TrapXps += m.XpChanges; break;
-                }
-        }
-        double since = (m.At - w.LastLine) / 1000.0;
-        w.LastLine = m.At;
         ActiveHuntingAnimal? a = m.Animal;
-        DevLog($"hunt | +{since:0.###} s | {a?.Animal.LocalId ?? "?"}" + (m.State is { } s ? $" | state {s.From} -> {s.To}" : "") +
-            (m.Steps.Count > 0 ? $" | step {string.Join(", ", m.Steps.Select(x => $"{x.From} -> {x.To}"))}" : "") + (m.RequiredSteps is { } r ? $" | steps needed {r}" : "") +
-            (m.Tracks is { } t ? $" | tracks {t}" : "") + (m.TrapFails is { } f ? $" | trap fails {f}" : "") + (m.Trapped ? " | CAUGHT" : "") + (m.Escaped ? " | ESCAPED" : "") +
+        double real = (m.At - w.LastLine) / 1000.0;
+        w.LastLine = m.At;
+        // The link that ends in this frame: from the last frame with an event, on the real clock and on the game's.
+        double linkReal = w.HaveLast ? (m.At - w.LastAt) / 1000.0 : double.NaN;
+        double linkGame = w.HaveLast && m.Tick is { } tick && w.LastTick is { } lastTick && double.IsFinite(w.TickMs) ? (tick - lastTick) * w.TickMs / 1000 : double.NaN;
+        // The interval the game's action timer ran for the link that ends here, read in the frames between (DevWatchFrame).
+        double set = w.LastSet;
+        string said = "";
+        if (a != null)
+        {
+            DevSeen seen = w.Seen.TryGetValue(a, out DevSeen? known) ? known : w.Seen[a] = new DevSeen { Animal = a };
+            said = DevJudgeMoment(w, seen, m, linkReal, linkGame);
+            DevRemember(w, a, m);
+        }
+        DevLog($"hunt | +{real:0.###} s{(double.IsFinite(linkGame) ? $" (the game's {linkGame:0.###} s)" : "")} | {a?.Animal.LocalId ?? "?"}" +
+            (m.State is { } s ? $" | state {s.From} -> {s.To}" : "") +
+            (m.Steps.Count > 0 ? $" | step {string.Join(", ", m.Steps.Select(x => $"{x.From} -> {x.To}"))}" : "") + (m.Required is { } r ? $" | steps needed {r}" : "") +
+            (m.Tracks is { } t ? $" | tracks {t}" : "") + (m.TrapFails is { } f ? $" | trap fails {f.To}" : "") + (m.Trapped ? " | CAUGHT" : "") + (m.Escaped ? " | ESCAPED" : "") +
             $" | events [{string.Join(" ", m.Order)}]" + (m.XpChanges > 0 ? $" | XP +{R(m.Xp)} in {m.XpChanges}" : "") + (m.JournalXpChanges > 0 ? $" | journal XP +{R(m.JournalXp)}" : "") +
             (m.Items.Count > 0 ? $" | the bank's counts [{string.Join(", ", m.Items.Select(i => $"{i.Item.Id} {i.Quantity:+0;-0}, now {w.Counts.GetValueOrDefault(i.Item)}"))}]" : "") +
             (m.Added.Count > 0 ? $" | ItemAdded [{string.Join(", ", m.Added.Select(i => $"{i.Item.Id} x{i.Quantity}"))}]" : "") +
-            (m.Other.Count > 0 ? " | " + string.Join(", ", m.Other) : "") + (a != null ? $" | survey fails {DevSurveyFails(a)?.ToString() ?? "-"}" : ""));
+            (m.Other.Count > 0 ? " | " + string.Join(", ", m.Other) : "") + (a != null ? $" | survey fails {DevSurveyFails(a)?.ToString() ?? "-"}" : "") +
+            (double.IsFinite(set) ? $" | the action timer ran {set:0.###} s for it" : "") + said);
+    }
+
+    // What one frame of the hunted animal was, by its events, and what it adds to what was seen: a step, a try of the trap
+    // (caught, escaped, or tried again), an escape, the end of surveying, a catch. Returns what the line adds.
+    string DevJudgeMoment(DevHuntWatch w, DevSeen seen, DevMoment m, double linkReal, double linkGame)
+    {
+        ActiveHuntingAnimal a = seen.Animal;
+        var words = new List<string>();
+        DevHuntSeen hunt = seen.Now;
+        int trapDelta = a.SelectedTrap is { } trapItem ? m.Items.Where(i => ReferenceEquals(i.Item, trapItem)).Sum(i => i.Quantity) : 0;
+        int baitDelta = a.Animal.PreferredBait is { } baitItem ? m.Items.Where(i => ReferenceEquals(i.Item, baitItem)).Sum(i => i.Quantity) : 0;
+
+        // Steps: moved on (by one, or more: a skipped step), back (not the reset to 0 of a catch).
+        int by = 0;
+        foreach (var (from, to) in m.Steps)
+        {
+            if (to > from) by += to - from;
+            else if (m.Trapped && to == 0) seen.Resets++;
+            else if (to < from) { seen.StepsBack++; words.Add($"A STEP WENT BACK {from} -> {to}"); }
+        }
+        if (by > 0)
+        {
+            seen.Steps.Add((new DevLink(linkReal, linkGame, w.LastSet, w.LastStep.Min, w.LastStep.Max), by));
+            hunt.Steps += by;
+            hunt.Middles += by * (w.LastStep.Min + w.LastStep.Max) / 2;
+            hunt.LinkVariance += by * Math.Pow(w.LastStep.Max - w.LastStep.Min, 2) / 12;
+            if (by > 1) words.Add($"MOVED ON {by} STEPS");
+            if (m.JournalXpChanges > 0) seen.JournalStep.Add(m.JournalXp / by);
+        }
+
+        // The end of surveying: the surveys of the hunt by the game's own count of failed surveys, and the steps it needs.
+        if (m.State is { From: HuntState.Surveying, To: not HuntState.Surveying })
+        {
+            if (DevSurveyFails(a) is { } failed) hunt.Surveys = failed + 1;
+            hunt.SurveyEach = a.Stats.SurveyInterval.Value / 1000;
+            hunt.SurveyReal = hunt.Whole ? (m.At - hunt.StartAt) / 1000.0 : double.NaN;
+            hunt.SurveyGame = hunt.Whole && m.Tick is { } tick && hunt.StartTick is { } start && double.IsFinite(w.TickMs) ? (tick - start) * w.TickMs / 1000 : double.NaN;
+            var (fewest, most) = a.Stats.TrackingSteps.Value;
+            (hunt.Required, hunt.RequiredMin, hunt.RequiredMax) = (a.RequiredSteps, fewest, most);
+            words.Add($"surveys {hunt.Surveys?.ToString() ?? "NOT READ"}, steps needed {a.RequiredSteps} of {fewest}..{most}");
+        }
+
+        // A try of the trap: caught, escaped, or failed and tried again (a fail with no escape and no change of state).
+        string? outcome = m.Trapped ? "caught" : m.Escaped ? "escaped" : m.TrapFails is { } tf && tf.To > tf.From && m.State == null ? "TRIED AGAIN" : null;
+        if (outcome != null)
+        {
+            var link = new DevLink(linkReal, linkGame, w.LastSet, w.LastTrap.Min, w.LastTrap.Max);
+            seen.Tries.Add(new DevTry(outcome, link, w.LastChance, w.LastReattempt, w.LastPreservation, trapDelta, baitDelta, a.UseBait));
+            hunt.Tries++;
+            hunt.Middles += (w.LastTrap.Min + w.LastTrap.Max) / 2;
+            hunt.LinkVariance += Math.Pow(w.LastTrap.Max - w.LastTrap.Min, 2) / 12;
+            words.Add($"a try {outcome}, the trap {trapDelta:+0;-0}, the bait {baitDelta:+0;-0}");
+        }
+        else
+        {
+            seen.TrapElsewhere += trapDelta;
+            seen.BaitElsewhere += baitDelta;
+            if (trapDelta != 0 || baitDelta != 0) words.Add($"TRAP OR BAIT USED OUTSIDE A TRY ({trapDelta:+0;-0}, {baitDelta:+0;-0})");
+        }
+
+        // An escape: where it went and how many steps it added, against every reading of EscapeSteps.
+        if (m.Escaped)
+        {
+            int now = m.Required ?? a.RequiredSteps;
+            var (fewest, most) = a.Stats.TrackingSteps.Value;
+            var readings = Enum.GetValues<EscapeSteps>().ToDictionary(r => r, r => r switch
+            {
+                EscapeSteps.Fewest => fewest,
+                EscapeSteps.Width => most - fewest,
+                EscapeSteps.BaseFewest => a.Animal.BaseMinTrackingSteps,
+                _ => 4,
+            });
+            seen.Escapes.Add(new DevEscape(w.LastRequired, now, m.State?.To, readings));
+            hunt.Escapes++;
+            words.Add($"an escape to {m.State?.To.ToString() ?? "NO CHANGE OF STATE"}, steps needed {w.LastRequired} -> {now} (+{now - w.LastRequired}; the readings " +
+                $"{string.Join(", ", readings.Select(r => $"{r.Key} {r.Value}"))})");
+        }
+
+        // A catch: its XP against the page's range, its journal XP, its output against its share of the XP; the hunt ends,
+        // and the next one starts here.
+        if (m.Trapped)
+        {
+            AnimalRates ours = ReadAnimal(a);
+            double each = a.Stats.Experience.XpToAdd.Value;
+            var (low, high) = ours.XpRange ?? (double.NaN, double.NaN);
+            seen.CatchXp.Add((m.Xp, each, low, high));
+            if (m.JournalXpChanges > 0) seen.JournalCatch.Add(m.JournalXp);
+            var output = new Dictionary<Item, int>(ReferenceEqualityComparer.Instance);
+            foreach (var (item, quantity) in m.Items)
+                if (quantity > 0) output[item] = output.GetValueOrDefault(item) + quantity;
+            seen.Catches.Add((output, each > 0 ? m.Xp / each : double.NaN));
+            if (hunt.Whole)
+            {
+                hunt.Real = (m.At - hunt.StartAt) / 1000.0;
+                hunt.Game = m.Tick is { } tick && hunt.StartTick is { } start && double.IsFinite(w.TickMs) ? (tick - start) * w.TickMs / 1000 : double.NaN;
+                seen.Hunts.Add(hunt);
+                words.Add($"a whole hunt of {R(Math.Round(hunt.Real, 3))} s ({R(Math.Round(hunt.Game, 3))} s on the game's clock): {hunt.Surveys?.ToString() ?? "-"} surveys, " +
+                    $"{hunt.Steps} steps, {hunt.Tries} tries, {hunt.Escapes} escapes");
+            }
+            seen.Now = new DevHuntSeen { Whole = true, StartAt = m.At, StartTick = m.Tick };
+        }
+        else
+        {
+            if (m.XpChanges > 0) { seen.XpElsewhere++; seen.XpElsewhereSum += m.Xp; words.Add("XP OUTSIDE A CATCH"); }
+            if (m.JournalXpChanges > 0 && by == 0) { seen.JournalElsewhere++; words.Add("JOURNAL XP OUTSIDE A STEP OR A CATCH"); }
+            foreach (var (item, quantity) in m.Items)
+                if (quantity > 0) seen.OutputElsewhere[item] = seen.OutputElsewhere.GetValueOrDefault(item) + quantity;
+        }
+        return words.Count == 0 ? "" : " | " + string.Join("; ", words);
+    }
+
+    // On every process frame while the watch listens: the frame with an event is closed as soon as it is past (its bank
+    // counts read right after it), and the interval the game's action timer runs is read in the frames between two events,
+    // where it can only be the one of the link in progress: at an event the game may have set the next one already, or
+    // not yet, and nothing tells which.
+    void DevWatchFrame(long frame)
+    {
+        if (_devHunts is not { } w) return;
+        try
+        {
+            if (w.Open != null && w.Open.Frame != frame) DevFlushMoment(w);
+            if (w.Open == null && frame > w.LastEventFrame) w.LastSet = w.Action.ActionTimer.WaitTime / 1000;
+        }
+        catch (Exception e)
+        {
+            w.Failed = true;
+            DevLog("watch | reading a frame failed, the watch ends: " + e.Message);
+        }
     }
 
     void DevWatchTick()
@@ -429,9 +723,6 @@ public partial class HuntingRatesMod
         if (w.Open != null && w.Open.Frame != (long)Engine.GetProcessFrames()) DevFlushMoment(w);
         ulong now = Time.GetTicksMsec();
         if (w.Open == null && now - w.LastRead >= BankReadEvery) DevBankRead(w, null);
-        // The game's count of failed surveys on every tick too: a failed survey may raise no event (code review 2).
-        if (w.Now is { } surveying && w.StateNow == HuntState.Surveying && DevSurveyFails(surveying.Animal) is { } surveyFails)
-            surveying.SurveyFails = Math.Max(surveying.SurveyFails ?? 0, surveyFails);
         if (w.Failed) DevWatchEnd("a listener failed");
         else if (now - w.Since >= w.Length) DevWatchEnd($"the {w.Length / 60000} minutes are up");
         else if (now - w.LastEvent >= WatchIdle) DevWatchEnd($"two minutes without an event of a hunt (hunting {(w.Action.IsStarted ? "started" : "stopped")})");
@@ -459,24 +750,21 @@ public partial class HuntingRatesMod
         var verdicts = new List<string>();
         try
         {
-            var whole = w.Hunts.Where(h => h.Whole).ToList();
-            DevLog($"watch | ended after {seconds:0} s: {why}; {w.Moments.Count} frames with an event, {w.Hunts.Count + (w.Now != null ? 1 : 0)} hunts seen, {whole.Count} whole " +
-                $"(from a survey's start to the next), {whole.Count(h => h.Caught)} caught and {whole.Count(h => h.Escaped)} escaped among them");
+            DevLog($"watch | ended after {seconds:0} s: {why}; {w.Moments.Count} frames with an event; animals hunted [{string.Join(", ", w.Seen.Keys.Select(k => k.Animal.LocalId))}]" +
+                (w.AnimalChanged ? "; the animal hunted CHANGED during the watch" : "; one animal throughout"));
             DevItemsSummary(w);
             if (!summarise || _hunting == null) verdicts.Add("NO SUMMARY");
             else
             {
                 ReadPage();
-                foreach (var group in whole.GroupBy(h => h.Animal, ReferenceEqualityComparer.Instance).OrderByDescending(g => g.Count()))
+                foreach (DevSeen seen in w.Seen.Values.OrderByDescending(s => s.Tries.Count))
                 {
-                    var animal = (ActiveHuntingAnimal)group.Key!;
-                    AnimalRates ours = ReadAnimal(animal);
-                    var said = DevHuntSummary(group.ToList(), ours, w.Start.GetValueOrDefault(animal, "not read"));
-                    verdicts.Add($"{animal.Animal.LocalId}: {string.Join(", ", said)}");
+                    AnimalRates ours = ReadAnimal(seen.Animal);
+                    var said = DevHuntSummary(seen, ours, w.Start.GetValueOrDefault(seen.Animal, "not read"));
+                    verdicts.Add($"{seen.Animal.Animal.LocalId}: {string.Join(" / ", said)}");
                 }
+                DevTracker("at the end", w, seconds);
             }
-            // Another character or a stopped mod: _hunting may already be the next character's, whose tracker is not this one.
-            if (summarise) DevTracker("at the end", w);
         }
         catch (Exception e) { verdicts.Add($"the summary failed: {e.GetType().Name}: {e.Message}"); }
         string result = $"watched {seconds:0} s ({why}); {string.Join(" | ", verdicts)}; stopped listening, nothing changed";
@@ -484,156 +772,222 @@ public partial class HuntingRatesMod
         File.WriteAllText(Path.Combine(_ctx.Directory, WatchDoneFile), result);
     }
 
-    // Every question about one animal's whole hunts, each with its verdict in capitals; NOT DECIDED below MostCatches.
-    List<string> DevHuntSummary(List<DevHuntSeen> hunts, AnimalRates ours, string start)
+    // A mean and twice its standard error (from its own spread); NaN for the tolerance with fewer than two values.
+    static (double Mean, double Tolerance, double Sd) DevMean(IEnumerable<double> values)
+    {
+        var list = values.Where(double.IsFinite).ToList();
+        if (list.Count == 0) return (double.NaN, double.NaN, double.NaN);
+        double mean = list.Average();
+        if (list.Count < 2) return (mean, double.NaN, double.NaN);
+        double sd = Math.Sqrt(list.Sum(v => (v - mean) * (v - mean)) / (list.Count - 1));
+        return (mean, 2 * sd / Math.Sqrt(list.Count), sd);
+    }
+
+    // A count of events at a chance against what was seen: twice the standard error of the count, at least one.
+    static (double Expected, double Tolerance) DevCount(IEnumerable<double> chances)
+    {
+        var list = chances.ToList();
+        double expected = list.Sum(), variance = list.Sum(p => p * (1 - p));
+        return (expected, Math.Max(1, 2 * Math.Sqrt(variance)));
+    }
+
+    // Every question about one animal, each with its verdict in capitals.
+    List<string> DevHuntSummary(DevSeen seen, AnimalRates ours, string start)
     {
         var verdicts = new List<string>();
         string id = ours.Animal.LocalId;
-        int caught = hunts.Count(h => h.Caught), escaped = hunts.Count(h => h.Escaped);
-        bool enough = caught >= MostCatches;
-        double Mean(IEnumerable<double> values) { var list = values.ToList(); return list.Count == 0 ? double.NaN : list.Average(); }
         void Say(string question, string verdict, string detail)
         {
             DevLog($"watch | {id} | {question} | {verdict} | {detail}");
             verdicts.Add(verdict);
         }
-        DevLog($"watch | {id} | {hunts.Count} whole hunts, {caught} caught, {escaped} escaped; its numbers at the start {start}, now {DevAnimalStats(ours.Active)}");
+        string N(double value, int digits = 3) => R(Math.Round(value, digits));
+        int caught = seen.Tries.Count(t => t.Outcome == "caught");
+        DevLog($"watch | {id} | {seen.Hunts.Count} whole hunts, {seen.Steps.Count} frames with a step, {seen.Tries.Count} tries ({caught} caught), {seen.Escapes.Count} escapes; " +
+            $"its numbers at the start {start}, now {DevAnimalStats(ours.Active)}");
 
-        // Surveying: the surveys a hunt took by the game's own count of failed surveys, against one survey and against the
-        // location's chance by the name of insights; decided only when one reading alone is within the tolerance. Its time
-        // over one survey's is said beside it.
-        double survey = Mean(hunts.Select(h => h.Seconds.GetValueOrDefault(HuntState.Surveying)));
-        var counted = hunts.Where(h => h.SurveyFails != null)
-            .Select(h => Math.Max(0, h.SurveyFails!.Value - (h.SurveyFailsStart is { } s && s <= h.SurveyFails.Value ? s : 0)) + 1.0).ToList();
-        var starts = hunts.Where(h => h.SurveyFailsStart != null).Select(h => h.SurveyFailsStart!.Value).ToList();
-        string resets = starts.Count == 0 ? "the count at a hunt's start NOT READ"
-            : starts.All(v => v == 0) ? $"the count was 0 at the start of all {starts.Count} hunts: the game resets it with every hunt"
-            : $"the count at the hunts' starts [{string.Join(", ", starts.Take(20))}]: it does not reset with every hunt, so a hunt's surveys are its rise within the hunt";
-        double surveys = Mean(counted);
-        double insights = ours.Insights > 0 ? 1 / ours.Insights : double.NaN;
-        string surveyVerdict = !enough || counted.Count < MostCatches ? "NOT DECIDED"
-            : One(surveys, Tolerance(counted), ("ONE SURVEY FINDS THE TRACKS", 1), ("EVERY SURVEY FINDS THEM AT THE INSIGHTS CHANCE", insights)) ?? "NOT DECIDED";
-        Say("surveys a hunt", surveyVerdict,
-            $"by the game's count of failed surveys, {R(Math.Round(surveys, 3))} surveys a hunt over {counted.Count} hunts (tolerance {R(Math.Round(Tolerance(counted), 3))}; {resets}); " +
-            $"surveying took {R(Math.Round(survey, 3))} s a hunt, {R(Math.Round(survey / ours.SurveySeconds, 3))} surveys of {R(ours.SurveySeconds)} s; one survey would be 1, the insights " +
-            $"chance {R(ours.Insights)} would be {R(Math.Round(insights, 3))}; XP while surveying {R(Mean(hunts.Select(h => h.SurveyXp)))} a hunt in {R(Mean(hunts.Select(h => (double)h.SurveyXps)))} changes " +
-            $"(the location's base {R(ours.SurveyXpBase)} a survey)");
+        // The surveys of a hunt, by the game's own count of failed surveys: never more than the page's most (a link that
+        // holds on every hunt), and their mean against both readings, within twice its standard error.
+        var surveyed = seen.Hunts.Concat([seen.Now]).Where(h => h.Surveys != null).ToList();
+        var counts = surveyed.Select(h => (double)h.Surveys!.Value).ToList();
+        var (surveyMean, surveyTol, _) = DevMean(counts);
+        double middle = ours.SurveysMost is { } most ? (1 + most) / 2 : double.NaN;
+        double chance = ours.SurveysMost is { } most2 ? AnimalRates.SurveysUpToMost(ours.TrackChance, most2) : double.NaN;
+        int over = ours.SurveysMost is { } most3 ? counts.Count(c => c > most3 + 1e-6) : 0;
+        var surveyFits = new List<string>();
+        if (double.IsFinite(surveyTol) && Math.Abs(surveyMean - middle) <= surveyTol) surveyFits.Add("THE MIDDLE OF THE PAGE'S RANGE");
+        if (double.IsFinite(surveyTol) && Math.Abs(surveyMean - chance) <= surveyTol) surveyFits.Add("THE CHANCE UP TO THE PAGE'S MOST");
+        Say("the surveys of a hunt", counts.Count < FewestHunts ? $"NOT DECIDED ({counts.Count} HUNTS SURVEYED)" : ours.SurveysMost == null ? "NOT DECIDED (THE PAGE'S RANGE NOT READ)"
+                : (over > 0 ? $"{over} HUNTS TOOK MORE SURVEYS THAN THE PAGE'S MOST, " : "NO HUNT TOOK MORE THAN THE PAGE'S MOST, ") +
+                  (surveyFits.Count == 2 ? "BOTH READINGS FIT" : surveyFits.Count == 1 ? $"{surveyFits[0]} FITS" : "NO READING FITS"),
+            $"[{string.Join(", ", counts)}], {N(surveyMean)} a hunt (twice its standard error {N(surveyTol)}); the middle of the page's range {N(middle)}, " +
+            $"the tracking chance {R(ours.TrackChance)} up to the page's most {(ours.SurveysMost is { } m4 ? N(m4) : "NOT READ")} {N(chance)}; a survey took " +
+            $"{N(DevMean(surveyed.Where(h => h.Surveys > 0).Select(h => h.SurveyReal / h.Surveys!.Value)).Mean)} s on the real clock, " +
+            $"{N(DevMean(surveyed.Where(h => h.Surveys > 0).Select(h => h.SurveyGame / h.Surveys!.Value)).Mean)} s on the game's, against {R(ours.SurveySeconds)} s");
 
-        // Tracking: the steps a hunt needed against the game's range, steps that went back, and its time against the step's.
-        var tracked = hunts.Where(h => h.Seconds.ContainsKey(HuntState.Tracking)).ToList();
-        double tracking = Mean(tracked.Select(h => h.Seconds[HuntState.Tracking]));
-        double needed = Mean(tracked.Where(h => h.Required != null).Select(h => (double)h.Required!.Value));
-        int backs = tracked.Sum(h => h.StepBacks);
-        int endedInTracking = hunts.Count(h => h.Escaped && h.EscapedIn == HuntState.Tracking) +
-            hunts.Count(h => !h.Caught && !h.Escaped && !h.Seconds.ContainsKey(HuntState.Trapping) && h.Seconds.ContainsKey(HuntState.Tracking));
-        double attempts = tracking / ours.StepSeconds, perStep = needed > 0 ? attempts / needed : double.NaN;
-        double repeats = ours.TrackChance > 0 ? (1 - ours.SkipChance) / ours.TrackChance : double.NaN;
-        Say("a failed tracking step", !enough ? "NOT DECIDED" : endedInTracking > 0 ? "A FAILED STEP ENDS THE HUNT"
-            : double.IsFinite(repeats) && Math.Abs(perStep - repeats) <= 0.2 * repeats ? "A FAILED STEP REPEATS" : "NOT DECIDED",
-            $"{tracked.Count} hunts tracked, {R(Math.Round(tracking, 3))} s each, {R(Math.Round(needed, 3))} steps needed (the game's range {ours.StepsMin}..{ours.StepsMax}, " +
-            $"middle {(ours.StepsMin + ours.StepsMax) / 2.0}); {R(Math.Round(attempts, 3))} intervals of {R(ours.StepSeconds)} s, {R(Math.Round(perStep, 3))} a step, against " +
-            $"{R(Math.Round(repeats, 3))} if a failed step repeats (success {R(ours.TrackChance)}, skip {R(ours.SkipChance)}); a step went back {backs} times; " +
-            $"{endedInTracking} hunts ended in tracking; XP while tracking {R(Mean(hunts.Select(h => h.TrackXp)))} a hunt");
-        int jumps = hunts.Sum(h => h.StepUps) - hunts.Sum(h => h.MostStep);
-        Say("a skipped step", ours.SkipChance <= 0 ? "NOT DECIDED (NO SKIP CHANCE)" : !enough ? "NOT DECIDED" : jumps > 0 ? "A STEP CAN MOVE ON MORE THAN ONE" : "NO STEP MOVED ON MORE THAN ONE",
-            $"skip chance {R(ours.SkipChance)}; the steps moved on {hunts.Sum(h => h.StepUps)} in all, the highest steps reached {hunts.Sum(h => h.MostStep)}");
+        // A tracking step: moved on by one, never back (the resets after a catch apart), none skipped: judged on every step.
+        int steps = seen.Steps.Count, more = seen.Steps.Count(s => s.By > 1);
+        Say("a tracking step", steps < FewestSteps ? $"NOT DECIDED ({steps} STEPS)"
+                : seen.StepsBack > 0 ? $"{seen.StepsBack} STEPS WENT BACK" : more > 0 ? $"{more} OF {steps} MOVED ON MORE THAN ONE STEP" : "EVERY STEP MOVED ON ONE, NONE SKIPPED",
+            $"{steps} frames with a step, {seen.Steps.Sum(s => s.By)} steps moved on, {more} by more than one, {seen.StepsBack} back, {seen.Resets} resets to 0 with a catch (not " +
+            $"counted as back); the skip chance {R(ours.SkipChance)}: {N(steps * ours.SkipChance, 2)} skipped steps expected");
+        DevLinkTimes("the time of a step", steps < FewestSteps, seen.Steps.Select(s => s.Time).Where((_, i) => seen.Steps[i].By == 1).ToList(), Say);
 
-        // Trapping: tries against the trap's time, fails, re-attempts and escapes.
-        var trapping = hunts.Where(h => h.Seconds.ContainsKey(HuntState.Trapping)).ToList();
-        double trapTime = Mean(trapping.Select(h => h.Seconds[HuntState.Trapping]));
-        double fails = Mean(trapping.Select(h => (double)h.TrapFails));
-        int escapedAtTrap = hunts.Count(h => h.Escaped && h.EscapedIn == HuntState.Trapping);
-        int reattempted = trapping.Count(h => h.TrapFails > 0 && h.Caught);
-        // Every failed try is followed by another try or by an escape: the share followed by another try, against the
-        // chance to reattempt, against always and against never; decided only when one reading alone is within twice the
-        // share's standard error (code review 1, fault 8).
-        int allFails = trapping.Sum(h => h.TrapFails);
-        int retried = trapping.Sum(h => Math.Max(0, h.TrapFails - (h.Escaped && h.EscapedIn == HuntState.Trapping ? 1 : 0)));
-        double share = allFails > 0 ? (double)retried / allFails : double.NaN;
-        double shareTolerance = allFails > 0 ? Math.Max(0.03, 2 * Math.Sqrt(Math.Max(share * (1 - share), 0.0025) / allFails)) : double.NaN;
-        string trapVerdict = !enough || allFails < MostCatches ? "NOT DECIDED"
-            : One(share, shareTolerance, ("A FAILED TRY IS TRIED AGAIN AT THE REATTEMPT CHANCE", ours.ReattemptChance), ("A FAILED TRY IS ALWAYS TRIED AGAIN", 1),
-                ("A FAILED TRY ENDS THE HUNT", 0)) ?? "NOT DECIDED";
-        Say("a failed trap", trapVerdict,
-            $"{trapping.Count} hunts trapped, {R(Math.Round(trapTime, 3))} s each ({R(Math.Round(trapTime / ours.TrapSeconds, 3))} tries of {R(ours.TrapSeconds)} s), " +
-            $"{R(Math.Round(fails, 3))} fails each; of {allFails} failed tries {retried} were tried again (share {R(Math.Round(share, 3))}, tolerance {R(Math.Round(shareTolerance, 3))}); " +
-            $"{reattempted} caught after a fail, {escapedAtTrap} escaped at the trap (success {R(ours.TrapChance)}, reattempt {R(ours.ReattemptChance)})");
-        var afterEscape = hunts.Where(h => h.Escaped && h.After != null).Select(h => h.After!.Value).Distinct().ToList();
-        Say("an escape", escaped == 0 ? "NOT DECIDED (NO ESCAPE)" : afterEscape.SequenceEqual(new[] { HuntState.Surveying }) ? "AN ESCAPE STARTS OVER" : "NOT DECIDED",
-            $"{escaped} escapes, in [{string.Join(", ", hunts.Where(h => h.Escaped).Select(h => h.EscapedIn?.ToString() ?? "?").Distinct())}], followed by [{string.Join(", ", afterEscape)}]");
+        // The steps a hunt needs, at its start: within the game's range, and their mean against its middle.
+        var needed = surveyed.Where(h => h.Required != null).ToList();
+        var (neededMean, neededTol, _) = DevMean(needed.Select(h => (double)h.Required!.Value));
+        double neededMiddle = needed.Count == 0 ? double.NaN : needed.Average(h => (h.RequiredMin!.Value + h.RequiredMax!.Value) / 2.0);
+        int outside = needed.Count(h => h.Required < h.RequiredMin || h.Required > h.RequiredMax);
+        Say("the steps a hunt needs", needed.Count < FewestHunts ? $"NOT DECIDED ({needed.Count} HUNTS)"
+                : (outside > 0 ? $"{outside} OUTSIDE THE GAME'S RANGE, " : "ALL IN THE GAME'S RANGE, ") +
+                  (double.IsFinite(neededTol) && Math.Abs(neededMean - neededMiddle) <= neededTol ? "AS ITS MIDDLE" : "NOT AS ITS MIDDLE"),
+            $"[{string.Join(", ", needed.Select(h => h.Required))}], {N(neededMean)} a hunt (twice its standard error {N(neededTol)}) against the middle {N(neededMiddle)}");
 
-        // XP: with a catch only, or in other states too; a catch's XP against the page's range.
-        var catches = hunts.Where(h => h.Caught).ToList();
-        double catchXp = Mean(catches.Select(h => h.CatchXp)), otherXp = Mean(hunts.Select(h => h.SurveyXp + h.TrackXp + h.TrapXp));
-        string range = ours.XpRange is { } xr ? $"{R(ours.XpEach * xr.Low)}..{R(ours.XpEach * xr.High)}, middle {R(ours.XpMiddle)}" : "NOT READ";
-        double low = catches.Count == 0 ? double.NaN : catches.Min(h => h.CatchXp), high = catches.Count == 0 ? double.NaN : catches.Max(h => h.CatchXp);
-        Say("XP", !enough ? "NOT DECIDED" : otherXp <= 1e-9 ? "XP ON A CATCH ONLY" : "XP OUTSIDE A CATCH TOO",
-            $"a catch {R(Math.Round(catchXp, 3))} on average ({R(low)} to {R(high)}), ours {range}; XP outside a catch {R(Math.Round(otherXp, 3))} a hunt");
-        Say("journal XP", !enough ? "NOT DECIDED" : "MEASURED",
-            $"{R(Mean(hunts.Select(h => h.JournalXp)))} a hunt, {R(Mean(catches.Select(h => h.JournalXp)))} a hunt that caught; the game's base {ours.JournalTrackingXp} tracking, " +
-            $"{ours.JournalTrappingXp} trapping");
+        // A try: caught at the trapping chance (a count against its chances), and its time.
+        var tries = seen.Tries;
+        var (caughtExpected, caughtTol) = DevCount(tries.Select(t => t.Chance));
+        Say("a try of the trap", tries.Count < FewestTries ? $"NOT DECIDED ({tries.Count} TRIES)"
+                : Math.Abs(caught - caughtExpected) <= caughtTol ? "CAUGHT AS THE TRAPPING CHANCE" : "NOT AS THE TRAPPING CHANCE",
+            $"{caught} of {tries.Count} caught, {N(caughtExpected, 2)} expected at the trapping chance (twice its standard error {N(caughtTol, 2)})");
+        DevLinkTimes("the time of a try", tries.Count < FewestTries, tries.Select(t => t.Time).ToList(), Say);
 
-        // Traps and bait by the bank's counts: what a catch, an escape and a fail used up.
-        string Used(Item? item, string what)
+        // A failed try: tried again at the reattempt chance, otherwise an escape.
+        var failed = tries.Where(t => t.Outcome != "caught").ToList();
+        int again = failed.Count(t => t.Outcome == "TRIED AGAIN");
+        var (againExpected, againTol) = DevCount(failed.Select(t => t.Reattempt));
+        Say("a failed try", failed.Count < FewestFails ? $"NOT DECIDED ({failed.Count} FAILED TRIES)"
+                : Math.Abs(again - againExpected) <= againTol ? (again == 0 ? "AS THE REATTEMPT CHANCE (NEVER TRYING AGAIN FITS TOO)" : "TRIED AGAIN AS THE REATTEMPT CHANCE")
+                : "NOT AS THE REATTEMPT CHANCE",
+            $"{failed.Count} failed tries: {again} tried again, {failed.Count - again} escaped; {N(againExpected, 2)} tried again expected at the reattempt chance " +
+            $"(twice its standard error {N(againTol, 2)})");
+
+        // An escape: back to tracking, with the steps of one reading of EscapeSteps, judged on every escape.
+        var escapes = seen.Escapes;
+        bool allTracking = escapes.All(e => e.After == HuntState.Tracking);
+        var fitting = Enum.GetValues<EscapeSteps>().Where(r => escapes.All(e => e.Now - e.Was == e.Readings[r])).ToList();
+        bool apart = escapes.Any(e => e.Readings.Values.Distinct().Count() > 1);
+        Say("an escape", escapes.Count < FewestEscapes ? $"NOT DECIDED ({escapes.Count} ESCAPES)"
+                : (allTracking ? "EVERY ESCAPE WENT BACK TO TRACKING, " : "AN ESCAPE WENT ELSEWHERE, ") +
+                  (fitting.Count == 0 ? "NO READING FITS EVERY ESCAPE" : !apart ? "THE READINGS CANNOT BE TOLD APART ON THIS ANIMAL"
+                      : $"READINGS THAT FIT EVERY ESCAPE: {string.Join(", ", fitting.Select(f => f.ToString().ToUpperInvariant()))}"),
+            $"{escapes.Count} escapes, followed by [{string.Join(", ", escapes.Select(e => e.After?.ToString() ?? "no change"))}], steps added [{string.Join(", ", escapes.Select(e => e.Now - e.Was))}]; " +
+            $"the readings here [{string.Join(", ", Enum.GetValues<EscapeSteps>().Select(r => $"{r} {(escapes.Count > 0 ? escapes[^1].Readings[r] : AnimalRates.EscapeStepsBy(r, ours))}"))}]");
+
+        // Traps and bait: one each on every try (a link judged on every try), and what is kept against the preservation chance.
+        string Used(string what, Func<DevTry, int> delta, IEnumerable<DevTry> on, int elsewhere)
         {
-            if (item == null) return $"no {what}";
-            double perCatch = Mean(catches.Select(h => -(double)h.Items.GetValueOrDefault(item)));
-            double perEscape = Mean(hunts.Where(h => h.Escaped).Select(h => -(double)h.Items.GetValueOrDefault(item)));
-            double perFail = trapping.Sum(h => h.TrapFails) is var f && f > 0 ? -trapping.Sum(h => (double)h.Items.GetValueOrDefault(item)) / f : double.NaN;
-            return $"{item.Id} {R(Math.Round(perCatch, 3))} a hunt that caught, {R(Math.Round(perEscape, 3))} a hunt that escaped, {R(Math.Round(perFail, 3))} a fail of the trap";
+            var list = on.ToList();
+            int one = list.Count(t => delta(t) == -1), kept = list.Count(t => delta(t) == 0), other = list.Count - one - kept;
+            var (keptExpected, keptTol) = DevCount(list.Select(t => t.Preservation));
+            string verdict = list.Count < FewestTries ? $"NOT DECIDED ({list.Count} TRIES)"
+                : (other > 0 ? $"{other} TRIES USED ANOTHER NUMBER OF {what.ToUpperInvariant()}" : $"ONE {what.ToUpperInvariant()} A TRY") +
+                  (Math.Abs(kept - keptExpected) <= keptTol ? (kept == 0 ? ", NONE KEPT, AS THE PRESERVATION CHANCE ALLOWS" : ", KEPT AS THE PRESERVATION CHANCE") : ", NOT KEPT AS THE PRESERVATION CHANCE") +
+                  (elsewhere != 0 ? $", {elsewhere} OUTSIDE A TRY" : "");
+            Say(what, verdict, $"{list.Count} tries: {one} used one, {kept} used none, {other} another number; {N(keptExpected, 2)} kept expected at the preservation chance " +
+                $"(twice its standard error {N(keptTol, 2)}); {elsewhere} used outside a try");
+            return verdict;
         }
-        double trapsPerCatch = ours.Trap == null ? double.NaN : Mean(catches.Select(h => -(double)h.Items.GetValueOrDefault(ours.Trap)));
-        Say("traps", ours.Trapless ? "NOT DECIDED (HUNTED WITHOUT A TRAP)" : !enough || ours.Trap == null ? "NOT DECIDED"
-            : Math.Abs(trapsPerCatch) < 0.05 ? "NO TRAP USED UP ON A CATCH" : Math.Abs(trapsPerCatch - 1) <= 0.15 ? "A TRAP ON EVERY CATCH" : "NOT DECIDED",
-            Used(ours.Trap, "trap") + $"; preservation {R(ours.Preservation)}");
-        double baitPerCatch = ours.Bait == null ? double.NaN : Mean(catches.Select(h => -(double)h.Items.GetValueOrDefault(ours.Bait)));
-        double baitPerHunt = ours.Bait == null ? double.NaN : Mean(hunts.Select(h => -(double)h.Items.GetValueOrDefault(ours.Bait)));
-        Say("bait", !ours.UseBait ? "NOT DECIDED (NO BAIT USED)" : !enough ? "NOT DECIDED"
-            : Math.Abs(baitPerHunt - 1) <= 0.15 && escaped > 0 ? "BAIT ONCE A HUNT" : Math.Abs(baitPerCatch - 1) <= 0.15 ? "BAIT ON EVERY CATCH" : "NOT DECIDED",
-            Used(ours.Bait, "bait") + $", {R(Math.Round(baitPerHunt, 3))} a hunt; preservation {R(ours.Preservation)}");
+        if (!ours.Trapless) Used("trap", t => t.Trap, tries, seen.TrapElsewhere);
+        else Say("trap", "NOT DECIDED (HUNTED WITHOUT A TRAP)", "");
+        if (tries.Any(t => t.BaitOn)) Used("bait", t => t.Bait, tries.Where(t => t.BaitOn), seen.BaitElsewhere);
+        else Say("bait", "NOT DECIDED (NO BAIT USED)", "");
 
-        // The items of a catch against ours (products with doubling, rare extras).
-        var expected = new Dictionary<Item, double>(ReferenceEqualityComparer.Instance);
-        foreach (AnimalRates.Drop d in ours.Products.Concat(ours.Rare.SelectMany(s => s.Extras)).Where(d => !d.Collectable))
-            expected[d.Item] = expected.GetValueOrDefault(d.Item) + d.Chance * d.Each;
-        var seen = new Dictionary<Item, double>(ReferenceEqualityComparer.Instance);
-        foreach (var (item, quantity) in catches.SelectMany(h => h.CatchItems).Where(i => i.Value > 0))
-            seen[item] = seen.GetValueOrDefault(item) + (double)quantity / Math.Max(1, catches.Count);
-        bool far = expected.Any(e => Math.Abs(seen.GetValueOrDefault(e.Key) - e.Value) > Math.Max(0.25, 0.25 * e.Value));
-        Say("items of a catch", !enough ? "NOT DECIDED" : far ? "FAR FROM OURS" : "AS OURS",
-            $"seen a catch [{string.Join(", ", seen.Select(s => $"{s.Key.Id} {R(Math.Round(s.Value, 3))}"))}], ours [{string.Join(", ", expected.Select(e => $"{e.Key.Id} {R(Math.Round(e.Value, 3))}"))}]");
+        // XP: with a catch only (judged on every frame), every catch's XP within the page's range, the mean against its middle.
+        var xps = seen.CatchXp;
+        int inRange = xps.Count(x => double.IsFinite(x.Low) && x.Xp >= x.Each * x.Low - 0.5 && x.Xp <= x.Each * x.High + 0.5);
+        var (shareMean, shareTol, _) = DevMean(xps.Select(x => x.Xp / x.Each));
+        double rangeMiddle = ours.XpRange is { } xr ? (xr.Low + xr.High) / 2 : double.NaN;
+        Say("XP", xps.Count < FewestCatches ? $"NOT DECIDED ({xps.Count} CATCHES)"
+                : (seen.XpElsewhere > 0 ? "XP OUTSIDE A CATCH TOO, " : "XP ONLY WITH A CATCH, ") +
+                  (!double.IsFinite(rangeMiddle) ? "THE PAGE'S RANGE NOT READ" : inRange == xps.Count ? "EVERY CATCH IN THE PAGE'S RANGE" : $"{xps.Count - inRange} CATCHES OUTSIDE THE PAGE'S RANGE") +
+                  (double.IsFinite(shareTol) && double.IsFinite(rangeMiddle) ? Math.Abs(shareMean - rangeMiddle) <= shareTol ? ", AS ITS MIDDLE" : ", NOT AS ITS MIDDLE" : ""),
+            $"catches [{string.Join(", ", xps.Select(x => N(x.Xp, 1)))}], a catch's XP over the animal's {N(shareMean)} on average (twice its standard error {N(shareTol)}) against the " +
+            $"middle of the page's multipliers {N(rangeMiddle)}; {seen.XpElsewhere} frames with XP outside a catch, {N(seen.XpElsewhereSum, 1)} XP");
+        Say("journal XP", seen.JournalStep.Count + seen.JournalCatch.Count < FewestCatches ? "NOT DECIDED"
+                : seen.JournalStep.All(j => Math.Abs(j - ours.JournalTrackingXp) < 1e-6) && seen.JournalCatch.All(j => Math.Abs(j - ours.JournalTrappingXp) < 1e-6) && seen.JournalElsewhere == 0
+                    ? "THE GAME'S BASES, A STEP AND A CATCH" : "NOT THE GAME'S BASES",
+            $"a step [{string.Join(", ", seen.JournalStep.Distinct().Select(j => N(j)))}] on {seen.JournalStep.Count} frames, a catch [{string.Join(", ", seen.JournalCatch.Distinct().Select(j => N(j)))}] " +
+            $"on {seen.JournalCatch.Count}, {seen.JournalElsewhere} elsewhere; the game's bases {ours.JournalTrackingXp} and {ours.JournalTrappingXp}");
 
-        // The time of a catch against ours by every reading of the chain.
-        double hunted = hunts.Sum(h => h.Seconds.Values.Sum());
-        double perCatch = caught > 0 ? hunted / caught : double.NaN;
-        var readings = AnimalRates.Readings.Select(rule => (Rule: rule, Time: AnimalRates.Chain(rule, ours)?.Seconds)).Where(x => x.Time != null)
-            .OrderBy(x => Math.Abs(x.Time!.Value - perCatch)).ToList();
-        string nearest = readings.Count == 0 ? "none" : $"{DevReadingName(readings[0].Rule)} {R(Math.Round(readings[0].Time!.Value, 3))} s";
-        Say("time of a catch", !enough ? "NOT DECIDED" : readings.Count > 0 && Math.Abs(readings[0].Time!.Value - perCatch) <= 0.1 * perCatch ? "A READING FITS" : "NO READING FITS",
-            $"measured {R(Math.Round(perCatch, 3))} s a catch over {R(Math.Round(hunted, 1))} s of whole hunts; the nearest reading {nearest}; all: " +
-            string.Join(", ", readings.Select(x => $"{DevReadingName(x.Rule)} {R(Math.Round(x.Time!.Value, 3))}")));
+        // The output of a catch: each product against the game's quantity times the catch's share of the XP, rounded down
+        // (judged on every catch), and its mean against the window's.
+        var products = ours.Products.Where(d => d.Chance >= 0.999).ToList();
+        int follow = seen.Catches.Count(c => products.All(d => c.Items.GetValueOrDefault(d.Item) is var got &&
+            (got == (int)Math.Floor(d.Quantity * c.Share + 1e-9) || got == 2 * (int)Math.Floor(d.Quantity * c.Share + 1e-9))));
+        var output = ours.Products.Select(d => (d.Item, Ours: d.Chance * d.Each, Seen: DevMean(seen.Catches.Select(c => (double)c.Items.GetValueOrDefault(d.Item))))).ToList();
+        bool asOurs = output.All(o => double.IsFinite(o.Seen.Tolerance) && Math.Abs(o.Seen.Mean - o.Ours) <= Math.Max(o.Seen.Tolerance, 0.5));
+        Say("the output of a catch", seen.Catches.Count < FewestCatches ? $"NOT DECIDED ({seen.Catches.Count} CATCHES)"
+                : (products.Count == 0 ? "" : follow == seen.Catches.Count ? "IT FOLLOWS THE CATCH'S SHARE OF THE XP, ROUNDED DOWN, " : $"{seen.Catches.Count - follow} CATCHES DO NOT FOLLOW THE CATCH'S XP, ") +
+                  (asOurs ? "AS OURS" : "NOT AS OURS") + (seen.OutputElsewhere.Count > 0 ? ", ITEMS OUTSIDE A CATCH" : ""),
+            $"{string.Join(", ", output.Select(o => $"{o.Item.Id} {N(o.Seen.Mean)} a catch (twice its standard error {N(o.Seen.Tolerance)}) against ours {N(o.Ours)}"))}; " +
+            $"the products that always come followed the catch's XP on {follow} of {seen.Catches.Count} catches; outside a catch [{string.Join(", ", seen.OutputElsewhere.Select(o => $"{o.Key.Id} +{o.Value}"))}]");
+
+        // The time of a hunt by its own links: each whole hunt against its own surveys, steps and tries at the middles of the
+        // page's ranges. The number of escapes, which makes most of a hunt's spread, is taken out, so this is tight: it says
+        // whether the links add up to the hunt, on the game's clock where it was read.
+        var hunts = seen.Hunts;
+        bool onGame = hunts.Count > 0 && hunts.All(h => double.IsFinite(h.Game));
+        var residuals = hunts.Where(h => h.Surveys != null && double.IsFinite(h.SurveyEach)).Select(h => (onGame ? h.Game : h.Real) - (h.Surveys!.Value * h.SurveyEach + h.Middles)).ToList();
+        var (residual, residualTol, _) = DevMean(residuals);
+        // The spread the page's ranges alone give a hunt of these links (each step and try anywhere in its range).
+        double linkSpread = hunts.Count == 0 ? double.NaN : Math.Sqrt(hunts.Average(h => h.LinkVariance));
+        double residualMost = Math.Max(double.IsFinite(residualTol) ? residualTol : 0, 2 * linkSpread / Math.Sqrt(Math.Max(1, residuals.Count)));
+        Say("the time of a hunt by its links", residuals.Count < FewestHunts ? $"NOT DECIDED ({residuals.Count} WHOLE HUNTS)"
+                : Math.Abs(residual) <= residualMost ? "EVERY HUNT ADDS UP FROM ITS SURVEYS, STEPS AND TRIES"
+                : $"A HUNT TAKES {R(Math.Round(residual, 2))} S {(residual > 0 ? "MORE" : "LESS")} THAN ITS LINKS",
+            $"{residuals.Count} whole hunts on the {(onGame ? "game's" : "real")} clock, each less its surveys at the time of one and the middles of the page's ranges " +
+            $"of its steps and tries, each as it was when the link began: [{string.Join(", ", residuals.Select(x => N(x, 2)))}], {N(residual, 2)} s on average, within {N(residualMost, 2)} s " +
+            $"(twice the larger of its standard error and the one the page's ranges give)");
+
+        // The time of a catch: the whole hunts' mean against the window's by every reading still open, within twice the
+        // standard error of a mean of hunts. A hunt's spread is the larger of the one seen and the one the reading itself
+        // gives (DevHuntSpread): a few hunts with fewer escapes than usual show a spread far too small (check-3-watch: 5
+        // whole hunts with 3 escapes among them, where 6 were to be expected).
+        var (gameMean, _, gameSd) = DevMean(hunts.Select(h => h.Game));
+        var (realMean, _, realSd) = DevMean(hunts.Select(h => h.Real));
+        double measured = onGame ? gameMean : realMean, seenSd = onGame ? gameSd : realSd;
+        var readings = DevReadings(ours);
+        double Tolerance(int escape) => 2 * Math.Max(double.IsFinite(seenSd) ? seenSd : 0, DevHuntSpread(ours, escape)) / Math.Sqrt(Math.Max(1, hunts.Count));
+        var fits = readings.Where(r => Math.Abs(r.Catch.Seconds - measured) <= Tolerance(r.Escape)).ToList();
+        bool windows = fits.Any(r => r.Name.StartsWith(nameof(SurveysPerHunt.Middle)) && ours.EscapeAdds == r.Escape);
+        // By the links seen: the hunt's mean surveys, steps and tries at the times seen for each.
+        double bySeen = DevMean(hunts.Select(h => (double)(h.Surveys ?? 0))).Mean * DevMean(surveyed.Where(h => h.Surveys > 0).Select(h => (onGame ? h.SurveyGame : h.SurveyReal) / h.Surveys!.Value)).Mean
+            + DevMean(hunts.Select(h => (double)h.Steps)).Mean * DevMean(seen.Steps.Where(st => st.By == 1).Select(st => onGame ? st.Time.Game : st.Time.Real)).Mean
+            + DevMean(hunts.Select(h => (double)h.Tries)).Mean * DevMean(tries.Select(t => onGame ? t.Time.Game : t.Time.Real)).Mean;
+        Say("the time of a catch", hunts.Count < FewestHunts ? $"NOT DECIDED ({hunts.Count} WHOLE HUNTS)"
+                : readings.Count == 0 ? $"NOT DECIDED (THE WINDOW CANNOT COUNT IT: {DevWhyNot(ours).ToUpperInvariant()})"
+                : fits.Count == 0 ? "NO READING FITS" : $"A READING FITS{(windows ? " (THE WINDOW'S AMONG THEM)" : "")}: {string.Join("; ", fits.Select(f => f.Name.ToUpperInvariant()))}",
+            $"{hunts.Count} whole hunts, {N(measured, 2)} s a catch on the {(onGame ? "game's" : "real")} clock, {N(realMean, 2)} s on the real one; by the links seen {N(bySeen, 2)} s; " +
+            $"the window's {(ours.SecondsPerCatch is { } sec ? N(sec, 2) + " s" : "-")}; every reading, with the tolerance from the larger spread: " +
+            string.Join(", ", readings.Select(r => $"{r.Name} {N(r.Catch.Seconds, 2)} (within {N(Tolerance(r.Escape), 2)})")) +
+            $"; a hunt's spread seen {N(seenSd, 2)} s, by the window's numbers {N(readings.Count > 0 ? DevHuntSpread(ours, readings[0].Escape) : double.NaN, 2)} s");
         return verdicts;
     }
 
-    // The one reading within the tolerance of what was measured, or null when none is, or when two readings lie closer to
-    // each other than the tolerance and so cannot be told apart.
-    static string? One(double measured, double tolerance, params (string Verdict, double Value)[] readings)
+    // The time of a link (a step, a try) against the page's range and its middle, on the real clock and the game's: every
+    // interval the game's action timer ran within the page's range (a link judged on every event), the mean on the game's
+    // clock against the middle within twice its standard error, and the real clock against the game's.
+    static void DevLinkTimes(string what, bool few, List<DevLink> links, Action<string, string, string> say)
     {
-        if (!double.IsFinite(measured) || !double.IsFinite(tolerance)) return null;
-        var valid = readings.Where(r => double.IsFinite(r.Value)).ToList();
-        for (int i = 0; i < valid.Count; i++)
-            for (int j = i + 1; j < valid.Count; j++)
-                if (Math.Abs(valid[i].Value - valid[j].Value) <= tolerance) return null;
-        var near = valid.Where(r => Math.Abs(r.Value - measured) <= tolerance).ToList();
-        return near.Count == 1 ? near[0].Verdict : null;
-    }
-
-    // Twice the standard error of a mean, at least 5% of it.
-    static double Tolerance(List<double> values)
-    {
-        if (values.Count < 2) return double.NaN;
-        double mean = values.Average(), sd = Math.Sqrt(values.Sum(v => (v - mean) * (v - mean)) / (values.Count - 1));
-        return Math.Max(0.05 * Math.Abs(mean), 2 * sd / Math.Sqrt(values.Count));
+        var timed = links.Where(l => double.IsFinite(l.Real)).ToList();
+        var set = timed.Where(l => double.IsFinite(l.Set) && l.Set > 0).ToList();
+        int setOutside = set.Count(l => l.Set < l.Min - 0.0005 || l.Set > l.Max + 0.0005);
+        int realOver = timed.Count(l => l.Real > l.Max + 0.0005), gameOver = timed.Count(l => double.IsFinite(l.Game) && l.Game > l.Max + 0.06);
+        var (gameMean, gameTol, _) = DevMean(timed.Select(l => l.Game));
+        var (realMean, realTol, _) = DevMean(timed.Select(l => l.Real));
+        double middle = timed.Count == 0 ? double.NaN : timed.Average(l => (l.Min + l.Max) / 2);
+        double realSum = timed.Where(l => double.IsFinite(l.Game)).Sum(l => l.Real), gameSum = timed.Where(l => double.IsFinite(l.Game)).Sum(l => l.Game);
+        double longer = gameSum > 0 ? realSum / gameSum - 1 : double.NaN;
+        string clock = !double.IsFinite(longer) ? "THE GAME'S CLOCK NOT READ" : Math.Abs(longer) <= 0.01 ? "THE REAL CLOCK RAN AS THE GAME'S"
+            : longer > 0 ? $"THE REAL CLOCK RAN {Math.Round(longer * 100, 1).ToString(CultureInfo.InvariantCulture)}% LONGER THAN THE GAME'S" : "THE REAL CLOCK RAN SHORTER THAN THE GAME'S";
+        double mean = double.IsFinite(gameMean) ? gameMean : realMean, tol = double.IsFinite(gameMean) ? gameTol : realTol;
+        say(what, few ? $"NOT DECIDED ({timed.Count} TIMED)"
+                : (set.Count == 0 ? "THE GAME'S INTERVALS NOT READ, " : setOutside == 0 ? "EVERY INTERVAL OF THE GAME IN THE PAGE'S RANGE, " : $"{setOutside} INTERVALS OF THE GAME OUTSIDE THE PAGE'S RANGE, ") +
+                  (double.IsFinite(tol) && Math.Abs(mean - middle) <= tol ? "AS ITS MIDDLE, " : "NOT AS ITS MIDDLE, ") + clock,
+            $"{timed.Count} timed: {R(Math.Round(mean, 3))} s on the {(double.IsFinite(gameMean) ? "game's" : "real")} clock (twice its standard error {R(Math.Round(tol, 3))}) against the " +
+            $"middle {R(Math.Round(middle, 3))}; {R(Math.Round(realMean, 3))} s on the real clock; {realOver} longer than the page's longest on the real clock, {gameOver} on the game's; " +
+            $"the game's intervals read for {set.Count}, {R(Math.Round(set.Count > 0 ? set.Average(l => l.Set) : double.NaN, 3))} s on average; the real against the game's " +
+            $"[{string.Join(", ", timed.Where(l => l.Real > l.Max + 0.0005).Take(12).Select(l => $"{l.Real:0.###} / {l.Game:0.###} (set {l.Set:0.###}, longest {l.Max:0.###})"))}]");
     }
 
     // The hunted animal's trapping chance now, its chance to reattempt, the bonuses a failed try has put on it, and what
@@ -663,23 +1017,69 @@ public partial class HuntingRatesMod
             $"the action's ItemAdded came {added} times");
     }
 
-    void DevTracker(string when, DevHuntWatch? w)
+    // The game's own tracker, period by period: its Hunting XP and items of an hour. At the end, a period that lies inside
+    // the watch, all of it spent on the one animal hunted throughout, is put beside the window's hour for that animal, within
+    // a tolerance from the spread of a hunt (twice the standard error of the catches the period holds). The periods keep
+    // milliseconds (a cycle of 600,000 is ten minutes): an hour is 3,600,000 of them (check-3-watch logged them as seconds).
+    void DevTracker(string when, DevHuntWatch w, double? watched)
     {
         try
         {
             var tracker = _hunting!.Tracker;
             ExperienceComponent experience = _hunting.Experience;
-            var items = w?.Moments.SelectMany(m => m.Items.Select(i => i.Item)).Distinct().ToList() ?? new List<Item>();
-            AnimalRates? ours = _hunting.Action.CurrentAnimal is { } a ? ReadAnimal(a) : null;
+            ActiveHuntingAnimal? hunted = w.Seen.Count == 1 ? w.Seen.Keys.First() : _hunting.Action.CurrentAnimal;
+            AnimalRates? ours = hunted != null ? ReadAnimal(hunted) : null;
+            DevSeen? seen = hunted != null && w.Seen.TryGetValue(hunted, out DevSeen? s) ? s : null;
+            var items = new List<Item>();
+            if (ours != null)
+            {
+                if (ours.Trap != null) items.Add(ours.Trap);
+                if (ours.Bait != null) items.Add(ours.Bait);
+                items.AddRange(ours.Products.Select(d => d.Item));
+            }
+            items = items.Distinct().ToList();
+            // The spread of a catch's time, as a share of it: the larger of the one the whole hunts show and the one the window's
+            // numbers give (a third when they cannot be counted).
+            var huntTimes = seen?.Hunts.Select(h => h.Real).Where(double.IsFinite).ToList() ?? new List<double>();
+            var (mean, _, sd) = DevMean(huntTimes);
+            double ownCv = ours?.SecondsPerCatch is { } perCatch && ours.EscapeAdds is { } escape ? DevHuntSpread(ours, escape) / perCatch : double.NaN;
+            double cv = Math.Max(huntTimes.Count >= 3 && mean > 0 ? sd / mean : 0, double.IsFinite(ownCv) ? ownCv : 1.0 / 3);
             int i = 0;
             foreach (var period in tracker.Periods)
             {
                 double xp = period.Experience.TryGetValue(experience, out var list) ? list.Total : 0;
-                double covered = Math.Min(period.CycleDuration, period.Experience.RecordedCount * period.SamplePeriod);
-                string perHour = covered > 0 ? R(xp / covered * 3600) : "-";
-                DevLog($"tracker | {when} | period {i++}: cycle {R(period.CycleDuration)}, {period.SampleCount} samples of {R(period.SamplePeriod)}, " +
-                    $"{period.Experience.RecordedCount} recorded | Hunting XP {R(xp)}, an hour by it (if in seconds) {perHour}, ours {(ours == null ? "-" : R(ours.XpPerHour))} | " +
-                    $"items [{string.Join(", ", items.Select(item => $"{item.Id} {(period.Items.TryGetValue(item, out var l) ? l.Total : 0)}"))}]");
+                int recorded = period.Experience.RecordedCount;
+                double covered = Math.Min(period.CycleDuration, recorded * period.SamplePeriod);
+                double Hour(double total) => covered > 0 ? total / covered * 3_600_000 : double.NaN;
+                bool inside = watched is { } length && period.CycleDuration <= length * 1000 - period.SamplePeriod && covered >= period.CycleDuration - 1 &&
+                    !w.AnimalChanged && w.Seen.Count == 1;
+                string compared = "";
+                if (watched != null)
+                {
+                    if (!inside) compared = watched * 1000 < period.CycleDuration ? " | starts before the watch: not compared" : w.AnimalChanged || w.Seen.Count != 1 ? " | not one animal throughout: not compared" : " | not compared";
+                    else if (ours?.CatchesPerHour is { } perHour)
+                    {
+                        // The catches the period holds by the window's hour, and the share of them a hunt's spread allows.
+                        double catches = perHour * period.CycleDuration / 3_600_000, tolerance = 2 * cv / Math.Sqrt(Math.Max(1, catches));
+                        string Beside(string name, double game, double? mine) => mine is not { } m ? $"{name} {R(Math.Round(game, 1))} against ours -"
+                            : $"{name} {R(Math.Round(game, 1))} against ours {R(Math.Round(m, 1))}{(Math.Abs(game - m) <= tolerance * Math.Max(Math.Abs(m), 1e-9) ? "" : "  OUTSIDE ITS SPREAD")}";
+                        var beside = new List<string> { Beside("Hunting XP", Hour(xp), ours.XpPerHour) };
+                        foreach (Item item in items)
+                        {
+                            double total = period.Items.TryGetValue(item, out var l) ? l.Total : 0;
+                            double? mine = ReferenceEquals(item, ours.Trap) ? -ours.TrapsPerHour : ReferenceEquals(item, ours.Bait) ? ours.UseBait ? -ours.BaitPerHour : 0
+                                : ours.Products.Where(d => ReferenceEquals(d.Item, item)).Sum(d => d.PerHour ?? double.NaN);
+                            beside.Add(Beside(item.Id, Hour(total), mine));
+                        }
+                        bool within = !beside.Any(b => b.Contains("OUTSIDE ITS SPREAD"));
+                        compared = $" | inside the watch, {hunted!.Animal.LocalId} throughout: an hour by it beside ours, within {R(Math.Round(tolerance * 100, 1))}% (about {R(Math.Round(catches, 1))} " +
+                            $"catches, a hunt's spread {R(Math.Round(cv, 3))} of it): {string.Join(", ", beside)} | {(within ? "WITHIN ITS SPREAD" : "OUTSIDE ITS SPREAD")}";
+                    }
+                    else compared = " | inside the watch, but the window cannot count this animal's hour: not compared";
+                }
+                DevLog($"tracker | {when} | period {i++}: cycle {R(period.CycleDuration)} ms ({R(period.CycleTicks)} ticks), {period.SampleCount} samples of {R(period.SamplePeriod)} ms, " +
+                    $"{recorded} recorded | Hunting XP {R(xp)}, an hour by it {R(Math.Round(Hour(xp), 1))} | items [{string.Join(", ", items.Select(item => $"{item.Id} {(period.Items.TryGetValue(item, out var l) ? l.Total : 0)}"))}]" +
+                    compared);
             }
             if (i == 0) DevLog($"tracker | {when} | the tracker has no periods");
         }
