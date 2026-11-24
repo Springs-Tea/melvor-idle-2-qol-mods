@@ -478,14 +478,16 @@ public partial class FiremakingRatesMod : IMod
 
     // Where the window opens while the player has not placed it himself (Woodcutting Rates' FirstPlace, from its review
     // 4: in the middle of the screen the window lay over the page's cards, and nearly no line could be clicked), keeping
-    // clear, where there is room, the parts of the page where a click shows its result: the part with the selected log and
-    // the bonfire's part (Native.Panels; the code review of turn 1, polish). Never over the strip of round buttons: its
-    // right edge at most as far left of the strip as the strip is from the screen's edge. The places tried, in this order:
-    // at the right side (as Woodcutting's), then with its right edge at the left edge of each such part; at each, the two
-    // heights the page's list leaves for it (level with the list's top, or with its bottom above the game's bottom bar).
-    // Of those, the one that leaves the most of those parts untouched, then where the most of the logs' buttons the list
-    // shows can be shown whole beside it (Native.Place: in sight, or after a scroll), then the first. Everything is
-    // measured from the page as it is drawn now. Null when the list shows no button: the window then opens in the middle.
+    // clear, where that costs no line its room, the parts of the page where a click shows its result: the part with the
+    // selected log and the bonfire's part (Native.Panels; the code review of turn 1, polish). Never over the strip of
+    // round buttons: its right edge at most as far left of the strip as the strip is from the screen's edge. The places
+    // tried, in this order: at the right side (as Woodcutting's), then with its right edge at the left edge of each such
+    // part; at each, the two heights the page's list leaves for it (level with the list's top, or with its bottom above
+    // the game's bottom bar). Of those, first the one where the most of the logs' buttons the list shows can be shown
+    // whole beside it (Native.Place: in sight, or after a scroll), as Woodcutting's review 4 decided: the window must
+    // first of all leave the lines clickable (the code review of turn 2, fault 2); of those equal in that, the one that
+    // leaves the most of those parts untouched; then the first. Everything is measured from the page as it is drawn now.
+    // Null when the list shows no button: the window then opens in the middle.
     Vector2? FirstPlace(Vector2 size)
     {
         if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
@@ -514,7 +516,7 @@ public partial class FiremakingRatesMod : IMod
             foreach (Rect2 panel in panels)
                 if (panel.Position.X - size.X >= leftmost) xs.Add(Math.Min(rightmost, panel.Position.X - size.X));
             Vector2? best = null;
-            (int Clear, int Room) most = (-1, -1);
+            (int Room, int Clear) most = (-1, -1);
             foreach (float x in xs)
                 foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
                 {
@@ -522,7 +524,7 @@ public partial class FiremakingRatesMod : IMod
                     var cover = new Rect2(x, y, size);
                     int clear = panels.Count(p => !p.Grow(-1).Intersects(cover));
                     int room = cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
-                    if (clear > most.Clear || (clear == most.Clear && room > most.Room)) { most = (clear, room); best = new Vector2(x, y); }
+                    if (room > most.Room || (room == most.Room && clear > most.Clear)) { most = (room, clear); best = new Vector2(x, y); }
                 }
             return best?.Round();
         }

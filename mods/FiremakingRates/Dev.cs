@@ -93,9 +93,13 @@ namespace FiremakingRates;
 //     BURNING STARTED, BURNING STOPPED, THE LOG BURNING CHANGED, THE FIRE WAS RESET, THE BONFIRE CHANGED, THE STOP CHANGED,
 //     NOT OPENED, THE PAGE SHOWS ANOTHER LOG and THE WINDOW CLOSED mark what must not happen. Picture
 //     shot-firemaking-clicked.png, the log's button proved beside the window. Puts the selection back and, a tick after
-//     the page settled, the scroll; then, only while nothing burns, presses the page's own category button and the page's
-//     own button of the log with the pointer as a player would, each in two steps behind the hand guard, and compares
-//     (DIFFER, EVENTS DIFFER); then puts the selection and the scroll back again. Each part is put back only while it is
+//     the page settled, the scroll; then, only while nothing burns and only from his own selection, presses the page's
+//     own category button and the page's own button of the log with the pointer as a player would, and compares (DIFFER,
+//     EVENTS DIFFER); then puts the selection and the scroll back again. The category press waits for a still mouse;
+//     once it is made, the request's selection stands on his page, and nothing waits for his hand any more: the log
+//     button is scrolled clear if it must be, and pressed only while nobody is at the mouse and within LogPressMost;
+//     every way out of the comparison (a hand at the mouse, a log burning, the button gone, disabled, out of sight, the
+//     press not made) puts the selection back at once through the members, and the scroll on the next step. Each part is put back only while it is
 //     still exactly what the request left, read once the page settled; anything else is the player's and is left, said in
 //     one line (the rule of step 11).
 // 10. "Dev: size": the window at its smallest and at its largest size (crop-firemaking-smallest.png,
@@ -132,6 +136,9 @@ public partial class FiremakingRatesMod
     const ulong StillFor = 5000, GiveUpAfter = 90000, StepTime = 6000, PointerStepTime = GiveUpAfter + 10000;
     // How long the pointer rests on a part of the page for the game's tooltip before that tooltip is given up.
     const ulong TipWait = 20000;
+    // The most the comparison's press of a log's button may take while the request's selection stands on his page (its
+    // settle, a scroll, the aim and the press): past it the selection is put back and the comparison given up.
+    const ulong LogPressMost = 5000;
     // A press of the request's that changes the page settles this many process frames after it, and a click on a line
     // waits at most this many for the window's own scroll to the log's button (ScrollToCard counts drawn frames).
     const long SettleFrames = 2, ScrollWaitFrames = 60;
@@ -727,7 +734,7 @@ public partial class FiremakingRatesMod
         DevClickEvents? events = null;
         Image? beforeClick = null;
         string burningBefore = "", ours = "", ourEvents = "", pageBack = "";
-        bool categoryChanged = false, compareSkipped = false, compared = false, clickedWhileBurning = false;
+        bool categoryChanged = false, compareSkipped = false, comparePutBack = false, clickedWhileBurning = false, scrolledForButton = false;
         ActiveFiremakingCategory? categoryBeforeClick = null;
         ActiveFiremakingRecipe? logBeforeClick = null;
 
@@ -889,6 +896,13 @@ public partial class FiremakingRatesMod
                 DevLog($"click | the player changed the page meanwhile ({string.Join(", ", _devHis)}): the page's own buttons are not pressed, and the click is not compared");
                 return true;
             }
+            // The comparison starts only from his own selection: while the click's is not back yet, it is not made.
+            if (_devOwnCategory != null || _devOwnLog != null)
+            {
+                compareSkipped = true;
+                DevLog("click | the click's selection is not back on the page yet: the page's own buttons are not pressed, and the click is not compared; the final put-back tries again");
+                return true;
+            }
             if (!categoryChanged) { DevLog("click | the click left the category as it was: no category button to compare it with."); return true; }
             ActiveFiremakingCategory category = action.ActiveCategories[clicked.Active.Category];
             if (ReferenceEquals(action.SelectedCategory, category)) return true;
@@ -908,43 +922,87 @@ public partial class FiremakingRatesMod
             events = null;
             return true;
         }, PointerStepTime);
+        // Once the comparison's category press is made, the request's selection stands on his page until it is put back.
+        // From then on nothing waits for his hand, and every way out of the comparison puts the selection back at once,
+        // through the game's members, which need no free mouse, and its scroll on the next step (the code review of turn
+        // 2, fault 1). A selection that cannot be put back because a log burns now is said NOT PUT BACK (lesson 56).
+        void GiveUpComparison(string why)
+        {
+            compareSkipped = true;
+            if (_devAim != null) { _devAim = null; DevPointerBack(); }
+            events?.Dispose();
+            events = null;
+            if (!DevOwnsAny)
+            {
+                DevLog($"click | {why}; nothing of the request's is on the page");
+                return;
+            }
+            comparePutBack = true;
+            pageBack = DevSelectionBack();
+            DevLog($"click | {why}; the selection put back at once: {pageBack}");
+        }
         Add("the page's log button", () =>
         {
             if (clicked == null || compareSkipped) return true;
             if (_devSettle != null || _devSettledTick >= _devTick) return false;
             var action = _firemaking!.Action;
             ActiveFiremakingRecipe log = clicked.Active;
+            // Nothing more to press: the comparison is read in the next step, which puts the selection back.
             if (clicked.Click != Opens.Log || ReferenceEquals(action.SelectedRecipe, log)) return true;
+            // The request's selection stands on his page (its category press): no waiting on his hand from here on.
+            bool stands = _devOwnCategory != null || _devOwnLog != null;
+            // Lesson 56, read again on every tick of this step, the tick of the press too.
+            if (DevBurningWide()) { GiveUpComparison($"a log burns now: the page's own button of {log.Recipe.Id} is not pressed, and the click is not compared with it"); return true; }
             if (!ReferenceEquals(action.SelectedCategory?.Data, log.Category))
             {
-                compareSkipped = true;
-                DevLog($"click | the page shows the category {Id(action.SelectedCategory)}, not {log.Category?.Id}: the log's own button is not there to press, and the click is not compared");
+                GiveUpComparison($"the page shows the category {Id(action.SelectedCategory)}, not {log.Category?.Id}: the log's own button is not there to press, and the click is not compared");
                 return true;
             }
-            // Lesson 56, read again on every tick of this step, the tick of the press too.
-            if (DevBurningWide())
+            if (Native.Card(_page!, log) is not { } button)
             {
-                compareSkipped = true;
-                if (_devAim != null) { _devAim = null; DevPointerBack(); }
-                DevLog($"click | a log burns now: the page's own button of {log.Recipe.Id} is not pressed, and the click is not compared with it");
+                GiveUpComparison($"the page's list has no button for {log.Recipe.Id}: it is not pressed, and the click is not compared");
                 return true;
             }
-            CraftingRecipeButton button = Native.Card(_page!, log) ?? throw new InvalidOperationException($"the page's list has no button for {log.Recipe.Id}");
-            // With the pointer, in two steps behind the hand guard, as the category button (the code review of turn 1, fault
-            // 3): a disabled button, or one that cannot be seen beside the window, is not pressed.
-            if (_devAim != button && (button.Disabled || !button.IsVisibleInTree() || !DevSight(button).HasArea()))
+            if (_devAim != button)
             {
-                compareSkipped = true;
-                DevLog($"click | the page's own button of {log.Recipe.Id} is {(button.Disabled ? "disabled" : "not in sight beside the mod's window")}: it is not pressed, and the click is not compared with it");
+                if (button.Disabled || !button.IsVisibleInTree())
+                {
+                    GiveUpComparison($"the page's own button of {log.Recipe.Id} is {(button.Disabled ? "disabled" : "not shown")}: it is not pressed, and the click is not compared with it");
+                    return true;
+                }
+                if (!DevSight(button).HasArea())
+                {
+                    // Out of sight beside the window: the page's list is scrolled first so that the button stands clear, as
+                    // ScrollToCard does, only while the scroll is still what the request left (its own); what that scroll
+                    // leaves is the request's own, read again once the page settled.
+                    if (!scrolledForButton && _devOwnScroll is { } own && DevScrollNow() == own.Value && Native.ScrollOf(button) is { } list &&
+                        Native.Place(button, Cover(), out int to) == CardSight.Scroll)
+                    {
+                        scrolledForButton = true;
+                        list.ScrollVertical = to;
+                        _devSettle = ((long)Engine.GetProcessFrames(), false);
+                        DevLog($"click | the page's own button of {log.Recipe.Id} lies under the mod's window: its list scrolled to {to} first, as a click on a line scrolls it");
+                        return false;
+                    }
+                    GiveUpComparison($"the page's own button of {log.Recipe.Id} is not in sight beside the mod's window, and no scroll of the request's brings it: it is not pressed, and the click is not compared with it");
+                    return true;
+                }
+            }
+            if (stands && DevHandNow())
+            {
+                GiveUpComparison($"somebody is at the mouse: the page's own button of {log.Recipe.Id} is not pressed, so that the request's selection does not wait on his page, and the click is not compared with it");
+                return true;
+            }
+            if (stands && Time.GetTicksMsec() - _devStarted > LogPressMost)
+            {
+                GiveUpComparison($"the page's own button of {log.Recipe.Id} could not be pressed within {LogPressMost / 1000} s (the pointer was not on it): the click is not compared with it");
                 return true;
             }
             events ??= new DevClickEvents(_firemaking!, DevLog);
             bool? pressed = DevPagePress(() => DevPress(button, $"the page's own button of {log.Recipe.Id}"),
                 before, $"the press of the page's own button of {log.Recipe.Id}, to compare");
             if (pressed != null) return pressed.Value;
-            compareSkipped = true;
-            events.Dispose();
-            events = null;
+            GiveUpComparison($"the press of the page's own button of {log.Recipe.Id} was not made");
             return true;
         }, PointerStepTime);
         Add("the page's buttons compared", () =>
@@ -959,11 +1017,11 @@ public partial class FiremakingRatesMod
                 (DevSameEvents(gameEvents, ourEvents) ? "the same events" : $"EVENTS DIFFER from the click on the line ([{ourEvents}])"));
             events.Dispose();
             events = null;
-            compared = true;
+            comparePutBack = true;
             pageBack = DevSelectionBack();
             return true;
         });
-        AddScrollBack("the page back after its own buttons", () => clicked == null || !compared, "click | the page's selection and scroll put back:");
+        AddScrollBack("the page back after its own buttons", () => clicked == null || !comparePutBack, "click | the page's selection and scroll put back:");
         Add("smallest", () =>
         {
             Resize(GameWindow.MinScale);
@@ -1095,6 +1153,13 @@ public partial class FiremakingRatesMod
                 ? " (as the player left it before the request's first change)" : "";
             SayPage(ReferenceEquals(action.SelectedCategory, want.Category), "category", $"the page's category {Id(want.Category)}{when}", Id(action.SelectedCategory));
             SayPage(ReferenceEquals(action.SelectedRecipe, want.Log), "log", $"the page's log {Id(want.Log)}{when}", Id(action.SelectedRecipe));
+            // A selection of the request's that is still on his page (NOT PUT BACK while a log burns, or a put-back that did
+            // not take): what he should select by hand, in the page's names, so that one card can tell him (review 2, polish).
+            bool categoryLeft = !ReferenceEquals(action.SelectedCategory, want.Category) && !_devHis.Contains("category");
+            bool logLeft = !ReferenceEquals(action.SelectedRecipe, want.Log) && !_devHis.Contains("log");
+            if (categoryLeft || logLeft)
+                said.Add($"TO SELECT BY HAND on the Firemaking page: the category '{want.Category?.Data.DisplayName.Text ?? "-"}' and the log " +
+                    $"'{want.Log?.Recipe.DisplayName.Text ?? "-"}' (it shows '{action.SelectedCategory?.Data.DisplayName.Text ?? "-"}' and '{action.SelectedRecipe?.Recipe.DisplayName.Text ?? "-"}')");
             // The selection as the page draws it too, not only the members (Mining Rates' code review of turn 1, fault 2).
             string? look = DevLook();
             SayPage(look != null && look == want.Look, _devHis.Contains("category") ? "category" : "log", $"the page's selection drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
@@ -2307,6 +2372,9 @@ public partial class FiremakingRatesMod
         _devPointer = pointer;
         _devPointerSeen = true;
     }
+
+    // Somebody was at the mouse within StillFor: what DevHandAtMouse would wait for, read without waiting or saying it.
+    bool DevHandNow() => _devHandAt != 0 && Time.GetTicksMsec() - _devHandAt < StillFor;
 
     // True while a step that points or presses waits for a hand to leave the mouse; after GiveUpAfter the request ends,
     // which puts everything back (CombatGoals/DevWindowShots.cs, HandAtMouse).

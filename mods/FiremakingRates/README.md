@@ -28,11 +28,12 @@ title, the button opens it up again. It is lit while the window is open and not 
 The button is only there on the Firemaking page. On any other page the window steps aside; back on the
 Firemaking page, it is there again as you left it, open or folded.
 
-Until you move it, the window opens at the right side of the page, clear of the round buttons, at the height
-where the most of the logs' buttons in the page's list can be shown whole beside it. Drag the window to move
-it, drag its bottom right corner to resize it, or fold it down to its title with the button beside the X. It
-is never larger than fits above the game's bottom bar, and a list of more than 14 logs scrolls. Its place,
-size, fold and sort order are kept in `settings.json` in the mod's folder.
+Until you move it, the window opens where the most of the logs' buttons in the page's list can be shown whole
+beside it, clear of the round buttons; of places as good, it takes one that leaves the selected log and the
+bonfire clear, and else the right side of the page. Drag the window to move it, drag its bottom right corner
+to resize it, or fold it down to its title with the button beside the X. It is never larger than fits above
+the game's bottom bar, and a list of more than 14 logs scrolls. Its place, size, fold and sort order are kept
+in `settings.json` in the mod's folder.
 
 ## What the window shows
 
