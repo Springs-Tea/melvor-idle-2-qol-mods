@@ -8,7 +8,7 @@
 
 > Where do I mine for the most XP, ore or gold per hour?
 
-<!-- picture: Mining Rates beside the rock cards, sorted by Mining XP per hour -->
+![Every rock with its category, the time of one ore, and ore, Mining XP and gold per hour, sorted by XP, the best of each column in gold](../../docs/img/mining-rates.png)
 
 On the Mining page, the rates window shows one line per rock. Compare the time for one ore and the ore,
 Mining XP and gold per hour at each rock. A rock that takes more hits to break gives its XP less often.
@@ -70,7 +70,7 @@ category, and:
   measured once its category is shown: a click on its line changes the filter, and from then on its tooltip
   says when there is no room.
 
-<!-- picture: after a row click, the rock card beside Mining Rates with XP sorted by the corrected rate -->
+![After a click on Topaz Vein's line: the Mining page scrolled so that the whole card of Topaz Vein stands beside the window](../../docs/img/mining-rates-clicked.png)
 
 - **A rock you cannot mine yet is greyed**, with the Mining level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
@@ -111,7 +111,7 @@ Put the pointer on a line for the whole hour at that rock:
 | **The Mining page has no room for this rock's card beside this window: drag the window aside.** | Instead of the line above, when no scroll of the page's list shows the rock's whole card clear of the window. |
 | **The Mining page has no room to show this rock's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
 
-<!-- picture: a rock's tooltip with XP per break and the Topaz Vein bank counts -->
+![The tooltip of Gold Ore: the time of a hit, the hits a break takes by the game's own rule, the XP of a break, the ore of a break, the items of a hit, the doubling chance and the gold](../../docs/img/mining-rates-tooltip.png)
 
 ## What is counted
 

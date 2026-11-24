@@ -11,7 +11,7 @@ REQUIREMENT
 Melvor Mod Loader, 0.1.3 or newer
 
 PICTURES
-docs/img/mining-rates.png (main), mining-rates-sorted.png, mining-rates-tooltip.png
+docs/img/mining-rates.png (main), mining-rates-clicked.png, mining-rates-tooltip.png
 
 SUMMARY (the short line under the name, at most 350 characters)
 Click the round button on the Mining page to compare Mining XP, ore and gold per hour for each rock. Sort by a column to find the best rock for your character. Hover a rock for its XP and ore per break and the items each hit can bring.
