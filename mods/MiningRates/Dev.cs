@@ -33,17 +33,14 @@ namespace MiningRates;
 // "miningwatch.request", only listens while the character mines (DevWatch.cs).
 //   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod MiningRates -Request mining.request -Produces mining.done -Out <folder>
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
-// everything back (-Text 'fail=click the line').
+// everything back (-Text 'fail=click' fails immediately after the line was pressed).
 // It only looks, points and clicks the mod's own controls and, in step 8, the Mining page's own category buttons: no rock is
 // selected, hidden or shown, nothing is started or stopped, and the page's box for hidden rocks (ShowHiddenRocks) is only
 // read, before and after every press of a game button (SHOW HIDDEN CHANGED if it moved). In step 4 the pointer only
 // rests on a card's break chance, for the game's own tooltip. The page's category filter and the scroll of its list of
 // rocks change only in step 8, and are put back through the page's own buttons, never through the member behind them:
-// first by the button's signal, as a click on a line presses it, and when that did not set the filter, by the pointer on
-// that same button, as a player would; NOT AS IT WAS only after both. The page's "All" button is found by the game's own
-// word for it (MiningCategoryFilterView.s_all), never guessed, and when it is not found the request does not leave the
-// filter on a category in the first place. What is put back is the page as it was just before the request's own first
-// change to it, so a filter the player chose after the request began stays his. Built on Fishing Rates' request
+// the filter is restored with its own button, and the scroll is read again after the cards settle. The request uses
+// the player's starting category so no setup filter stands while a pointer step waits. Built on Fishing Rates' request
 // (mods/FishingRates/Dev.cs): a click is made in two steps (DevPress): the pointer is put on the control, and a later step
 // presses only when the game says the pointer is on that control; a control of the game under the mod's own window is
 // pointed at beside it, or not at all (said at once). Nothing is pointed at or pressed while somebody is at the mouse: a
@@ -83,26 +80,13 @@ namespace MiningRates;
 //     so), then on the name of the column with the longest tip: shot-mining-tooltip.png, shot-mining-header-tooltip.png
 //     and "Dev: tooltip". A tooltip that does not come up in 20 s is one line, and the request goes on. Then clicks
 //     "XP": "Dev: order" and crop-mining-sorted.png.
-//  8. "Dev: click": on a page whose filter is on all categories, first presses the page's own button of one category
-//     with the pointer, as a player would, so that a card can be under another category (only when the page's "All"
-//     button is found, to put it back). Then clicks a line, first one whose card the page shows and a scroll brings
-//     clear of the mod's window, else one whose card is under another category, and reads back the page's category
-//     filter, how the card stands against the window (the card, its list and the window as drawn), the lit line, the
-//     window and what mining is doing (shot-mining-clicked.png, the card proved over its part beside the window).
-//     MINING STARTED, MINING STOPPED, THE ROCK MINED CHANGED, NOT SHOWN (the card is not clear of the window, and the
-//     filter did not change or the line's tooltip does not say there is no room), THE WINDOW CLOSED and SHOW HIDDEN
-//     CHANGED mark what must not happen; NOT CLEAR OF THE WINDOW is a card of another category the page has no room
-//     for beside the window, which the line's tooltip then says. Puts the filter back (by hand if its signal did
-//     not), and the scroll two drawn frames later, presses the page's own category button for the same category with
-//     the pointer as a player would, and compares (DIFFER); then puts the filter and the scroll back again, each only if
-//     it is still as the request left it. Until each of these presses is made, the page as it is then is what it puts
-//     back; a press whose page the player changed while it waited for his hand, after a press of the request's, is not
-//     made (NOT MADE), so what he chose stays.
+//  8. Clicks a line, reads its card, the category, the scroll and the mining events, and puts the page back.
+//     If the click changed the category, compares it with the page's own button after the put-back.
 //  9. "Dev: size": the window at its smallest and at its largest size (crop-mining-smallest.png,
 //     crop-mining-largest.png), LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both. Closes the
 //     window with its X: shot-mining-closed.png.
 // 10. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
-//     closed and folded as it was, the page's category filter (by hand if its signal did not) and its scroll two drawn
+//     closed and folded as it was, the page's category filter and its scroll two drawn
 //     frames later, each only if it is still as the request left it (otherwise the player changed it, and it is left as
 //     he did); reads the Mining page's filter and scroll back while it is still on the screen; then the page that was on
 //     the screen, only if the request opened Mining itself, and the pointer where the real one is.
@@ -136,23 +120,49 @@ public partial class MiningRatesMod
     // settings.json as the request found it on disk (null: not there), for DevStopped too.
     string? _devSettingsCopy;
     bool _devSettingsRead;
-    // What the request itself left on the page last, so that a put-back changes only that (null: nothing yet); and the
-    // scroll to put back two drawn frames after the filter (DevFilterBack, DevScrollBack).
-    (MiningRecipeCategory? Filter, int? Scroll)? _devLeft;
-    int? _devScrollBack;
+    string? _devSettingsLeft;
+    bool _devWantedLeft;
+    int? _devListScrollLeft;
+    long? _devListSettle;
+    string? DevSettingsNow() => File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
+    int? DevWindowScroll() => _list?.ScrollAt;
+    // One rule for each part of the Mining page the request changes, the filter and the scroll, each on its own
+    // (review 3 of the orchestrator): what the request left on a part is read from the page itself once the page has
+    // settled after the request's own press (_devSettle), and kept (_devOwnFilter, _devOwnScroll; null: the request
+    // owns nothing of that part). At the put-back the part is read again: still exactly what the request left, it is put
+    // back; otherwise the player changed it, and it is his: left, said in one line, never taken as the request's own. A
+    // part of his does not touch the other part's put-back. No wait on the mouse decides whose a value is: the press
+    // guard (DevHandAtMouse) only keeps the request's presses off his hand.
+    sealed record DevOwn<T>(T Value);
+    DevOwn<MiningRecipeCategory?>? _devOwnFilter;
+    DevOwn<int?>? _devOwnScroll;
+    // The filter the owned scroll was read under: a scroll belongs to the list of one category, so once the page shows
+    // another category than this one, whoever put it there, the scroll is the player's list's and is never written
+    // (review 4: a category click of his after the request's filter was back).
+    MiningRecipeCategory? _devScrollUnder;
+    // A press of the request's that changes the page, not settled yet: the frame it was made in, and whether it was a
+    // change of the request's (Both: what it left on both parts is read once it settled) or a put-back's press (only the
+    // scroll the request still owns is read again: the press laid the list out anew). Read on the first tick at least two
+    // drawn frames later, and once the window's own scroll to a card is done (DevSettle).
+    (long Frame, bool Both, MiningRecipeCategory? Filter)? _devSettle;
+    // The tick the last settled reading was taken in: the scroll is put back on a later tick, after it is read again.
+    long _devSettledFrame = -1;
     // The Mining page just before the request's own press that changed its filter or scroll, while nothing of the
     // request's was left on it: what every put-back goes back to (null: the request has changed neither). The page at
     // the start of the request may differ, if the player changed it in the first steps: that change is his, and stays.
-    // _devOriginWait is the page as it is on every tick until such a press is made (the code review of turn 3, fault 6).
-    DevPageWas? _devOrigin, _devOriginWait;
-    // A put-back whose signal press did not set the filter: the same button, to be pressed with the pointer as a player
-    // would, before the filter is said NOT AS IT WAS (the code review of turn 2, fault 1).
-    (Button Button, MiningRecipeCategory? Filter)? _devHandBack;
-    // A press that can change the page's filter or scroll was made, and what it left is not read yet: a request that ends
-    // before it is takes what the page shows then as what the request left (the put-back).
-    bool _devInFlight;
+    DevPageWas? _devOrigin;
     // The page's box for hidden rocks just before the last press of a game button (DevHiddenMoved).
     bool _devHiddenBefore;
+    // What of the page the request let go of because the player changed it ("filter", "scroll"): the read back says so,
+    // and does not count it against the put-back.
+    readonly HashSet<string> _devHis = new();
+    // The control the request has just pressed with the pointer, and the frame: once the press has been handled, the
+    // keyboard focus is taken off it if it has it, so that a key of his does not press it again (review 3: nothing is
+    // given back with GrabFocus, and nothing at the end can move a list after the read back).
+    (Control Target, long Frame)? _devFocusAfter;
+    // The Mining of the character the request runs for: when another character is opened meanwhile, the done line
+    // names where the request left that one's filter (the code review of turn 2, fault 3).
+    MiningActionComponent? _devAction;
 
     // ---- the game's own parts of the Mining page, read only (names and types from tools/ApiDump) -----------------------
 
@@ -303,15 +313,21 @@ public partial class MiningRatesMod
 
     void DevReset()
     {
-        // Another character while a request runs: its listening is let go, and the request says it stopped.
+        // Another character while a request runs: its listening is let go, settings.json is written back from the copy
+        // (the window's settings are the same for every character), and the request says what it could not put back.
         if (_devSteps.Count > 0)
         {
             DevUnwatchAll();
-            DevEnd("stopped: another character was opened, nothing more was put back");
+            string settings = DevSettingsBack();
+            DevEnd($"stopped: another character was opened; put back: {settings}; not put back: {DevLeftOn()}, the window of the character before (freed " +
+                "with it), its page and the pointer  NOT ALL AS IT WAS");
         }
         if (_devHits != null) DevWatchEnd("stopped: another character was opened", summarise: false);
         _devSteps.Clear();
         _devAt = 0;
+        _devAction = null;
+        _devSettle = null;
+        _devFocusAfter = null;
     }
 
     // The mod stops (Stop) while a request runs: the done file says so, so that the check does not wait its whole time
@@ -321,43 +337,108 @@ public partial class MiningRatesMod
         DevUnwatchAll();
         if (_devHits != null) DevWatchEnd("stopped: the mod stopped", summarise: false);
         if (_devSteps.Count == 0) return;
-        string settings = "settings.json not read";
-        if (_devSettingsRead)
-        {
-            try
-            {
-                if (_devSettingsCopy == null) File.Delete(SettingsFile);
-                else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
-                settings = "settings.json put back byte for byte";
-            }
-            catch (Exception e) { settings = "settings.json NOT AS IT WAS: " + e.Message; }
-        }
+        string settings = DevSettingsBack();
         string step = _devAt < _devSteps.Count ? _devSteps[_devAt].Name : "the end";
-        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; the window, the page's filter and scroll and the page were not put back  NOT ALL AS IT WAS");
+        DevEnd($"failed at {step}: the mod stopped; put back: {settings}; not put back: {DevLeftOn()}, the window, the page and the pointer  NOT ALL AS IT WAS");
+    }
+
+    // settings.json written back byte for byte from the copy the request read at its start, and read again by the window,
+    // so that a window built afterwards opens as the player had it (sort, size, place, fold).
+    string DevSettingsBack()
+    {
+        if (!_devSettingsRead) return "settings.json not read by the request";
+        try
+        {
+            if (DevSettingsNow() != _devSettingsLeft)
+            {
+                _devHis.Add("settings");
+                _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
+                _settings.Sort ??= RatesList.NameKey;
+                return "settings.json left as the player changed it";
+            }
+            if (_devSettingsCopy == null) File.Delete(SettingsFile);
+            else ModFiles.WriteWhole(SettingsFile, _devSettingsCopy);
+            _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
+            _settings.Sort ??= RatesList.NameKey;
+            return _devSettingsCopy == null ? "settings.json not there, as it was not at the start"
+                : "settings.json written back byte for byte from the copy, and read again by the window";
+        }
+        catch (Exception e) { return $"settings.json NOT AS IT WAS: {e.GetType().Name}: {e.Message}"; }
+    }
+
+    // Where the request left the page's category filter of its own character, when it could not put it back: the game
+    // keeps that filter in the character's Mining (MiningActionComponent.SelectedCagtegory; the component is
+    // written to the save, WriteTo), so it may stay there.
+    string DevLeftOn()
+    {
+        try
+        {
+            if (_devAction == null) return "the page's filter (no character read)";
+            string now = _devAction.SelectedCagtegory?.Id ?? "all";
+            string was = _devOrigin is { } origin ? origin.Filter?.Id ?? "all" : "unchanged by the request";
+            string left = _devOwnFilter is { } l ? $"the request had left it on {l.Value?.Id ?? "all"}" : "the request had nothing of its own left on it";
+            return $"the category filter of the character the request ran for, now on {now} ({left}; before the request's first change it was {was}), " +
+                "which the game may keep in that character's save, and the scroll of its list";
+        }
+        catch (Exception e) { return $"the page's filter (not read: {e.GetType().Name})"; }
     }
 
     void DevRequest()
     {
         if (GameAccess.IsComputingOffline || _stopped) return;
         // The silent watch runs on its own; a light check waits for it to end, and the other way round.
-        if (_devHits != null) { DevWatchTick(); return; }
+        if (_devHits != null) { DevRunWatch(DevWatchTick); return; }
         DevWatchHand();
+        // Before any step: the keyboard focus off a control the request has just pressed, and what the request's own last
+        // press left on the page, once the page has settled. Both run whatever step comes next, a failed one too.
+        try { DevFocusOff(); }
+        catch (Exception e)
+        {
+            _devFocusAfter = null;
+            string words = $"the focus NOT AS IT WAS: {e.Message}";
+            _devOnTheWay.Add(words);
+            DevLog("focus | " + words);
+        }
         string step = "";
         try
         {
             if (_devSteps.Count == 0)
             {
                 string path = Path.Combine(_ctx.Directory, RequestFile);
-                if (!File.Exists(path)) { DevWatchRequest(); return; }
+                if (!File.Exists(path)) { DevRunWatch(DevWatchRequest); return; }
                 string asked = File.ReadAllText(path);
                 File.Delete(path);
                 DevPlan(asked);
-                DevLog($"Mining Rates check started, {_devPutBackAt} steps and the put-back.");
+                DevLog($"Mining Rates check started, {_devPutBackAt} steps and the put-back; a step waits {StepTime / 1000} s at most, " +
+                    $"{PointerStepTime / 1000} s when it points or presses (the request's own times, nothing of the player's).");
             }
             step = _devSteps[_devAt].Name;
             if (_devAt < _devPutBackAt && step == _devFailOnPurpose)
                 throw new InvalidOperationException("failed on purpose, as the request asked, to show the put-back");
-            if (!_devSteps[_devAt].Run())
+            bool checking = _devAt < _devPutBackAt;
+            if (checking && _devListSettle is { } frame)
+            {
+                if ((long)Engine.GetProcessFrames() < frame + 2) return;
+                _devListScrollLeft = DevWindowScroll();
+                _devListSettle = null;
+            }
+            if (checking && (DevSettingsNow() != _devSettingsLeft || _wanted != _devWantedLeft ||
+                DevWindowScroll() != _devListScrollLeft))
+                throw new InvalidOperationException("The window or its settings changed since the request's last step. Leaving the player's change in place.");
+            bool finished;
+            var oldList = _list;
+            try { finished = _devSteps[_devAt].Run(); }
+            finally
+            {
+                if (checking)
+                {
+                    _devSettingsLeft = DevSettingsNow();
+                    _devWantedLeft = _wanted;
+                    _devListScrollLeft = DevWindowScroll();
+                    if (_list != oldList) _devListSettle = (long)Engine.GetProcessFrames();
+                }
+            }
+            if (!finished)
             {
                 if (Time.GetTicksMsec() - _devStarted >= _devSteps[_devAt].Timeout) throw new InvalidOperationException("timed out; " + DevState());
                 return;
@@ -367,6 +448,13 @@ public partial class MiningRatesMod
         catch (Exception e)
         {
             DevLog($"'{step}' failed: {e.GetType().Name}: {e.Message} at {string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(3).Select(l => l.Trim()))}");
+            try { DevPointerBack(); } catch (Exception) { }
+            if (_devPutBackAt == 0 || _devSteps.Count == 0)
+            {
+                DevUnwatchAll();
+                DevEnd($"failed before it began: {e.Message}");
+                return;
+            }
             if (_devAt < _devPutBackAt)
             {
                 // What the steps before changed is put back all the same, and read back.
@@ -379,9 +467,13 @@ public partial class MiningRatesMod
                 _devMisses = 0;
                 return;
             }
-            DevUnwatchAll();
-            DevEnd(_devPutBackAt == 0 ? $"failed before it began: {e.Message}"
-                : $"{_devFailure ?? "ok until the put-back"}; the put-back FAILED at {step}: {e.Message}");
+            // A step of the put-back failed: what it puts back is NOT AS IT WAS, said once, and the put-back goes on with the
+            // next step, so that one failure never leaves the rest as the request left it (the code review of turn 2,
+            // fault 4). A step that fails on every tick moves on all the same.
+            string words = $"the put-back's step '{step}' NOT AS IT WAS: it failed ({e.GetType().Name}: {e.Message}), and the put-back goes on";
+            DevLog("put back | " + words);
+            _devOnTheWay.Add(words);
+            DevNext();
         }
     }
 
@@ -394,7 +486,10 @@ public partial class MiningRatesMod
         _devMisses = 0;
         _devFrameMark = 0;
         if (_devAt < _devSteps.Count) return;
-        DevEnd($"{_devFailure ?? "ok"}; put back: {_devPutBackWords}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
+        // The last step reads everything back and says it; when it failed itself, what went wrong on the way is said.
+        string words = _devPutBackWords ?? "the read back did not run to its end; on the way: " +
+            (_devOnTheWay.Count == 0 ? "nothing said" : string.Join(" | ", _devOnTheWay));
+        DevEnd($"{_devFailure ?? "ok"}; put back: {words}{(_devPutBackOk ? "" : "  NOT ALL AS IT WAS")}{(_devPutBackRead ? "" : "  NOT ALL READ BACK")}");
     }
 
     void DevEnd(string result)
@@ -405,6 +500,7 @@ public partial class MiningRatesMod
         _devWithout?.Dispose();
         _devWithout = null;
         _devSettingsRead = false;
+        _devListSettle = null;
         _devSettingsCopy = null;
         File.WriteAllText(Path.Combine(_ctx.Directory, DoneFile), result);
     }
@@ -439,40 +535,124 @@ public partial class MiningRatesMod
 
     DevPageWas DevPageNow() => new(_mining!.Action.SelectedCagtegory, DevScrollNow(), DevFilterLook());
 
-    // A press the request makes on the Mining page (a category button, a line), on every tick until it is made. While
-    // nothing of the request's is left on the page, the page as it is on that tick is taken as what the put-backs go back
-    // to, so a filter or scroll the player chose while the press waited for his hand stays his (the code review of turn
-    // 3, fault 6). While something of the request's is left on it (_devLeft) and the player changed the page since, the
-    // press is not made: null, with one line, and the done line says so. True once it was made.
-    bool? DevPagePress(Func<bool> press, DevBefore before, string what)
+    // Only press on a page with none of the request's previous changes standing. Capture the
+    // origin immediately before the actual click, after any wait for the player's hand.
+    bool DevPagePress(Func<bool> press)
     {
+        if (_devSettle != null || _devOwnFilter != null || _devOwnScroll != null)
+            throw new InvalidOperationException("The previous page change has not been put back.");
+        DevPageWas origin = DevPageNow();
+        if (!press()) return false;
+        _devOrigin = origin;
+        _devHis.Remove("filter");
+        _devHis.Remove("scroll");
+        _devSettle = ((long)Engine.GetProcessFrames(), true, _mining!.Action.SelectedCagtegory);
+        return true;
+    }
+
+    // Each part the request owns, read again: one that is not exactly what the request left is the player's. The request
+    // lets go of it (nothing of it is put back, and the read back says so). A scroll of his does not touch the filter; a
+    // filter of his does take the scroll with it, because the list scrolled is then the one of his category (review 4).
+    // Returns the parts he changed, in words.
+    List<string> DevHisNow()
+    {
+        var moved = new List<string>();
         var action = _mining!.Action;
-        if (_devLeft is { } left)
+        if (_devOwnFilter is { } filter && !ReferenceEquals(action.SelectedCagtegory, filter.Value))
         {
-            int? scroll = DevScrollNow();
-            if (!ReferenceEquals(action.SelectedCagtegory, left.Filter) || scroll != left.Scroll)
+            moved.Add($"the filter (now {action.SelectedCagtegory?.Id ?? "all"}, the request left {filter.Value?.Id ?? "all"})");
+            _devOwnFilter = null;
+            _devHis.Add("filter");
+            if (_devOwnScroll != null)
             {
-                string words = $"{what} NOT MADE: the page's filter {action.SelectedCagtegory?.Id ?? "all"}, scrolled to {scroll?.ToString() ?? "-"}, is not what " +
-                    $"the request left (the filter {left.Filter?.Id ?? "all"}, scrolled to {left.Scroll?.ToString() ?? "-"}): the player changed it while the press " +
-                    "waited for the mouse, and it stays as he left it";
-                DevLog("click | " + words);
-                _devOnTheWay.Add(words);
-                return null;
+                moved.Add("the scroll with it (the list is his category's now)");
+                _devOwnScroll = null;
+                _devHis.Add("scroll");
             }
         }
-        else _devOriginWait = DevPageNow();
-        if (!press()) return false;
-        if (_devLeft == null)
+        if (_devOwnScroll != null && !ReferenceEquals(action.SelectedCagtegory, _devScrollUnder))
         {
-            DevPageWas was = _devOrigin ?? new DevPageWas(before.Filter, before.Scroll, before.Look);
-            _devOrigin = _devOriginWait ?? DevPageNow();
-            if (!ReferenceEquals(_devOrigin.Filter, was.Filter) || _devOrigin.Scroll != was.Scroll || _devOrigin.Look != was.Look)
-                DevLog($"click | the page just before {what}: the filter {_devOrigin.Filter?.Id ?? "all"}, drawn {_devOrigin.Look ?? "-"}, " +
-                    $"scrolled to {_devOrigin.Scroll?.ToString() ?? "-"}; not as the request found it (the filter {was.Filter?.Id ?? "all"}, drawn {was.Look ?? "-"}, " +
-                    $"scrolled to {was.Scroll?.ToString() ?? "-"}): the player changed it meanwhile, and that is what is put back");
+            moved.Add($"the scroll (the page shows {action.SelectedCagtegory?.Id ?? "all"} now, the request's scroll was of {_devScrollUnder?.Id ?? "all"})");
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
         }
-        _devInFlight = true;
-        return true;
+        if (_devOwnScroll is { } scroll && DevScrollNow() is var now && now != scroll.Value)
+        {
+            moved.Add($"the scroll (now {now?.ToString() ?? "-"}, the request left {scroll.Value?.ToString() ?? "-"})");
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
+        }
+        return moved;
+    }
+
+    // What the request's own last press left on the page, read once the page has settled: at least two drawn frames after
+    // the press, and after the window's own scroll to a card (ScrollToCard) when the press was a click on a line. A change
+    // of the request's: both parts are its own now. A put-back's press: the scroll it still owns is read again, since the
+    // press laid the list out anew; the filter it put back is no longer its own.
+    void DevSettleNow()
+    {
+        try { DevSettle(); }
+        catch (Exception e)
+        {
+            _devSettle = null;
+            string words = $"the page NOT AS IT WAS: what the request left could not be read ({e.Message})";
+            _devOnTheWay.Add(words);
+            DevLog("page | " + words);
+            if (_devAt < _devPutBackAt) { _devFailure = words; _devAt = _devPutBackAt; }
+        }
+    }
+
+    void DevSettle()
+    {
+        if (_devSettle is not { } settle) return;
+        // Firemaking Rates' DevSettle also lets a pending scroll expire if drawing stops.
+        const int settleFrames = 2, scrollWaitFrames = 60;
+        long frame = (long)Engine.GetProcessFrames();
+        if (frame < settle.Frame + settleFrames || (_scrollTo != null && frame < settle.Frame + scrollWaitFrames)) return;
+        if (_scrollTo != null)
+        {
+            DevLog("page | the pending scroll did not finish while the page was drawn and was cancelled");
+            _scrollTo = null;
+        }
+        _devSettle = null;
+        _devSettledFrame = frame;
+        if (_mining == null || _page == null || !GodotObject.IsInstanceValid(_page)) return;
+        var action = _mining.Action;
+        if (!ReferenceEquals(action.SelectedCagtegory, settle.Filter))
+        {
+            _devOwnFilter = null;
+            _devOwnScroll = null;
+            _devHis.Add("filter");
+            _devHis.Add("scroll");
+            DevLog("page | the category changed after the request's press. Its filter and scroll stay with the player.");
+            return;
+        }
+        if (settle.Both)
+        {
+            _devOwnFilter = ReferenceEquals(action.SelectedCagtegory, _devOrigin?.Filter) ? null : new(action.SelectedCagtegory);
+            int? scroll = DevScrollNow();
+            _devOwnScroll = _devOwnFilter == null && scroll == _devOrigin?.Scroll ? null : new(scroll);
+            _devScrollUnder = action.SelectedCagtegory;
+        }
+        else if (_devOwnScroll != null)
+        {
+            _devOwnScroll = new(DevScrollNow());
+            _devScrollUnder = action.SelectedCagtegory;
+        }
+        DevLog($"page | settled after the request's {(settle.Both ? "press" : "put-back's press")}: the request owns the filter " +
+            $"{(_devOwnFilter is { } f ? f.Value?.Id ?? "all" : "(none)")} and the scroll {(_devOwnScroll is { } s ? s.Value?.ToString() ?? "-" : "(none)")}");
+    }
+
+    // The keyboard focus off the control the request has just pressed, if that control (or a part of it) has it, once the
+    // press has been handled: a key of his would press it again. Nothing is given back.
+    void DevFocusOff()
+    {
+        if (_devFocusAfter is not { } after || (long)Engine.GetFramesDrawn() < after.Frame + 1) return;
+        _devFocusAfter = null;
+        Control? owner = _ctx.Tree.Root.GuiGetFocusOwner();
+        if (owner == null || !GodotObject.IsInstanceValid(after.Target) || (owner != after.Target && !after.Target.IsAncestorOf(owner))) return;
+        owner.ReleaseFocus();
+        DevLog($"focus | the keyboard focus taken off {DevName(owner)}, which the request's press gave it");
     }
 
     void DevPlan(string asked)
@@ -485,19 +665,26 @@ public partial class MiningRatesMod
         _devFrameMark = 0;
         _devAim = null;
         _devMisses = 0;
-        _devLeft = null;
-        _devScrollBack = null;
-        _devOrigin = _devOriginWait = null;
+        _devOwnFilter = null;
+        _devOwnScroll = null;
+        _devSettle = null;
+        _devSettledFrame = -1;
+        _devOrigin = null;
         _devOnTheWay.Clear();
-        _devHandBack = null;
-        _devInFlight = false;
+        _devHis.Clear();
+        _devFocusAfter = null;
         _devWithout?.Dispose();
         _devWithout = null;
         _devStarted = Time.GetTicksMsec();
+        _devAction = _mining!.Action;
         GameView view = GameAccess.FindGameView() ?? throw new InvalidOperationException("No character is open.");
         var action = _mining!.Action;
         // settings.json as it is on disk, the copy everything of the window is put back from (lesson 50).
-        _devSettingsCopy = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
+        _devSettingsCopy = _devSettingsLeft = DevSettingsNow();
+        _devWantedLeft = _wanted;
+        int? originalWindowScroll = _devListScrollLeft = DevWindowScroll();
+        int? putWindowScroll = originalWindowScroll;
+        _devListSettle = null;
         _devSettingsRead = true;
         var before = new DevBefore(CurrentPage(view)?.Item1, _wanted, _window is { IsAlive: true, Visible: true },
             _window is { IsAlive: true } ? _window.Minimised : null, GodotObject.IsInstanceValid(_opener) ? _opener!.ButtonPressed : null,
@@ -667,6 +854,7 @@ public partial class MiningRatesMod
         Add("picture sorted", () =>
         {
             if (!DevFramesDrawn()) return false;
+            DevCut("sorted");
             Shot("sorted", crop: true);
             return true;
         });
@@ -677,123 +865,29 @@ public partial class MiningRatesMod
         RockRates? clicked = null;
         DevClickEvents? events = null;
         Image? beforeClick = null;
-        string miningBefore = "", ours = "", ourEvents = "", pageBack = "", handWords = "";
+        string miningBefore = "", ours = "", ourEvents = "", pageBack = "";
         bool filterChanged = false, compareSkipped = false;
-        MiningRecipeCategory? startFrom = null, filterBeforeClick = null;
-        Button? startButton = null;
+        MiningRecipeCategory? filterBeforeClick = null;
 
-        // After a put-back of the page's filter by its button's signal (DevFilterBack): when the signal did not set the
-        // filter, the same button pressed with the pointer as a player would, and read back (the code review of turn 2,
-        // fault 1); then the scroll, two drawn frames after the filter, and one line that says all of it.
         void AddPageBack(string name, Func<bool> skip, string head)
         {
-            Add($"{name}: the button by hand", () =>
-            {
-                if (skip() || _devHandBack is not { } hand) return true;
-                try
-                {
-                    if (!GodotObject.IsInstanceValid(hand.Button) || !hand.Button.IsVisibleInTree())
-                        throw new InvalidOperationException("the button is no longer on the screen");
-                    return DevGamePress(hand.Button, $"the page's own '{hand.Button.Text}' button, to put the filter back by hand");
-                }
-                catch (InvalidOperationException e)
-                {
-                    // The filter stays as the request left it, and _devLeft with it: the final put-back tries again.
-                    _devHandBack = null;
-                    handWords = $"the filter NOT AS IT WAS: the pointer could not press the page's own button either ({e.Message})";
-                    return true;
-                }
-            }, PointerStepTime);
-            Add($"{name}: read back by hand", () =>
-            {
-                if (skip() || _devHandBack is not { } hand) return true;
-                var action = _mining!.Action;
-                if (!ReferenceEquals(action.SelectedCagtegory, hand.Filter) && Time.GetTicksMsec() - _devStarted < 3000) return false;
-                _devHandBack = null;
-                bool back = ReferenceEquals(action.SelectedCagtegory, hand.Filter);
-                // Back: nothing of the request's is left on the filter. Not back: the final put-back tries again.
-                if (back) _devLeft = null;
-                handWords = (back ? $"the filter put back with the pointer on the page's own '{hand.Button.Text}' button"
-                    : $"the filter NOT AS IT WAS after the signal and the pointer on the page's own '{hand.Button.Text}' button ({action.SelectedCagtegory?.Id ?? "all"})")
-                    + DevHiddenMoved("the put-back's press of the page's own button");
-                return true;
-            });
-            Add($"{name}: the scroll", () =>
+            Add(name, () =>
             {
                 if (skip()) return true;
-                if (_devScrollBack != null && !DevFramesDrawn()) return false;
-                string said = DevJoin(pageBack, handWords, DevScrollBack());
-                DevLog($"{head} {said}; drawn {DevFilterLook() ?? "NOT FOUND"}");
-                // Into the done line too, even when a later put-back mends it (the code review of turn 3, fault 7).
-                if (said.Contains("NOT AS IT WAS") || said.Contains("SHOW HIDDEN CHANGED")) _devOnTheWay.Add($"{head} {said}");
-                handWords = "";
+                if (_devSettle != null || _devSettledFrame >= (long)Engine.GetProcessFrames()) return false;
+                string scroll;
+                try { scroll = DevScrollBack(); }
+                catch (Exception e) { scroll = $"the scroll NOT AS IT WAS: {e.Message}"; }
+                string words = DevJoin(pageBack, scroll);
+                if (words.Contains("NOT AS IT WAS") || words.Contains("SHOW HIDDEN CHANGED")) _devOnTheWay.Add(words);
+                DevLog($"{head} {words}");
+                pageBack = "";
                 return true;
             });
         }
-        // The press of the page's own button of a category, on every tick until it is made (DevPagePress).
-        bool StartPress(Button button, MiningRecipeCategory category) =>
-            DevPagePress(() => DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}'), to start the click from it"),
-                before, $"the press of the page's own category button of {category.Id}") != false;
-        Add("a category to start from", () =>
-        {
-            var action = _mining!.Action;
-            if (startButton != null)
-            {
-                // The filter went to a category while the press waited for the mouse: the player's, and the click starts
-                // from it (the code review of turn 3, fault 6).
-                if (action.SelectedCagtegory != null)
-                {
-                    DevLog($"click | the page's filter went to {action.SelectedCagtegory.Id} while its own button of {startFrom!.Id} waited for the mouse: " +
-                        "the player's, so that button is not pressed, and the click starts from his filter");
-                    startButton = null;
-                    startFrom = null;
-                    return true;
-                }
-                return StartPress(startButton, startFrom!);
-            }
-            if (action.SelectedCagtegory != null) { DevLog($"click | the page's filter is on {action.SelectedCagtegory.Id}: the click starts from it"); return true; }
-            // On all categories no card is under another category: the page's own button of a category is pressed first,
-            // as a player would, so that the click on a line of another category has a filter to change. Only when the
-            // page's "All" button is found by the game's word: it is what puts the filter back at the end.
-            if (DevAllButton(out string why) == null)
-            {
-                DevLog($"click | the page's filter is on all categories, and {why}: no category is pressed, so that the request never has to guess " +
-                    "the button that puts the filter back; the click only scrolls");
-                return true;
-            }
-            var rocks = _list!.DevLines().Select(l => l.Rock).Where(r => r.Rock.Category != null).ToList();
-            int under = 0;
-            foreach (var (category, button) in Native.CategoryButtons(FilterView(_page!)) ?? new Dictionary<MiningRecipeCategory, Button>())
-            {
-                if (!GodotObject.IsInstanceValid(button) || button.Disabled || !button.IsVisibleInTree()) continue;
-                if (!rocks.Any(r => !ReferenceEquals(r.Rock.Category, category))) continue;
-                // A button under the mod's own window is never pressed (the pointer would land on the window).
-                if (!DevSight(button).HasArea()) { under++; continue; }
-                startFrom = category;
-                startButton = button;
-                return StartPress(button, category);
-            }
-            DevLog(under > 0
-                ? $"click | the page's filter is on all categories, and the {under} category buttons that could start the click lie under the mod's own window: none is pressed, the click only scrolls"
-                : "click | the page's filter is on all categories and no category button can be pressed: the click only scrolls");
-            return true;
-        }, PointerStepTime);
-        Add("the category to start from", () =>
-        {
-            if (startFrom == null) return true;
-            var action = _mining!.Action;
-            if (!ReferenceEquals(action.SelectedCagtegory, startFrom) && Time.GetTicksMsec() - _devStarted < 3000) return false;
-            // What it left is read once the page has laid its cards out for the filter, which can move its scroll: the
-            // click then tells the player's own change from it (DevPagePress).
-            if (!DevFramesDrawn()) return false;
-            _devLeft = (action.SelectedCagtegory, DevScrollNow());
-            _devInFlight = false;
-            DevLog($"click | after the page's own button of {startFrom.Id}: the filter {action.SelectedCagtegory?.Id ?? "all"}, drawn {DevFilterLook() ?? "NOT FOUND"}" +
-                (ReferenceEquals(action.SelectedCagtegory, startFrom) ? "" : "  NOT SET BY ITS OWN BUTTON") + DevHiddenMoved("the page's own category button") +
-                "; put back at the end");
-            Refresh();
-            return true;
-        });
+
+        // Use the filter the player already has. A setup press would leave its category on screen while
+        // the line's pointer press waits for the player's hand.
         Add("a line to click", () =>
         {
             var lines = _list!.DevLines().Select(l => l.Rock).Where(r => r.Clickable).ToList();
@@ -801,6 +895,7 @@ public partial class MiningRatesMod
             // (review 4); then one under another category, as check-3 clicked.
             clicked = lines.FirstOrDefault(r => r.Sight == CardSight.Scroll) ?? lines.FirstOrDefault(r => Native.Card(_page!, r.Rock) is { Visible: false }) ??
                 lines.FirstOrDefault();
+            if (clicked == null && _devFailOnPurpose == "the rock shown") throw new InvalidOperationException("No clickable line for fail=click.");
             if (clicked == null) { DevLog("click | no line shows something a click would change: none is clicked."); return true; }
             _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             miningBefore = DevMiningState();
@@ -822,23 +917,15 @@ public partial class MiningRatesMod
             events ??= new DevClickEvents(_mining!.Action, DevLog);
             _devHiddenBefore = _mining!.Action.ShowHiddenRocks;
             RockRates line = clicked;
-            bool? pressed = DevPagePress(() => DevClickLine(line), before, $"the click on the line of {line.Rock.Recipe.Id}");
-            if (pressed != null) return pressed.Value;
-            // Not made: the steps of the click and its comparison let it be.
-            events.Dispose();
-            events = null;
-            clicked = null;
-            return true;
+            return DevPagePress(() => DevClickLine(line));
         }, PointerStepTime);
         Add("the rock shown", () =>
         {
             if (clicked == null) return true;
             // The list of rocks scrolls two drawn frames after the click (ScrollToCard); the picture two frames later.
-            if (_scrollTo != null || !DevFramesDrawn()) return false;
+            if (_scrollTo != null || _devSettle != null || _devSettledFrame >= (long)Engine.GetProcessFrames() || !DevFramesDrawn()) return false;
             var action = _mining!.Action;
             MiningRock rock = clicked.Rock;
-            _devLeft = (action.SelectedCagtegory, DevScrollNow());
-            _devInFlight = false;
             Refresh();
             MiningRockSelectView? card = Native.Card(_page!, rock);
             CardSight? sight = card != null && card.IsVisibleInTree() ? Native.Place(card, Cover(), out _) : null;
@@ -865,8 +952,13 @@ public partial class MiningRatesMod
                 shown + (mining == miningBefore ? "" : "  MINING CHANGED") +
                 (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
                 (IsOpen ? "" : "  THE WINDOW CLOSED") + DevHiddenMoved("the click on the line"));
-            Shot("clicked");
-            if (card != null && beforeClick != null) DevLog("click | the card in shot-mining-clicked.png: " + DevProofBeside(beforeClick, card, "the card"));
+            if (sight == CardSight.Clear && beforeClick != null && card != null)
+            {
+                string proof = DevProofBeside(beforeClick, card, "the card");
+                DevLog("click | " + proof);
+                if (proof.Contains("; VISIBLE:")) { DevCut("clicked"); Shot("clicked"); }
+                else throw new InvalidOperationException("The rock card could not be proved in the picture.");
+            }
             events.Dispose();
             events = null;
             pageBack = DevFilterBack();
@@ -887,21 +979,13 @@ public partial class MiningRatesMod
                 return true;
             }
             events ??= new DevClickEvents(_mining!.Action, DevLog);
-            bool? pressed = DevPagePress(() => DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}')"),
-                before, $"the press of the page's own category button of {category.Id}, to compare");
-            if (pressed != null) return pressed.Value;
-            compareSkipped = true;
-            events.Dispose();
-            events = null;
-            return true;
+            return DevPagePress(() => DevGamePress(button, $"the page's own category button of {category.Id} ('{button.Text}')"));
         }, PointerStepTime);
         Add("the page's button compared", () =>
         {
             if (clicked == null || !filterChanged || compareSkipped) return true;
-            if (!DevFramesDrawn()) return false;
+            if (_devSettle != null || _devSettledFrame >= (long)Engine.GetProcessFrames() || !DevFramesDrawn()) return false;
             var action = _mining!.Action;
-            _devLeft = (action.SelectedCagtegory, DevScrollNow());
-            _devInFlight = false;
             string game = DevFilterState(clicked.Rock), gameEvents = string.Join(", ", events!.Seen), mining = DevMiningState();
             DevLog($"click | after the page's own category button: {game}; the game's events [{gameEvents}]; {mining}" +
                 (mining == miningBefore ? "" : "  MINING CHANGED") + DevHiddenMoved("the page's own category button") + " | " +
@@ -952,9 +1036,12 @@ public partial class MiningRatesMod
             if (IsOpen || _window is { IsAlive: true, Visible: true }) return false;
             if (_opener?.ButtonPressed != false) throw new InvalidOperationException("The round button is still lit after the X.");
             if (!DevFramesDrawn()) return false;
-            Shot("closed");
             using var now = _ctx.Tree.Root.GetTexture().GetImage();
-            if (open != null) DevLog("shot-mining-closed.png | where the window was: " + DevChanged(open, now, openAt, "the window's place", "gone from the picture", "STILL IN THE PICTURE"));
+            string proof = open == null ? "no picture before closing"
+                : DevChanged(open, now, openAt, "the window's place", "gone", "STILL IN THE PICTURE");
+            if (!proof.StartsWith("gone:")) throw new InvalidOperationException(proof);
+            DevLog("closed | " + proof);
+            Shot("closed");
             return true;
         });
 
@@ -968,34 +1055,79 @@ public partial class MiningRatesMod
             readOk &= same;
             said.Add(same ? $"{what} as it was" : $"{what} NOT AS IT WAS (now {now})");
         }
+        // A part of the page the request left alone because the player changed it is said as his, and is no fault.
+        void SayPage(bool same, string part, string what, string now)
+        {
+            if (!same && _devHis.Contains(part)) said.Add($"{what}: left as the player changed it (now {now})");
+            else Say(same, what, now);
+        }
+        // One part of the put-back in its own try: one line, NOT AS IT WAS for a part that failed or did not take, and the
+        // next part runs all the same (the code review of turn 2, fault 4). carry: a NOT AS IT WAS in its words goes into
+        // the done line (the filter's words go there later with its scroll's, in AddPageBack).
+        void Part(string part, Func<string> put, bool carry = true)
+        {
+            try
+            {
+                string words = put();
+                DevLog($"put back | {part}: {words}");
+                if (part is "the pointer" or "the keyboard focus") said.Add($"{part}: {words}");
+                if (carry && (words.Contains("NOT AS IT WAS") || words.Contains("SHOW HIDDEN CHANGED"))) _devOnTheWay.Add($"{part}: {words}");
+            }
+            catch (Exception e)
+            {
+                string words = $"{part} NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message}), and the put-back goes on";
+                DevLog("put back | " + words);
+                _devOnTheWay.Add(words);
+            }
+        }
         Add("put back", () =>
         {
-            events?.Dispose();
-            events = null;
-            if (before.Settings == null) File.Delete(SettingsFile);
-            else ModFiles.WriteWhole(SettingsFile, before.Settings);
-            _settings = ModFiles.ReadJson<Settings>(SettingsFile, _ctx.Log);
-            _settings.Sort ??= RatesList.NameKey;
-            _window?.Free();
-            _window = null;
-            _list = null;
-            _fitPending = false;
-            _wanted = before.Wanted;
-            if (_devInFlight)
+            Part("the game's events", () =>
             {
-                // The request ended between a press and its read-back: what the page shows now is what it left.
-                _devLeft = (_mining!.Action.SelectedCagtegory, DevScrollNow());
-                _devInFlight = false;
-                DevLog("put back | the request ended before it read back its last press: the page's filter and scroll as they are now are taken as what it left");
-            }
-            // The filter now, through the page's own buttons (by hand in the next steps if their signal did not set it);
-            // its scroll two drawn frames later. The page that was on the screen comes back only after both are read.
-            pageBack = DevFilterBack();
-            Sync();
-            SyncStripButton();
+                events?.Dispose();
+                events = null;
+                return "no longer listened to";
+            });
+            Part("settings.json", DevSettingsBack);
+            Part("the window", () =>
+            {
+                bool wanted = _wanted == _devWantedLeft ? before.Wanted : _wanted;
+                if (_wanted != _devWantedLeft) _devHis.Add("window");
+                if (DevWindowScroll() != _devListScrollLeft)
+                {
+                    putWindowScroll = DevWindowScroll();
+                    _devHis.Add("window scroll");
+                }
+                _window?.Free();
+                _window = null;
+                _list = null;
+                _fitPending = false;
+                _wanted = wanted;
+                Sync();
+                SyncStripButton();
+                // A closed window may still have had a remembered scroll before the request.
+                if (_list == null && putWindowScroll != null && PageShown) { Build(); Sync(); }
+                if (_list != null && putWindowScroll is { } scroll) _list.ScrollAt = scroll;
+                return $"{(wanted ? "open" : "closed")}, with the restored settings and list scroll";
+            });
             return true;
         });
-        AddPageBack("put back the page's filter", () => false, "put back | the page's filter and scroll:");
+        // The filter in a step of its own, so that settings.json and the window above never wait: a press of the request's
+        // that has not settled yet is waited for (what it left is read by DevSettle, a request that failed right after a
+        // press too), and the filter is read again a tick later. Then through the page's own button and the scroll on its own. The page that was on the screen comes back
+        // only after both.
+        Add("put back the page's filter", () =>
+        {
+            if (_devSettle != null || _devSettledFrame >= (long)Engine.GetProcessFrames()) return false;
+            pageBack = "";
+            Part("the page's filter", () =>
+            {
+                pageBack = DevFilterBack();
+                return pageBack;
+            }, carry: false);
+            return true;
+        });
+        AddPageBack("put back the page's filter and scroll", () => false, "put back | the page's filter and scroll:");
         Add("read back the Mining page", () =>
         {
             var action = _mining!.Action;
@@ -1005,53 +1137,76 @@ public partial class MiningRatesMod
             int? scroll = DevScrollNow();
             if (!PageShown)
             {
-                // The player left the Mining page while the request ran (the request opens no other page before this step):
-                // nothing could be checked, which the done line says (the code review of turn 3, fault 7).
+                // The player left the Mining page while the request ran (the request opens no other page before this
+                // step): nothing could be checked, which the done line says (Mining Rates' code review of turn 3, fault 7).
                 said.Add($"the Mining page's filter and scroll NOT READ BACK: the page on the screen is {CurrentPage(view)?.Item1?.Id ?? "none"}, the player's");
                 readAll = false;
                 return true;
             }
             string when = _devOrigin != null && (!ReferenceEquals(_devOrigin.Filter, before.Filter) || _devOrigin.Scroll != before.Scroll || _devOrigin.Look != before.Look)
                 ? " (as the player left it before the request's first change)" : "";
-            Say(ReferenceEquals(action.SelectedCagtegory, want.Filter), $"the page's category filter {want.Filter?.Id ?? "all"}{when}", action.SelectedCagtegory?.Id ?? "all");
-            // The filter as the page draws it too, not only the member (the code review of turn 1, fault 2).
-            Say(look != null && look == want.Look, $"the page's filter drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
-            Say(scroll == want.Scroll, $"the page's list of rocks scrolled to {want.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
+            SayPage(ReferenceEquals(action.SelectedCagtegory, want.Filter), "filter", $"the page's category filter {want.Filter?.Id ?? "all"}{when}",
+                action.SelectedCagtegory?.Id ?? "all");
+            // The filter as the page draws it too, not only the member (Mining Rates' code review of turn 1, fault 2).
+            SayPage(look != null && look == want.Look, "filter", $"the page's filter drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
+            SayPage(scroll == want.Scroll, "scroll", $"the page's list of rocks scrolled to {want.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
             return true;
         });
         Add("put back the page", () =>
         {
-            if (before.Page != null && _devOpenedPage && !ReferenceEquals(CurrentPage(view)?.Item1, before.Page))
+            Part("the page", () =>
             {
+                if (before.Page == null || !_devOpenedPage) return "as it was: the request did not open Mining";
+                GamePage? now = CurrentPage(view)?.Item1;
+                if (ReferenceEquals(now, before.Page)) return $"{before.Page.Id}, as it was";
                 // Only the page the request opened itself: a page the player went to meanwhile is his.
-                if (PageShown) view.SetCurrentPage(before.Page);
-                else DevLog($"put back | the page is no longer Mining, which the request opened: the player went to {CurrentPage(view)?.Item1?.Id ?? "none"}, and it is left there");
-            }
-            Sync();
-            SyncStripButton();
-            DevPointerBack();
+                if (!PageShown)
+                {
+                    _devHis.Add("page");
+                    return $"left on {now?.Id ?? "none"}: the player went there from the Mining page the request opened, and it is his";
+                }
+                view.SetCurrentPage(before.Page);
+                return $"back to {before.Page.Id}, the page on the screen before the request opened Mining";
+            });
+            Part("the window on that page", () =>
+            {
+                Sync();
+                SyncStripButton();
+                return IsOpen ? "on the screen" : "not on the screen";
+            });
+            Part("the keyboard focus", () =>
+            {
+                DevFocusOff();
+                return "released from the request's pressed control if it still held focus";
+            });
+            Part("the pointer", () =>
+            {
+                DevPointerBack();
+                return "back where the real one is";
+            });
             return true;
         });
         Add("read back", () =>
         {
             // The page changes on the game's own time: read back once it has, or after a few seconds anyway.
             GamePage? page = CurrentPage(view)?.Item1;
-            if (before.Page != null && !ReferenceEquals(page, before.Page) && Time.GetTicksMsec() - _devStarted < 4000) return false;
-            Say(before.Page == null || ReferenceEquals(page, before.Page), $"the page {before.Page?.Id ?? "none"}", page?.Id ?? "none");
+            if (!_devHis.Contains("page") && before.Page != null && !ReferenceEquals(page, before.Page) && Time.GetTicksMsec() - _devStarted < 4000) return false;
+            SayPage(before.Page == null || ReferenceEquals(page, before.Page), "page", $"the page {before.Page?.Id ?? "none"}", page?.Id ?? "none");
             bool shown = _window is { IsAlive: true, Visible: true };
-            Say(_wanted == before.Wanted && shown == before.Shown,
+            SayPage(_wanted == before.Wanted && shown == before.Shown, "window",
                 $"the window {(before.Wanted ? "open" : "closed")}{(before.Shown ? " on the screen" : "")}", $"{(_wanted ? "open" : "closed")}{(shown ? " on the screen" : "")}");
-            if (before.Shown && shown) Say(_window!.Minimised == before.Folded, $"folded {before.Folded}", $"folded {_window.Minimised}");
+            if (before.Shown && shown) SayPage(_window!.Minimised == before.Folded, "settings", $"folded {before.Folded}", $"folded {_window.Minimised}");
             bool lit = GodotObject.IsInstanceValid(_opener) && _opener!.ButtonPressed;
-            Say(lit == (before.Lit ?? false), $"the round button {(before.Lit == true ? "lit" : "unlit")}", lit ? "lit" : "unlit");
+            SayPage(lit == (before.Lit ?? false), "window", $"the round button {(before.Lit == true ? "lit" : "unlit")}", lit ? "lit" : "unlit");
             string? settings = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
-            Say(settings == before.Settings, before.Settings == null ? "settings.json not there" : "settings.json byte for byte",
+            SayPage(settings == before.Settings, "settings", before.Settings == null ? "settings.json not there" : "settings.json byte for byte",
                 settings == null ? "not there" : $"{settings.Length} characters");
             var action = _mining!.Action;
             Say(action.ShowHiddenRocks == hiddenAtStart, $"the box for hidden rocks {(hiddenAtStart ? "ticked" : "not ticked")}", action.ShowHiddenRocks ? "ticked" : "not ticked");
             string miningNow = DevMiningState();
             Say(miningNow == miningAtStart, miningAtStart, miningNow);
-            said.Add("the pointer back where the real one is");
+            if (putWindowScroll != null && _list != null)
+                SayPage(DevWindowScroll() == originalWindowScroll, "window scroll", "the rate window list scroll", DevWindowScroll()?.ToString() ?? "-");
             // A put-back on the way that was not as it was counts, even when the last one mended it; a press not made
             // is said, and is no fault.
             var notOk = _devOnTheWay.Where(w => !w.Contains(" NOT MADE: ")).ToList();
@@ -1069,7 +1224,7 @@ public partial class MiningRatesMod
             if (!line.StartsWith("fail=")) { DevLog($"the request's line '{line}' is not understood and left out."); continue; }
             string name = line["fail=".Length..].Trim();
             // "fail=click" names the click on a line.
-            if (name == "click") name = "click the line";
+            if (name == "click") name = "the rock shown";
             if (_devSteps.Take(_devPutBackAt).Any(s => s.Name == name))
             {
                 _devFailOnPurpose = name;
@@ -1200,10 +1355,17 @@ public partial class MiningRatesMod
 
     // A game button pressed the way a click on a line presses a category's (CategoryFilter): a toggle button first goes
     // down, which lets the others of its group go, then its pressed signal.
-    static void DevSignalPress(Button button)
+    static bool DevSignalPress(Button button, Func<bool> followed)
     {
+        var group = button.ButtonGroup?.GetButtons().OfType<BaseButton>().ToList() ?? new List<BaseButton>();
+        if (!group.Contains(button)) group.Add(button);
+        var drawn = group.Select(b => (Button: b, Pressed: b.ButtonPressed)).ToList();
         if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
         button.EmitSignal(BaseButton.SignalName.Pressed);
+        if (followed()) return true;
+        foreach (var (b, pressed) in drawn)
+            if (GodotObject.IsInstanceValid(b) && b.ButtonPressed != pressed) b.SetPressedNoSignal(pressed);
+        return false;
     }
 
     // A game button pressed with the pointer (DevPress), with the page's box for hidden rocks read just before it: the
@@ -1218,72 +1380,99 @@ public partial class MiningRatesMod
     string DevHiddenMoved(string what) => _mining!.Action.ShowHiddenRocks == _devHiddenBefore ? ""
         : $"  SHOW HIDDEN CHANGED by {what} (it was {(_devHiddenBefore ? "ticked" : "not ticked")})";
 
-    // The page's filter as it was just before the request's first change (_devOrigin), only if it is still as the request
-    // left it (_devLeft): otherwise the player changed it meanwhile, and it is left as he did. Through the page's own
-    // buttons: the category's, or the "All" button found by the game's word (DevAllButton); never through the member
-    // behind them, and never a guessed button: when the button is not found the filter stays as the request left it, NOT
-    // AS IT WAS. First by the button's signal, as a click on a line presses a category's; when that does not set the
-    // filter, the same button is left for the pointer (_devHandBack, pressed by the steps after: AddPageBack). The scroll
-    // is decided now (still what the request left, or moved by the player) and put back two drawn frames later
-    // (DevScrollBack), once the page has laid its cards out for the filter: a ScrollContainer cuts a value to the range it
-    // has at that moment.
+    // Restore the filter through its own button. A failed signal leaves the filter owned for a later
+    // retry. Do not aim a pointer while the request's filter stands.
     string DevFilterBack()
     {
-        _devScrollBack = null;
-        _devHandBack = null;
-        if (_devLeft is not { } was || _devOrigin is not { } origin) return "nothing to put back: the request changed neither";
-        _devLeft = null;
+        if (_devOrigin is not { } origin || (_devOwnFilter == null && _devOwnScroll == null)) return "nothing of the request's is left on the page";
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Mining page is gone: its filter and scroll NOT AS IT WAS (not put back)";
         var action = _mining!.Action;
         var said = new List<string>();
-        int? scroll = DevScrollNow();
-        if (scroll != was.Scroll && scroll != origin.Scroll)
-            said.Add($"the scroll {scroll?.ToString() ?? "-"} is not what the request left ({was.Scroll?.ToString() ?? "-"}): the player moved it, and it is left");
-        else _devScrollBack = origin.Scroll;
-        if (ReferenceEquals(action.SelectedCagtegory, origin.Filter)) said.Add("the filter as it was");
-        else if (!ReferenceEquals(action.SelectedCagtegory, was.Filter))
-            said.Add($"the filter {action.SelectedCagtegory?.Id ?? "all"} is not what the request left ({was.Filter?.Id ?? "all"}): the player changed it, and it is left");
-        else
+        foreach (string part in DevHisNow()) said.Add($"{part} is the player's, and is left");
+        if (_devOwnFilter is { } own)
         {
-            string why = "";
-            Button? button = origin.Filter == null ? DevAllButton(out why)
-                : Native.CategoryButtons(FilterView(_page)) is { } buttons && buttons.TryGetValue(origin.Filter, out Button? b) && GodotObject.IsInstanceValid(b) ? b : null;
-            if (button == null)
-                said.Add($"the filter NOT AS IT WAS: it stays on {action.SelectedCagtegory?.Id ?? "all"}, as the request left it, since " +
-                    (origin.Filter == null ? why : $"the page has no button of {origin.Filter.Id}") + "; it is never set behind the page's buttons");
+            if (ReferenceEquals(own.Value, origin.Filter))
+            {
+                _devOwnFilter = null;
+                said.Add("the filter as it was");
+            }
             else
             {
-                bool hidden = action.ShowHiddenRocks;
-                DevSignalPress(button);
-                string moved = action.ShowHiddenRocks == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press";
-                if (ReferenceEquals(action.SelectedCagtegory, origin.Filter))
-                    said.Add($"the filter put back with the page's own '{button.Text}' button{moved}");
+                string why = "";
+                Button? button = origin.Filter == null ? DevAllButton(out why)
+                    : Native.CategoryButtons(FilterView(_page)) is { } buttons && buttons.TryGetValue(origin.Filter, out Button? b) && GodotObject.IsInstanceValid(b) ? b : null;
+                if (button == null)
+                    said.Add($"the filter NOT AS IT WAS: it stays on {own.Value?.Id ?? "all"}, as the request left it, since " +
+                        (origin.Filter == null ? why : $"the page has no button of {origin.Filter.Id}") + "; it is never set behind the page's buttons, " +
+                        "and stays the request's own for the final put-back");
                 else
                 {
-                    // Pressed with the pointer next, as a player would; the request still owns what it left until then.
-                    _devHandBack = (button, origin.Filter);
-                    _devLeft = was;
-                    said.Add($"the signal of the page's own '{button.Text}' button left the filter on {action.SelectedCagtegory?.Id ?? "all"}: " +
-                        $"the button is pressed with the pointer next{moved}");
+                    bool hidden = action.ShowHiddenRocks;
+                    bool took = DevSignalPress(button, () => ReferenceEquals(action.SelectedCagtegory, origin.Filter));
+                    string moved = action.ShowHiddenRocks == hidden ? "" : "  SHOW HIDDEN CHANGED by the put-back's press";
+                    if (took)
+                    {
+                        _devOwnFilter = null;
+                        // The press lays the list out anew: the scroll the request still owns is read again once it settled.
+                        _devSettle = ((long)Engine.GetProcessFrames(), false, action.SelectedCagtegory);
+                        said.Add($"the filter put back with the page's own '{button.Text}' button{moved}");
+                    }
+                    else
+                    {
+                        said.Add($"the signal of the page's own '{button.Text}' button left the filter on {action.SelectedCagtegory?.Id ?? "all"}, and its buttons " +
+                            $"are drawn again as they were; the filter is NOT AS IT WAS{moved}");
+                    }
                 }
             }
         }
-        return string.Join(", ", said);
+        return DevJoin(said.ToArray());
     }
 
-    // Two drawn frames after DevFilterBack: the scroll put back, once the page has laid its cards out for the filter.
+    // The scroll the request owns, read again on a later tick than what it left was read (DevSettle; the step waits for
+    // it): still exactly that, it is put back to where it was before the request's first change; otherwise the player
+    // moved it, and it is his, and left. While the filter is still the request's and not put back (its button not
+    // found or its signal did not take), the scroll is left with it, for the final put-back. When the write
+    // does not take, what the request's own write left stays its own.
     string DevScrollBack()
     {
-        if (_devScrollBack is not { } back) return "";
-        _devScrollBack = null;
+        if (_devOwnScroll is not { } own || _devOrigin is not { } origin) return "";
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Mining page is gone: its scroll NOT AS IT WAS (not put back)";
-        bool already = DevScrollNow() == back;
-        if (!already) RockScroll(_page).ScrollVertical = back;
+        if (_devOwnFilter is { } filter && !ReferenceEquals(filter.Value, origin.Filter))
+            return "the scroll left with the request's filter, which is not put back: both stay the request's own for the final put-back";
+        if (!ReferenceEquals(_mining!.Action.SelectedCagtegory, _devScrollUnder))
+        {
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
+            return $"the scroll is left: the page shows {_mining.Action.SelectedCagtegory?.Id ?? "all"} now, and the request's scroll was of " +
+                $"{_devScrollUnder?.Id ?? "all"}, so the list on the screen is the player's";
+        }
         int? now = DevScrollNow();
-        // A filter the request still owns (its put-back by hand failed) keeps the scroll the page has now, not the one
-        // the request left before this put-back (the code review of turn 3, fault 7).
-        if (_devLeft is { } left) _devLeft = (left.Filter, now);
-        return already ? "the scroll as it was" : now == back ? $"the scroll put back to {back}" : $"the scroll NOT AS IT WAS (put back to {back}, it reads {now?.ToString() ?? "-"})";
+        if (now != own.Value)
+        {
+            _devOwnScroll = null;
+            _devHis.Add("scroll");
+            return $"the scroll {now?.ToString() ?? "-"} is not what the request left ({own.Value?.ToString() ?? "-"}): the player moved it, and it is left";
+        }
+        if (now == origin.Scroll)
+        {
+            _devOwnScroll = null;
+            return "the scroll as it was";
+        }
+        if (origin.Scroll is not { } back)
+        {
+            _devOwnScroll = null;
+            return "the scroll NOT AS IT WAS: where it stood before the request's first change was not read, so it is not written";
+        }
+        RockScroll(_page).ScrollVertical = back;
+        int? after = DevScrollNow();
+        if (after == back)
+        {
+            _devOwnScroll = null;
+            return $"the scroll put back to {back}";
+        }
+        _devOwnScroll = new(after);
+        _devScrollUnder = _mining!.Action.SelectedCagtegory;
+        return $"the scroll NOT AS IT WAS (put back to {back}, it reads {after?.ToString() ?? "-"}); what the request's write left stays its own";
     }
 
     Button DevLineOf(RockRates rock) => _list!.DevLines().First(l => ReferenceEquals(l.Rock.Rock, rock.Rock)).Button;
@@ -1365,6 +1554,8 @@ public partial class MiningRatesMod
 
     static string R(double value) => value.ToString("R", CultureInfo.InvariantCulture);
 
+    static string R(double? value) => value is { } n ? R(n) : "-";
+
     static string DevTexture(Texture2D? texture) =>
         texture == null ? "none" : $"{(texture.ResourcePath is { Length: > 0 } path ? path : "a " + texture.GetType().Name)} {texture.GetWidth()}x{texture.GetHeight()}";
 
@@ -1402,7 +1593,7 @@ public partial class MiningRatesMod
                 $"items of a hit [{rawHit}], the recipe's base product chance {R(r.Rock.Recipe.BaseProductChance)}, base interval {r.Rock.Recipe.BaseInterval} | " +
                 $"counted: {R(r.HitSeconds)} s a hit, {R(r.HitsPerHour)} hits/h, break chance {R(r.BreakChance)}, hits a break {(r.HitsPerBreak is { } h ? R(h) : "-")} " +
                 $"(the rule {(RockRates.Settled is { } settled ? $"{settled.Rule}, {settled.Source}" : "not settled")}; by each reading [{DevReadings(r)}]), " +
-                $"XP {R(r.XpEach)} a hit = {R(r.XpPerHour)}/h, ore {r.OreQuantity} a break x(1+{R(r.Doubling)}) = {R(r.OrePerBreak)}, ore/h {(r.OrePerHour is { } o ? R(o) : "-")}, " +
+                $"XP {R(r.XpEach)} a break = {R(r.XpPerHour)}/h, ore {r.OreQuantity} a break x(1+{R(r.Doubling)}) = {R(r.OrePerBreak)}, ore/h {(r.OrePerHour is { } o ? R(o) : "-")}, " +
                 $"time per ore {(r.SecondsPerOre is { } s ? R(s) : "-")}, ore price {(r.OrePrice is { } p ? R(p) : "-")}, gold/h {(r.GoldPerHour is { } g ? R(g) : "-")} " +
                 $"({R(r.PerHitGoldPerHour)} of it from the items of a hit) | items of a hit [{string.Join(", ", r.PerHit.Select(d => $"{d.Item.Id} {R(d.Chance)} x{d.Quantity} each {R(d.Each)} = {R(d.PerHour)}/h, gold {(d.GoldPerHour is { } dg ? R(dg) : "-")}/h"))}] | " +
                 $"not counted [{string.Join(", ", r.NotCountedItems.Select(n => $"{n.Item.Id} {R(n.Chance)}").Concat(r.NotCounted.Select(n => $"{n.Key} {R(n.Nodes.Total.Value)}")))}] | " +
@@ -1422,11 +1613,9 @@ public partial class MiningRatesMod
         return DevRowsInSight();
     }
 
-    // The hits a break takes by each reading of the break bar, from the rock's own break chance and minimum (a minimum
-    // that cannot be counted, as 0, and said so).
-    static string DevReadings(RockRates r) => string.Join(", ", Enum.GetValues<BreakRule>().Select(rule =>
-        $"{rule} {(RockRates.ExpectedHits(rule, r.BreakChance, r.MinimumCounted ? r.MinimumProspecting : 0) is { } hits ? R(hits) : "never")}")) +
-        (r.MinimumCounted ? "" : $"; the minimum {R(r.MinimumProspecting)} NOT COUNTED, taken as 0 here");
+    // The hits a break takes by each reading of the bar, where the rock's chance and minimum are usable.
+    static string DevReadings(RockRates r) => !r.HasBreakChance || !r.MinimumCounted ? "unusable break chance or minimum" : string.Join(", ", Enum.GetValues<BreakRule>().Select(rule =>
+        $"{rule} {(RockRates.ExpectedHits(rule, r.BreakChance, r.MinimumProspecting) is { } hits ? R(hits) : "never")}"));
 
     // The longest line of every tip of the window in characters, against Fishing Rates' longest: Godot's tooltip does
     // not wrap, so a longer line makes a wider tooltip than Fishing Rates' (the code review of turn 1, fault 3).
@@ -1462,7 +1651,7 @@ public partial class MiningRatesMod
                 $"shown={card.Visible}, {DevCardSight(card, false)}, locked part shown={CardLocked(card).IsVisibleInTree()}, being mined={CardActive(card).IsVisibleInTree()}, " +
                 $"hide button pressed={CardHideButton(card).ButtonPressed}, its button reads '{CardMineButton(card).Text}' | " +
                 $"time: game {R(interval.Seconds)} s '{IntervalLabel(interval).Text}', ours {R(ours.HitSeconds)} s{(Math.Abs(interval.Seconds - ours.HitSeconds) < 0.0005 ? "" : "  DIFFER")} | " +
-                $"XP: game '{((Node)XpLabel(xp) as Label)?.Text}' ({XpLabel(xp).Value}), ours {R(ours.XpEach)} a hit: {DevXpSame(XpLabel(xp).Value, ours.XpEach)} | " +
+                $"XP: game '{((Node)XpLabel(xp) as Label)?.Text}' ({XpLabel(xp).Value}), ours {R(ours.XpEach)} per break when counted: {DevXpSame(XpLabel(xp).Value, ours.XpEach)} | " +
                 $"the game's XP tooltip '{DevTooltipText(XpTooltip(xp))}' | {DevXpPerSecond(DevTooltipText(XpTooltip(xp)), ours)} | " +
                 $"break chance: game '{chance.Text}' ({R(chance.Value)}), ours {R(ours.BreakChance)} (raw {R(rock.Stats.RockBreakChance.Value)}): {DevChanceSame(chance.Value, ours.BreakChance)}; " +
                 $"its tooltip '{DevTooltipText(CardBreakTooltip(card))}' | per hit [{DevGrants(CardPerHit(card), rock)}]{(CardPerHitNothing(card).IsVisibleInTree() ? $" '{CardPerHitNothing(card).Text}'" : "")} | " +
@@ -1533,8 +1722,7 @@ public partial class MiningRatesMod
     static string DevChanceSame(double game, double ours) =>
         Math.Abs(game - ours) < 1e-6 ? "the same, a fraction" : Math.Abs(game - ours * 100) < 1e-4 ? "the same, the label keeps percent" : "DIFFER";
 
-    // Which rule the game's own XP tooltip follows: every number in it against the XP per second of a hit (ours), and of
-    // a hit's XP over the time of a hit and a break (which would show XP once a break).
+    // Read both candidate rates from the XP tag's tooltip. Its wording is independent of the watch.
     static string DevXpPerSecond(string tooltip, RockRates ours)
     {
         var numbers = Regex.Matches(tooltip, @"\d[\d,]*(?:\.\d+)?").Select(m => double.Parse(m.Value.Replace(",", ""), CultureInfo.InvariantCulture)).ToList();
@@ -1543,7 +1731,8 @@ public partial class MiningRatesMod
         bool Near(double value) => numbers.Any(n => Math.Abs(n - value) <= Math.Max(0.006, 0.002 * value));
         return $"numbers in it [{string.Join(", ", numbers.Select(R))}]; XP per second on every hit {R(perHit)}: " +
             (Near(perHit) ? "IN IT, the game counts the XP of a hit over the time of a hit" : "NOT IN IT") +
-            $"; ours a hit {R(ours.XpEach)} is {(Near(ours.XpEach) ? "in it" : "not in it")}";
+            $"; ours per second counting breaks {R(ours.XpPerHour / 3600)}: " +
+            (ours.XpPerHour is { } xp && Near(xp / 3600) ? "IN IT" : "NOT IN IT");
     }
 
     // The page's own words for the rules the hour rests on: the break chance, the break bar, shatter, the minimum, the
@@ -1733,13 +1922,13 @@ public partial class MiningRatesMod
                 if (n is Button line && _list.DevScroll.IsAncestorOf(line)) { limit = line.GetGlobalRect().End.X; break; }
             bool beyond = end > limit + 0.5f;
             if (verdict == "whole" && !beyond) continue;
-            if (verdict == "CUT") cut++;
+            if (verdict != "whole" || beyond) cut++;
             if (verdict.StartsWith("SHORTENED")) shortened++;
             if (beyond) past++;
             string tip = "";
             for (Node? n = c; n is Control k; n = k.GetParent())
                 if (k.TooltipText != "") { tip = k.TooltipText; break; }
-            notWhole.Add($"{verdict} '{One(text)}' {wide:0.#} wide in {room:0.#}" +
+            notWhole.Add($"{(verdict.StartsWith("SHORTENED") || beyond && verdict == "whole" ? "CUT: " : "")}{verdict} '{One(text)}' {wide:0.#} wide in {room:0.#}" +
                 (verdict.StartsWith("SHORTENED") ? tip.Contains(text, StringComparison.OrdinalIgnoreCase) ? ", its tooltip holds it" : ", ITS TOOLTIP DOES NOT HOLD IT WHOLE" : "") +
                 (beyond ? $", PAST THE EDGE ({end:0} > {limit:0})" : ""));
         }
@@ -1777,6 +1966,8 @@ public partial class MiningRatesMod
     // which puts everything back (CombatGoals/DevWindowShots.cs, HandAtMouse).
     bool DevHandAtMouse(string what)
     {
+        if (_devOwnFilter != null || _devOwnScroll != null || _devSettle != null)
+            throw new InvalidOperationException($"A page change still belongs to the request. Skipping {what} and putting it back.");
         ulong now = Time.GetTicksMsec();
         if (_devHandAt == 0 || now - _devHandAt >= StillFor)
         {
@@ -1825,6 +2016,8 @@ public partial class MiningRatesMod
         Input.ParseInputEvent(new InputEventMouseButton { Position = spot, GlobalPosition = spot, ButtonIndex = MouseButton.Left, Pressed = false });
         _devAim = null;
         _devMisses = 0;
+        Input.FlushBufferedEvents();
+        _devFocusAfter = (target, (long)Engine.GetFramesDrawn());
         DevLog($"pressed {what} at {_devAimAt}, the pointer on {DevName(over)}");
         return true;
     }
@@ -1883,12 +2076,13 @@ public partial class MiningRatesMod
             // Two drawn frames after it came up, for the picture.
             if (!DevFramesDrawn()) return false;
             DevLog($"tooltip | {shot} | {tooltip}");
+            if (before == null || DevTooltipRect() is not { } at)
+                throw new InvalidOperationException("The tooltip could not be located in the picture.");
+            using var now = _ctx.Tree.Root.GetTexture().GetImage();
+            string proof = DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE");
+            DevLog($"tooltip | {shot}: {proof}");
+            if (!proof.StartsWith("VISIBLE:")) throw new InvalidOperationException(proof);
             Shot(shot);
-            if (before != null && DevTooltipRect() is { } at)
-            {
-                using var now = _ctx.Tree.Root.GetTexture().GetImage();
-                DevLog($"shot-mining-{shot}.png | " + DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE"));
-            }
             DevPointerBack();
             return true;
         }
@@ -2070,14 +2264,14 @@ public partial class MiningRatesMod
         DevLog($"break rule | the card of {rock.Recipe.Id}, the pointer on {s.Aimed}, the tooltip {state}: its label '{CardBreak(s.Card).Text}', its tooltip '{content}'" +
             $"{(tip.IsVisibleInTree() ? "" : " (filled, not seen on the screen)")} | " +
             DevBreakRule(first, whole, moved.Count == 0 ? "" : $"the rock's numbers when it was first seen shown: {DevNumbersText(first)}; {string.Join("; ", moved)}"));
-        Shot("break-tooltip");
-        if (s.Before != null)
+        if (s.Before != null && DevDrawn(tip, out _) is { } drawn)
         {
             using var shot = _ctx.Tree.Root.GetTexture().GetImage();
-            DevLog("shot-mining-break-tooltip.png | " + (DevDrawn(tip, out string where) is { } drawn
-                ? DevChangedPixels(s.Before, shot, drawn, $"the game's tooltip: {where}", "VISIBLE", "NOT VISIBLE")
-                : $"NOT PROVED: where the game's tooltip is drawn is not known ({where})"));
+            string proof = DevChangedPixels(s.Before, shot, drawn, "the game's break tooltip", "VISIBLE", "NOT VISIBLE");
+            DevLog("break rule | " + proof);
+            if (proof.StartsWith("VISIBLE:")) Shot("break-tooltip");
         }
+        else DevLog("break rule | the tooltip could not be located in the picture");
         return DevBreakDone(s);
     }
 
@@ -2237,6 +2431,7 @@ public partial class MiningRatesMod
             if (!part.HasArea()) throw new InvalidOperationException("The window is outside the picture.");
             string proof = _devWithout == null ? " | NOT PROVED: no picture of the screen without the window"
                 : " | " + DevChanged(_devWithout, image, window.Root.GetGlobalRect(), "the window", "VISIBLE", "NOT VISIBLE");
+            if (!proof.StartsWith(" | VISIBLE:")) throw new InvalidOperationException(proof);
             Save(image, $"shot-mining-{state}.png");
             using var region = image.GetRegion(part);
             Save(region, $"crop-mining-{state}.png", proof);
@@ -2283,10 +2478,13 @@ public partial class MiningRatesMod
         var frame = _ctx.Tree.Root.GetFinalTransform() * strip.GetGlobalRect().Grow(12);
         var part = ((Rect2I)frame).Intersection(new Rect2I(0, 0, image.GetWidth(), image.GetHeight()));
         if (!part.HasArea()) throw new InvalidOperationException("The strip is outside the picture.");
+        if (_devWithout == null || !_opener.ButtonPressed) throw new InvalidOperationException("No unlit reference for the lit round button.");
+        string proof = DevChanged(_devWithout, image, _opener.GetGlobalRect(), "the lit round button", "VISIBLE", "NOT VISIBLE");
+        if (!proof.StartsWith("VISIBLE:")) throw new InvalidOperationException(proof);
         using var region = image.GetRegion(part);
         Error result = region.SavePng(Path.Combine(_ctx.Directory, "crop-mining-strip.png"));
         if (result != Error.Ok) throw new IOException("crop-mining-strip.png: " + result);
-        DevLog($"crop-mining-strip.png | the button at {_opener.GetGlobalRect()}, lit={_opener.ButtonPressed}, {strip.GetChildCount()} buttons in the strip{HandNote}");
+        DevLog($"crop-mining-strip.png | the button at {_opener.GetGlobalRect()}, lit={_opener.ButtonPressed}, {strip.GetChildCount()} controls in the strip, {proof}{HandNote}");
     }
 }
 #endif

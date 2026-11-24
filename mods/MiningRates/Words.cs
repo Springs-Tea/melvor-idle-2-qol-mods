@@ -58,19 +58,25 @@ static class Words
         lines.Add($"One hit every {Seconds(r.HitSeconds)}: {Number(r.HitsPerHour)} hits an hour.");
         if (r.HitsPerBreak is { } hits && r.BreaksPerHour is { } breaks && RockRates.Settled is { } settled)
             lines.Add($"A break every {Number(hits)} hits on average, {How(settled.Source)}: {Number(breaks)} an hour.");
-        else if (RockRates.Settled != null && !r.MinimumCounted)
-            lines.Add($"The ore is not counted: the game's minimum break bar here reads {Number(r.MinimumProspecting)}.");
+        if (r.UnknownBreakReward is { } reason)
+        {
+            lines.Add(reason);
+            lines.Add("XP, ore, time per ore and gold per hour are unmeasured here (-).");
+        }
         // The minimum moves the sure break forward: where it is counted, it is said, as the mod's reading of its name.
         if (r.HitsPerBreak != null && r.MinimumProspecting > 0)
             lines.Add($"Your minimum break bar ({Percent(r.MinimumProspecting)}) is counted as where the bar starts.");
-        lines.Add($"Mining XP: {Number(r.XpPerHour)} an hour, {Number(r.XpEach)} a hit.");
+        if (r.XpPerHour is { } xp)
+            lines.Add($"Mining XP: {Number(xp)} an hour, {Number(r.XpEach)} a break.");
+        lines.Add(RockRates.XpMeasured);
 
         lines.Add("");
-        if (r.Ore != null)
+        if (r.BreakOrePerHour is { } ore)
         {
             // The ore of a break, and of an hour where the breaks are counted.
             lines.Add($"Every break (break chance {Percent(r.BreakChance)} a hit):");
-            lines.Add($"  {r.OreName}, {r.OreQuantity} a break" + (r.OrePerHour is { } ore ? $": {Number(ore)}" : ""));
+            lines.Add($"  {r.OreName}, {r.OreQuantity} a break: {Number(ore)} an hour");
+            lines.Add(RockRates.OreUnmeasured);
         }
         if (r.PerHit.Count > 0)
         {

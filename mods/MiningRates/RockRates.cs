@@ -55,12 +55,8 @@ enum RuleSource
 /// those (level, equipment, potions, the Mastery Guild) changes the hour too. Built the way Fishing Rates builds a
 /// spot's hour (mods/FishingRates/SpotRates.cs).
 ///
-/// A hit is the game's action: its time is the rock's interval. That every hit gives the XP of the rock's XP tag is the
-/// mod's reading of the game's words ("The Skill XP gained per action.") and names (its event of a hit,
-/// RockMinedEventArgs, is its ActionPerformedEventArgs and says whether the hit broke the rock). The ore comes with a
-/// break, as the card lists it among its "On Break Rewards". How many hits a break takes rests on a rule
-/// (<see cref="BreakRule"/>), the one the card's break chance states in the game's own words (<see cref="Known"/>);
-/// without a rule the time of an ore, the ore and the gold of an hour are null and the window does not show them.
+/// MiningRock.Hit and MiningActionComponent.RockMined mark hits and breaks. On Runite Ore, XP arrived only
+/// with breaks. MiningActionStats.Experience supplies the award and the rock's own break rate sets its hour.
 /// </summary>
 sealed class RockRates
 {
@@ -82,7 +78,7 @@ sealed class RockRates
     /// chance, one that does not adds it to the sum (the break bar, which grows by it: a "+x%" after the hit), and the hit
     /// that brings the sum to 100% breaks the rock. Every light check reads it again ("Dev: break rule", AS SETTLED);
     /// the watch (miningwatch.request, DevWatch.cs) can measure it on a character's own mining. Null here would leave the
-    /// window with the time of a hit and the XP only.
+    /// window with the time of a hit only.
     /// </summary>
     static readonly (BreakRule Rule, RuleSource Source)? Known = (BreakRule.SameChanceUntilFull, RuleSource.GameWords);
 
@@ -163,9 +159,19 @@ sealed class RockRates
     /// </summary>
     public double? HitsPerBreak { get; private set; }
 
+    public const string XpMeasured = "Measured: Runite Ore gave XP on 85 of 85 breaks and 0 of 318 other hits.";
+    public const string OreUnmeasured = "The ore of a break has not been measured yet.";
+
+    // A recipe with a different reward or break mechanism needs its own observation.
+    public bool HasBreakChance => BreakChance is > 0 and <= 1;
+    public string? UnknownBreakReward => !MinimumCounted ? $"The minimum break bar reads {Words.Number(MinimumProspecting)}, outside the range from 0 to under 1."
+        : !HasBreakChance ? "There is no usable break chance for this rock."
+        : Ore == null || OreQuantity <= 0 ? "This rock has no listed break product with a positive quantity."
+        : null;
+
     public double XpEach { get; private set; }
-    /// <summary>Mining XP per hour: the XP of the rock's XP tag on every hit.</summary>
-    public double XpPerHour => XpEach * HitsPerHour;
+    /// <summary>Mining XP per hour: the rock's XP once a break.</summary>
+    public double? XpPerHour => UnknownBreakReward == null ? XpEach * BreaksPerHour : null;
 
     public double Doubling { get; private set; }
 
@@ -177,7 +183,8 @@ sealed class RockRates
     /// <summary>The average ore of a break: its quantity, doubled on the doubling chance (the mod's reading).</summary>
     public double OrePerBreak => OreQuantity * (1 + Doubling);
     public double? BreaksPerHour => HitsPerBreak is { } hits && hits > 0 && HasTime ? HitsPerHour / hits : null;
-    public double? OrePerHour => BreaksPerHour * OrePerBreak;
+    public double? BreakOrePerHour => UnknownBreakReward == null ? BreaksPerHour * OrePerBreak : null;
+    public double? OrePerHour => BreakOrePerHour + PerHit.Where(d => Equals(d.Item, Ore)).Sum(d => d.PerHour);
     /// <summary>The time of one ore: an hour over the ore of an hour.</summary>
     public double? SecondsPerOre => OrePerHour is { } ore && ore > 0 ? 3600 / ore : null;
     /// <summary>What one ore sells for, in gold; null when it sells for nothing or not for gold.</summary>
@@ -194,8 +201,7 @@ sealed class RockRates
     /// What the items of an hour sell for, in gold: the ore and the items of a hit. Null while no rule for the hits a
     /// break takes is settled: the ore's hour is not known then.
     /// </summary>
-    public double? GoldPerHour => Settled == null ? null : OrePrice is null ? PerHitGoldPerHour
-        : OrePerHour is { } ore ? ore * OrePrice.Value + PerHitGoldPerHour : null;
+    public double? GoldPerHour => BreakOrePerHour * (OrePrice ?? 0) + PerHitGoldPerHour;
 
     // The game keeps intervals in milliseconds (Fishing Rates found its catch times to match the game's to the
     // hundredth this way) and chances as fractions (0.1 is 10%).
@@ -231,12 +237,13 @@ sealed class RockRates
         }
 
         r.HitSeconds = stats.Interval.Value / Ms;
-        r.BreakChance = Fraction(stats.RockBreakChance.Value);
+        r.BreakChance = stats.RockBreakChance.Value;
         // As the game keeps it, not cut to a fraction: a minimum of 1 or more is not counted (MinimumCounted).
-        r.MinimumProspecting = stats.MinimumProspecting.Value is var minimum && double.IsFinite(minimum) ? minimum : -1;
+        r.MinimumProspecting = stats.MinimumProspecting.Value;
         r.XpEach = stats.Experience.XpToAdd.Value;
         r.Doubling = Chance(stats.DoublingChance);
-        r.HitsPerBreak = Settled is { } settled && r.HasTime && r.MinimumCounted ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
+        r.HitsPerBreak = Settled is { } settled && r.HasTime && r.MinimumCounted && r.HasBreakChance
+            ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
         double hits = r.HitsPerHour;
 
         if (recipe.Product?.Item is { } ore)

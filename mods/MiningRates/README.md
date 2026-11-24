@@ -8,14 +8,12 @@
 
 > Where do I mine for the most XP, ore or gold per hour?
 
-![Every rock with its category, the time of one ore, and ore, Mining XP and gold per hour, sorted by XP, the best of each column in gold](../../docs/img/mining-rates.png)
+<!-- picture: Mining Rates beside the rock cards, sorted by Mining XP per hour -->
 
-Every rock has its own time per hit, its own XP and its own ore, and some give gems or other items on the
-side. The ore does not come on every hit: it comes when the rock breaks, and how often that is depends on the
-rock's break chance. To compare the rocks you would open them one by one and work out the hour in your head.
-Mining Rates puts them side by side: one line per rock, with the time of one ore and the ore, Mining XP and
-gold an hour there gives your character, from the game's own numbers. Hover a line for the whole hour, and
-click it to see that rock on the Mining page.
+Mining Rates compares the rocks on the Mining page. A rock's XP counts once per break. A rock that
+takes more hits to break gives its XP less often. The window estimates ore from the listed break product
+and shows the items a hit can bring separately. Hover a line for the whole hour, or click it to see
+that rock on the Mining page.
 
 ## Contents
 
@@ -33,6 +31,9 @@ On the Mining page, a round button with the Mining icon joins the others on the 
 Click it to open the window, and again, or the red X, to close it. On a window folded down to its title, the
 button opens it up again. It is lit while the window is open and not folded.
 
+On first opening, the window leaves room for as many rock cards as possible, then for the active rock and
+category filter. A position you save by dragging takes precedence.
+
 The button is only there on the Mining page. On any other page the window steps aside; back on the Mining
 page, it is there again as you left it, open or folded.
 
@@ -48,15 +49,15 @@ category, and:
 | Column | What it is |
 | --- | --- |
 | **Time** | How long one ore takes, with your bonuses and the hits a break takes counted in. |
-| **Ore** | The rock's ore per hour. |
-| **XP** | Mining XP per hour. |
+| **Ore** | Estimated ore per hour, including any of the same item listed on hit. |
+| **XP** | Mining XP per hour, counted once per break. |
 | **Gold** | What the ore and the other items of an hour sell for. |
 
 - **The best number of each column is gold**: the shortest time and the most ore, XP and gold.
 - **Click a column's name to sort by it.** The first click puts the best rocks on top, the next turns the
   order around. "Rock" goes back to the order of the page. The name the list is sorted by is gold, with the
-  game's small arrow after it. The tip of the name "Ore" quotes the game's words the hits a break takes rest
-  on.
+  game's small arrow after it. The tip of the name "Ore" quotes the game's break rule and says the ore of a break
+  has not been measured yet.
 - **The rock the Mining page shows** in its big panel, the one you are mining, has the lit outline of a
   selected line, so it can be found in a sorted list.
 - **Click a line to see that rock on the Mining page**: when the page's category filter is on another
@@ -71,7 +72,7 @@ category, and:
   measured once its category is shown: a click on its line changes the filter, and from then on its tooltip
   says when there is no room.
 
-![After a click on Gold Ore's line: the Mining page scrolled so that the whole card of Gold Ore stands beside the window](../../docs/img/mining-rates-clicked.png)
+<!-- picture: after a row click, the rock card beside Mining Rates with XP sorted by the corrected rate -->
 
 - **A rock you cannot mine yet is greyed**, with the Mining level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
@@ -92,8 +93,8 @@ Put the pointer on a line for the whole hour at that rock:
 | **One hit every 1.5s: 2,400 hits an hour.** | The game's time of a hit for the rock, with your bonuses. |
 | **A break every 1.85 hits on average, worked out by the game's own rule: 1,296 an hour.** | How many hits a break takes, from the rock's break chance (see [What is counted](#what-is-counted)), and the breaks of an hour. |
 | **Your minimum break bar (10%) is counted as where the bar starts.** | Only when you have a minimum break bar. |
-| **The ore is not counted: the game's minimum break bar here reads ...** | Instead of the breaks, when the game's minimum break bar for the rock is not a part of the bar (1 or more): the time of an ore, the ore and its gold are then `-`. |
-| **Mining XP** | Per hour, and for one hit. |
+| **XP, ore, time per ore and gold per hour are unmeasured here (-).** | The row explains what is missing for this rock. Its listed on-hit items still have their own lines. |
+| **Mining XP** | XP per break and per hour. The next line gives the Runite Ore watch counts. |
 | **Every break (break chance 45% a hit)**, and the ore | The rock's break chance, the ore a break gives, and how many an hour brings. |
 | **Every hit**, and a line per item | Each item a hit can bring, with its chance per hit, how many a hit brings when it is more than one, and how many an hour brings. |
 | **The doubling chance (5%) is counted in the ore and the items of a hit.** | Only when you have one. |
@@ -104,7 +105,7 @@ Put the pointer on a line for the whole hour at that rock:
 | **The Mining page has no room for this rock's card beside this window: drag the window aside.** | Instead of the line above, when no scroll of the page's list shows the rock's whole card clear of the window. |
 | **The Mining page has no room to show this rock's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
 
-![The tooltip of Clay: the time of a hit, the hits a break takes by the game's own rule, the XP, the ore of a break, the doubling chance, the gold, and that the page has no room for its card beside the window](../../docs/img/mining-rates-tooltip.png)
+<!-- picture: a rock's tooltip with XP per break, the Runite Ore counts and the unmeasured ore estimate -->
 
 ## What is counted
 
@@ -122,12 +123,16 @@ How many hits a break takes rests on the words the Mining page shows on a rock's
 | A hit takes the rock's time of a hit. | The game's value for the rock. |
 | Every hit breaks the rock at its break chance, the one its card shows. One that does not adds the chance to a sum, and the hit that brings the sum to 100% breaks it for sure (ten hits of 10% reach it). The hits a break takes on average follow from that. | The game's own words above. The tooltip of a card's break chance shows it as the "Current chance for this Rock", with your bonuses, even when the sum is part filled. |
 | A minimum break bar is where the sum starts after a break. | The mod's reading of its name. |
-| A break gives the rock's ore, as many as the game's quantity for it. | The game's value for the quantity; the Mining page lists the ore under "On Break Rewards". |
-| Every hit gives the rock's XP, whether it breaks the rock or not. | The mod's reading of the XP tag's words, "The Skill XP gained per action.": a hit is the game's action for Mining. |
+| Ore per break is an estimate from the listed product and quantity. | The page lists the ore under "On Break Rewards". How much reaches the bank on a break has not been measured yet. |
+| Mining XP comes once a break. | Measured: Runite Ore gave XP on 85 of 85 breaks and 0 of 318 other hits. |
 | The items of a hit come at their chance on every hit. | The game's chances, from its list of the items of a hit, the ones the page lists under "On Hit Rewards". |
 | The doubling chance doubles the ore of a break and the items of a hit. | The mod's reading of the game's words for it, "Your chance to double the output". |
 | Gold is what the ore and the items of a hit sell for. | The game's sell prices. |
 | Chances count as their long-run average. | The mod's. |
+
+Gem and emerald veins use their own break chance, minimum bar, break product and on-hit item list.
+If the chance or minimum cannot be used, or there is no positive break product, the window shows
+a dash for the break-dependent rates. The tooltip explains why.
 
 ## Questions it answers
 
@@ -155,7 +160,7 @@ How many hits a break takes rests on the words the Mining page shows on a rock's
 | You see | What it means |
 | --- | --- |
 | No round button on the Mining page | It comes a moment after the page opens. If it never comes, look for `[MiningRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
-| `-` in a line | The game gives no time of a hit for that rock yet, or (Time, Ore, Gold) its minimum break bar is not a part of the bar, and the tooltip says so. |
+| `-` in a line | Hover the rock to see which time, break stat or product the window could not use. |
 | A line without a picture | The game has no picture for that rock yet, only its grey stand-in, and the window shows none rather than the stand-in. |
 | "Not counted: a chance ..." instead of a name | The window has not read the name from the Mining page's list of bonuses yet. If it never does, `MelvorModLoader.log` says the game was updated. |
 | A line's tooltip says the page has no room for the card beside this window | The window lies over the rock's card, and the page's list cannot scroll the card above or below it. Drag the window aside, off the rocks' cards. |

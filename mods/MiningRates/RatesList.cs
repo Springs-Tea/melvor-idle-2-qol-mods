@@ -36,7 +36,7 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     /// </summary>
     public static List<RateColumn> All()
     {
-        var xp = new RateColumn("xp", "XP", "Mining XP per hour: the XP of a hit, on every hit", 66,
+        var xp = new RateColumn("xp", "XP", "Mining XP per hour, counted once per break.\n" + RockRates.XpMeasured, 66,
             r => r.HasTime ? r.XpPerHour : null, Words.Number, Better.More);
         if (RockRates.Settled is not { } settled)
             return
@@ -52,7 +52,7 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         [
             new("time", "Time", "Seconds for one ore, with the hits a break takes counted in", 58,
                 r => r.HasTime ? r.SecondsPerOre : null, Words.Seconds, Better.Less),
-            new("ore", "Ore", ore, 66, r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
+            new("ore", "Ore", ore + "\n" + RockRates.OreUnmeasured, 66, r => r.HasTime ? r.OrePerHour : null, Words.Number, Better.More),
             xp,
             new("gold", "Gold", "What the ore and the items of an hour sell for", 66,
                 r => r.HasTime ? r.GoldPerHour : null, Words.Number, Better.More),
