@@ -27,8 +27,10 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
 
     /// <summary>
     /// The columns, left to right. Bait only while a bait is selected on the Fishing page: without one no spot
-    /// uses any. Mastery XP is not a column: Fishing in this game has no mastery XP (its Mastery Guild counts
-    /// tasks, not XP).
+    /// uses any. Its tip says what backs it, the measured rule of SpotRates.PreservedBaitStays, the way Woodcutting
+    /// Rates' XP column says "Measured: ..." (mods/WoodcuttingRates/RatesList.cs, XpTip). Mastery XP is not a column:
+    /// Fishing in this game has no mastery XP (its Mastery Guild counts tasks, not XP). A tip's line stays within 82
+    /// characters, the Gold tip's: other mods hold their tips to it (Godot's tooltip does not wrap).
     /// </summary>
     public static List<RateColumn> For(string? bait)
     {
@@ -44,8 +46,12 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         };
         // Every catch uses one, so the fastest spot uses the most: that is no reason to call any of them the best.
         if (bait != null)
-            columns.Add(new("bait", "Bait", $"{bait} used per hour, less what is preserved", 58,
-                s => s.HasTime ? s.BaitPerHour : null, Words.Number, Better.Neither));
+        {
+            string tip = (SpotRates.PreservedBaitStays
+                ? $"{bait} taken from the bank per hour, less what is preserved"
+                : $"{bait} taken from the bank per hour: one every catch, preserved or not") + "\nMeasured: " + SpotRates.BaitSeen;
+            columns.Add(new("bait", "Bait", tip, 58, s => s.HasTime ? s.BaitPerHour : null, Words.Number, Better.Neither));
+        }
         return columns;
     }
 }
@@ -484,6 +490,9 @@ sealed class RatesList
 
     /// <summary>Development: the name over a column, by its key.</summary>
     public Button? DevHeader(string key) => _headers.FirstOrDefault(h => h.GetMeta("column").AsString() == key);
+
+    /// <summary>Development: the names over the list, left to right.</summary>
+    public IReadOnlyList<Button> DevHeaders => _headers;
 
     public ScrollContainer DevScroll => _scroll;
 
