@@ -87,6 +87,10 @@ public partial class MiningRatesMod : IMod
         try
         {
             if (_scrollTo != null && (long)Engine.GetFramesDrawn() >= _scrollAfter) ScrollToCard();
+#if DEVTOOLS
+            // Read the settled result of our own press before the next half-second refresh.
+            if (_devSettle != null && ReferenceEquals(GameAccess.CurrentGame, _game)) DevSettleNow();
+#endif
             if (!_tick.Due()) return;
             Game? game = GameAccess.CurrentGame;
             if (game is not { IsSaveLoaded: true }) game = null;
@@ -311,6 +315,14 @@ public partial class MiningRatesMod : IMod
             scale = largest;
         }
         var window = _window;
+        Vector2? first = at == null && !window.Minimised ? FirstPlace(window.Root.GetCombinedMinimumSize()) : null;
+        if (first is { } position) window.MoveTo(position);
+#if DEVTOOLS
+        _devOpened = first != null ? $"opened at the first place {first} (no saved position)"
+            : at != null ? $"opened at the player's own place {at} from settings.json"
+            : window.Minimised ? "opened in the middle (folded, with no saved position)"
+            : "opened in the middle (no saved position and no first place could be measured)";
+#endif
         window.CloseRequested += () => Click(Close);
         window.MinimisedChanged += folded => Click(() =>
         {
@@ -390,6 +402,58 @@ public partial class MiningRatesMod : IMod
             return;
         }
         Refresh();
+    }
+
+    // Woodcutting Rates' FirstPlace, with Firemaking Rates' panel tie-break. All candidate edges
+    // come from the current Mining page, the game's button strip or the available screen.
+    Vector2? FirstPlace(Vector2 size)
+    {
+        if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
+        try
+        {
+            var cards = Native.RockViews(_page!)?.Values.Where(c => GodotObject.IsInstanceValid(c) &&
+                !c.IsQueuedForDeletion() && c.IsVisibleInTree()).ToList();
+            if (cards == null || cards.Count == 0 || Native.ScrollOf(cards[0]) is not { } list) return null;
+            Rect2 screen = _ctx.Tree.Root.GetVisibleRect(), page = Native.Drawn(list);
+            float right = screen.End.X;
+            if (GodotObject.IsInstanceValid(_opener) && _opener!.GetParent() is Control strip && strip.IsVisibleInTree())
+            {
+                Rect2 buttons = Native.Drawn(strip);
+                right = buttons.Position.X - Math.Max(0, screen.End.X - buttons.End.X);
+            }
+            float bottom = screen.End.Y - FooterHeight();
+            float maxX = Math.Max(screen.Position.X, right - size.X), maxY = Math.Max(screen.Position.Y, bottom - size.Y);
+            var panels = new Control?[] { GameAccess.FindNode<ActiveRockView>(_page!), GameAccess.FindNode<MiningCategoryFilterView>(_page!) }
+                .OfType<Control>().Where(c => c.IsVisibleInTree()).Select(Native.Drawn).ToList();
+            var xs = new List<float> { maxX };
+            var ys = new List<float> { page.Position.Y };
+            foreach (Rect2 part in panels.Prepend(page))
+            {
+                xs.AddRange([part.Position.X - size.X, part.End.X, part.Position.X, part.End.X - size.X]);
+                ys.AddRange([part.Position.Y - size.Y, part.End.Y, part.Position.Y, part.End.Y - size.Y]);
+            }
+            Vector2? best = null;
+            (int Cards, int Panels, float Overlap) score = (-1, -1, 0);
+            foreach (float y in ys.Select(v => MathF.Round(Math.Clamp(v, screen.Position.Y, maxY))).Distinct())
+                foreach (float x in xs.Select(v => MathF.Round(Math.Clamp(v, screen.Position.X, maxX))).Distinct())
+                {
+                    var cover = new Rect2(x, y, size);
+                    var next = (cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll),
+                        panels.Count(p => !p.Intersects(cover)), -panels.Sum(p => p.Intersection(cover).Area));
+                    if (next.CompareTo(score) <= 0) continue;
+                    score = next;
+                    best = cover.Position;
+                }
+#if DEVTOOLS
+            DevLog($"first place | {best}, {score.Cards}/{cards.Count} cards have room, {score.Panels}/{panels.Count} panels clear");
+#endif
+            return best;
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+            return null;
+        }
     }
 
     // The page's filter shows this rock's category: all of them, or its own.

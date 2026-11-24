@@ -55,18 +55,15 @@ enum RuleSource
 /// those (level, equipment, potions, the Mastery Guild) changes the hour too. Built the way Fishing Rates builds a
 /// spot's hour (mods/FishingRates/SpotRates.cs).
 ///
-/// A hit is the game's action: its time is the rock's interval. That every hit gives the XP of the rock's XP tag is the
-/// mod's reading of the game's words ("The Skill XP gained per action.") and names (its event of a hit,
-/// RockMinedEventArgs, is its ActionPerformedEventArgs and says whether the hit broke the rock). The ore comes with a
-/// break, as the card lists it among its "On Break Rewards". How many hits a break takes rests on a rule
-/// (<see cref="BreakRule"/>), the one the card's break chance states in the game's own words (<see cref="Known"/>);
-/// without a rule the time of an ore, the ore and the gold of an hour are null and the window does not show them.
+/// MiningRock.Hit and MiningActionComponent.RockMined mark hits and breaks. Runite Ore and Topaz Vein gave XP
+/// only on breaks. MiningActionStats.Experience supplies the award and the rock's own break rate sets its hour.
+/// The listed ore comes with a break, as the Topaz Vein bank counts showed. On-hit items come at their own chances.
 /// </summary>
 sealed class RockRates
 {
     /// <summary>
     /// The first two sentences of the words the Mining page shows on a card's break chance
-    /// (MiningRockSelectView.s_rockBreakChanceStatDescription), quoted in the Ore column's tip and the guides. The light
+    /// (MiningRockSelectView.s_rockBreakChanceStatDescription), quoted in the player guides. The light
     /// check reads the game's words and says whether this is still them ("Dev: words").
     /// </summary>
     public const string GameWords = "Your chance to break the rock per hit.\nRock automatically breaks when a sum of 100% is reached.";
@@ -82,12 +79,22 @@ sealed class RockRates
     /// chance, one that does not adds it to the sum (the break bar, which grows by it: a "+x%" after the hit), and the hit
     /// that brings the sum to 100% breaks the rock. Every light check reads it again ("Dev: break rule", AS SETTLED);
     /// the watch (miningwatch.request, DevWatch.cs) can measure it on a character's own mining. Null here would leave the
-    /// window with the time of a hit and the XP only.
+    /// window with the time of a hit only.
     /// </summary>
     static readonly (BreakRule Rule, RuleSource Source)? Known = (BreakRule.SameChanceUntilFull, RuleSource.GameWords);
 
     /// <summary>The rule the hour rests on, or null while nothing has settled it (<see cref="Known"/>).</summary>
     public static (BreakRule Rule, RuleSource Source)? Settled => Known;
+
+    /// <summary>The XP rule used for every rock, with the observations behind the XP column's tip.</summary>
+    public sealed record BreakXp(string Measurement)
+    {
+        public double? PerHour(RockRates rock) => rock.UnknownBreakReward == null ? rock.XpEach * rock.BreaksPerHour : null;
+        public string Tip => "Mining XP per hour, counting each rock's listed XP once per break.\n" + Measurement;
+    }
+
+    /// <summary>The measurements behind counting the rock's listed XP once per break.</summary>
+    public static readonly BreakXp KnownXp = new("Runite Ore (85 breaks) and Topaz Vein (92) gave XP on breaks only.");
 
     /// <summary>
     /// One item a hit can bring. <see cref="Chance"/> is per hit; <see cref="Each"/> the average number a hit that
@@ -141,8 +148,10 @@ sealed class RockRates
     public bool HasTime => HitSeconds > 0.01 && double.IsFinite(HitSeconds);
     public double HitsPerHour => HasTime ? 3600 / HitSeconds : 0;
 
-    /// <summary>The rock's break chance as the game keeps it (MiningActionStats.RockBreakChance).</summary>
-    public double BreakChance { get; private set; }
+    /// <summary>The current break chance the rock's card shows, including bonuses above 100%.</summary>
+    public double CardBreakChance { get; private set; }
+    /// <summary>The chance used to count breaks, capped at certainty.</summary>
+    public double BreakChance => Fraction(CardBreakChance);
     /// <summary>
     /// Where the game's minimum of the break bar stands (MiningActionStats.MinimumProspecting), as the game keeps it.
     /// The break chance and the bar are fractions (Mithril Ore's bar at 0.675 after three hits of 0.225); a minimum is
@@ -151,8 +160,7 @@ sealed class RockRates
     /// </summary>
     public double MinimumProspecting { get; private set; }
     /// <summary>
-    /// The minimum is a part of the bar, from 0 to under 1, so it can be counted. Anything else (a minimum the game would
-    /// keep in percent would be 1 or more) leaves the hits a break takes, and the ore, uncounted for the rock.
+    /// The minimum is a part of the bar, from 0 to under 1. A guaranteed break needs no starting bar.
     /// </summary>
     public bool MinimumCounted => MinimumProspecting >= 0 && MinimumProspecting < 1;
 
@@ -163,9 +171,16 @@ sealed class RockRates
     /// </summary>
     public double? HitsPerBreak { get; private set; }
 
+    /// <summary>Why the window cannot count the rewards from this rock's breaks, or null when it can.</summary>
+    public string? UnknownBreakReward => BreakChance <= 0 ? "There is no usable break chance for this rock."
+        : !double.IsFinite(MinimumProspecting) && BreakChance < 1 ? "There is no usable minimum break bar for this rock."
+        : !MinimumCounted && HitsPerBreak == null ? $"The minimum break bar reads {Words.Number(MinimumProspecting)}, outside the range from 0 to under 1."
+        : Ore == null || OreQuantity <= 0 ? "This rock has no listed break product with a positive quantity."
+        : null;
+
     public double XpEach { get; private set; }
-    /// <summary>Mining XP per hour: the XP of the rock's XP tag on every hit.</summary>
-    public double XpPerHour => XpEach * HitsPerHour;
+    /// <summary>Mining XP per hour: the rock's XP once a break.</summary>
+    public double? XpPerHour => KnownXp.PerHour(this);
 
     public double Doubling { get; private set; }
 
@@ -177,7 +192,8 @@ sealed class RockRates
     /// <summary>The average ore of a break: its quantity, doubled on the doubling chance (the mod's reading).</summary>
     public double OrePerBreak => OreQuantity * (1 + Doubling);
     public double? BreaksPerHour => HitsPerBreak is { } hits && hits > 0 && HasTime ? HitsPerHour / hits : null;
-    public double? OrePerHour => BreaksPerHour * OrePerBreak;
+    public double? BreakOrePerHour => UnknownBreakReward == null ? BreaksPerHour * OrePerBreak : null;
+    public double? OrePerHour => BreakOrePerHour + PerHit.Where(d => Equals(d.Item, Ore)).Sum(d => d.PerHour);
     /// <summary>The time of one ore: an hour over the ore of an hour.</summary>
     public double? SecondsPerOre => OrePerHour is { } ore && ore > 0 ? 3600 / ore : null;
     /// <summary>What one ore sells for, in gold; null when it sells for nothing or not for gold.</summary>
@@ -194,8 +210,7 @@ sealed class RockRates
     /// What the items of an hour sell for, in gold: the ore and the items of a hit. Null while no rule for the hits a
     /// break takes is settled: the ore's hour is not known then.
     /// </summary>
-    public double? GoldPerHour => Settled == null ? null : OrePrice is null ? PerHitGoldPerHour
-        : OrePerHour is { } ore ? ore * OrePrice.Value + PerHitGoldPerHour : null;
+    public double? GoldPerHour => BreakOrePerHour * (OrePrice ?? 0) + PerHitGoldPerHour;
 
     // The game keeps intervals in milliseconds (Fishing Rates found its catch times to match the game's to the
     // hundredth this way) and chances as fractions (0.1 is 10%).
@@ -231,12 +246,13 @@ sealed class RockRates
         }
 
         r.HitSeconds = stats.Interval.Value / Ms;
-        r.BreakChance = Fraction(stats.RockBreakChance.Value);
+        r.CardBreakChance = stats.RockBreakChance.Value;
         // As the game keeps it, not cut to a fraction: a minimum of 1 or more is not counted (MinimumCounted).
-        r.MinimumProspecting = stats.MinimumProspecting.Value is var minimum && double.IsFinite(minimum) ? minimum : -1;
+        r.MinimumProspecting = stats.MinimumProspecting.Value;
         r.XpEach = stats.Experience.XpToAdd.Value;
         r.Doubling = Chance(stats.DoublingChance);
-        r.HitsPerBreak = Settled is { } settled && r.HasTime && r.MinimumCounted ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
+        r.HitsPerBreak = Settled is { } settled && r.HasTime && r.BreakChance > 0
+            ? ExpectedHits(settled.Rule, r.BreakChance, r.MinimumProspecting) : null;
         double hits = r.HitsPerHour;
 
         if (recipe.Product?.Item is { } ore)
@@ -280,15 +296,17 @@ sealed class RockRates
     public static double? ExpectedHits(BreakRule rule, double chance, double minimum)
     {
         if (rule == BreakRule.SameChance) return chance > 0 ? 1 / chance : null;
+        if (rule == BreakRule.SameChanceUntilFull && chance >= 1) return 1;
+        if (minimum is not (>= 0 and < 1)) return null;
         if (rule == BreakRule.SameChanceUntilFull)
         {
             if (chance <= 0) return null;
             // The hit that brings the sum to 100%: the k-th, the first with minimum + k * chance at 100%. A sum that is 100%
             // on paper is reached (10 hits of 10%), whatever the last digit of the arithmetic says.
             double sure = Math.Max(1, Math.Ceiling((1 - minimum) / chance - 1e-9));
-            double miss = 1 - Math.Min(chance, 1);
+            double miss = 1 - chance;
             // Every hit before the sure one breaks the rock at the chance: 1 + miss + miss^2 + ... over the sure hits.
-            return miss <= 0 ? 1 : (1 - Math.Pow(miss, sure)) / (1 - miss);
+            return (1 - Math.Pow(miss, sure)) / (1 - miss);
         }
         // Without a raise the bar stays at its minimum, which is then the chance of every hit.
         if (chance <= 0) return minimum > 0 ? 1 / minimum : null;
