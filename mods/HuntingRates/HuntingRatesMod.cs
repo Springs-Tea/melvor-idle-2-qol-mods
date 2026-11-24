@@ -745,9 +745,10 @@ public partial class HuntingRatesMod : IMod
     // strip of round buttons as the strip is from the screen's edge, so it never covers a round button; its left side;
     // level with its top, or with its bottom above the game's bottom bar), ranked as Woodcutting and Firemaking Rates rank
     // theirs (review 3 of this job: the first check opened it over the locations and the cards, with 1 card of 4 in
-    // sight): first the room a click needs, the cards of the page's list and its location buttons whole beside it
-    // (Native.Place: in sight, or after a scroll), then the panel of the animal selected left uncovered, then the panel of
-    // the hunt in progress; the right top when they are equal. The window may cover the panel of the hunt in progress when
+    // sight): first the cards of the page's list whole beside it (Native.Place: in sight, or after a scroll), which is what
+    // the player must see after a click; then the location buttons whole beside it (a click presses them by their event,
+    // so they come after the cards and can never outweigh them: the code review of turn 4, fault 3); then the panel of
+    // the animal selected left uncovered, then the panel of the hunt in progress; the right top when they are equal. The window may cover the panel of the hunt in progress when
     // nothing else keeps the cards clear. Everything is measured from the page as it is drawn now. Null when the page's
     // parts are not there: the window then opens in the middle.
     Vector2? FirstPlace(Vector2 size)
@@ -772,7 +773,7 @@ public partial class HuntingRatesMod : IMod
             float bottom = screen.End.Y - FooterHeight();
             float lowest = Math.Max(screen.Position.Y, bottom - size.Y), widest = Math.Max(screen.Position.X, right - size.X);
             Vector2? best = null;
-            (int Room, int Selected, int Current) most = (-1, -1, -1);
+            (int Cards, int Buttons, int Selected, int Current) most = (-1, -1, -1, -1);
             var ranked = new List<string>();
             foreach (float left in new[] { right - size.X, page.Position.X })
                 foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
@@ -780,7 +781,7 @@ public partial class HuntingRatesMod : IMod
                     float x = Math.Clamp(left, screen.Position.X, widest), y = Math.Clamp(top, screen.Position.Y, lowest);
                     var cover = new Rect2(x, y, size);
                     bool Whole(Control control) => Native.Place(control, cover, out _) is CardSight.Clear or CardSight.Scroll;
-                    var rank = (Room: cards.Count(Whole) + places.Count(Whole), Selected: selected != null && !Native.Covered(selected, cover) ? 1 : 0,
+                    var rank = (Cards: cards.Count(Whole), Buttons: places.Count(Whole), Selected: selected != null && !Native.Covered(selected, cover) ? 1 : 0,
                         Current: current != null && !Native.Covered(current, cover) ? 1 : 0);
                     ranked.Add($"({x:0}, {y:0}): {cards.Count(Whole)} of {cards.Count} cards and {places.Count(Whole)} of {places.Count} location buttons whole beside it, " +
                         $"the selected animal's panel {(rank.Selected == 1 ? "clear" : selected == null ? "not shown" : "covered")}, the hunt's panel {(rank.Current == 1 ? "clear" : current == null ? "not shown" : "covered")}");

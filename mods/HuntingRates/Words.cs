@@ -161,6 +161,8 @@ static class Words
 
     // The lines joined, each line longer than Fishing Rates' longest (94 characters) wrapped at its words, the rest of it
     // indented two spaces more than it (Godot's tooltip does not wrap: review 3, a rare species' lock of 114 characters).
+    // A line is cut at the space the fewest brackets deep that leaves it short enough, the last such space, so that a
+    // lock in brackets is kept whole before anything inside it is cut, and "(Step 1)" never is (review 4).
     const int MostWide = 94;
     static string Joined(IEnumerable<string> lines) => string.Join("\n", lines.SelectMany(l => l.Split('\n')).SelectMany(Wrapped));
 
@@ -171,13 +173,31 @@ static class Words
         string rest = line;
         while (rest.Length > MostWide)
         {
-            int cut = rest.LastIndexOf(' ', MostWide);
-            if (cut <= indent.Length) cut = rest.IndexOf(' ', MostWide);
+            int cut = Cut(rest, indent.Length);
             if (cut < 0) break;
             yield return rest[..cut];
             rest = indent + rest[(cut + 1)..].TrimStart(' ');
         }
         yield return rest;
+    }
+
+    // Where to cut a line too long: of its spaces after the indent and within MostWide, the one the fewest brackets deep,
+    // the last of those; when none is within MostWide, the first space after it (a word longer than the room stays whole).
+    static int Cut(string line, int indent)
+    {
+        int best = -1, bestDepth = int.MaxValue, depth = 0;
+        for (int i = 0; i < line.Length && i <= MostWide; i++)
+        {
+            char c = line[i];
+            if (c == '(') depth++;
+            else if (c == ')') depth = Math.Max(0, depth - 1);
+            else if (c == ' ' && i > indent && depth <= bestDepth)
+            {
+                best = i;
+                bestDepth = depth;
+            }
+        }
+        return best >= 0 ? best : line.IndexOf(' ', MostWide);
     }
 
     // The XP as the page writes it (its XP tag, a range once the page has shown it) and, while no watch has settled it,

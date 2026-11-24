@@ -553,6 +553,9 @@ public partial class HuntingRatesMod
                 // The animal is put back two process frames after its location (DevAnimalBackSoon), not on this tick: its
                 // words are taken here, and anything it could not do is tried again now.
                 if (_devAnimalBackFrame >= 0 || Waiting()) return false;
+                // His changes read again right before a press of the step's own: it never presses his old animal's card
+                // over one he has just picked (the code review of turn 4, fault 2).
+                His();
                 Put("the animal", () =>
                 {
                     string soon = _devAnimalBackWords;

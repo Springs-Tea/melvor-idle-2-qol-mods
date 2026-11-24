@@ -140,8 +140,10 @@ public partial class HuntingRatesMod
     // Each part the request owns, read again; one that is not exactly what the request left is the player's, and is let
     // go of, both ways: a location of his takes the animal and the scroll with it, an animal of his at the location the
     // page shows takes that location with it, and an animal or a scroll read under another location than the page shows
-    // now belongs to a list that is no longer there. Returns the parts he changed, in words.
-    List<string> DevHisNow()
+    // now belongs to a list that is no longer there. Returns the parts he changed, in words. scroll: false leaves the scroll
+    // to the settled reading, for the early put-back of the animal two process frames after a location's press, when the
+    // list may not have laid itself out yet (DevAnimalBackSoon).
+    List<string> DevHisNow(bool scroll = true)
     {
         var moved = new List<string>();
         var action = _hunting!.Action;
@@ -173,10 +175,11 @@ public partial class HuntingRatesMod
         }
         if (_devOwnJournal is { } journal && DevJournalNowOrNull() is { } now && now != journal.Value)
             Let("view", $"the view (now the {(now ? "journal" : "hunt")}, the request left the {(journal.Value ? "journal" : "hunt")})");
+        if (!scroll) return moved;
         if (_devOwnScroll != null && !ReferenceEquals(action.SelectedLocation, _devScrollUnder))
             Let("scroll", "the scroll (the list is of another location now)");
-        if (_devOwnScroll is { } scroll && DevScrollNow() is var at && at != scroll.Value)
-            Let("scroll", $"the scroll (now {at?.ToString() ?? "-"}, the request left {scroll.Value?.ToString() ?? "-"})");
+        if (_devOwnScroll is { } own && DevScrollNow() is var at && at != own.Value)
+            Let("scroll", $"the scroll (now {at?.ToString() ?? "-"}, the request left {own.Value?.ToString() ?? "-"})");
         return moved;
     }
 
@@ -304,9 +307,19 @@ public partial class HuntingRatesMod
         _devSettle = ((long)Engine.GetProcessFrames(), Time.GetTicksMsec(), false);
         if (!took) return $"the location NOT AS IT WAS: the page's own button of {origin.Location.Location?.Id} did not open it (it stays the request's own)";
         _devOwnLocation = null;
-        // The animal goes back two process frames later, once the page has laid out the location's cards, as the window's
-        // own click steps (ClickStepNow): its card stands for a moment at most (the third code review).
-        if (_devOwnAnimal != null) _devAnimalBackFrame = (long)Engine.GetProcessFrames() + 2;
+        // What the request's own location press left is the request's own at once, as DevSettle's put-back branch takes it:
+        // the animal the page shows now, read under the location it shows now, and the scroll under that location (its
+        // value is read again once the page has settled). So the early put-back of the animal sees as his only a change he
+        // made after this press (the code review of turn 4, fault 1).
+        if (_devOwnAnimal != null)
+        {
+            _devOwnAnimal = new(action.SelectedAnimal);
+            _devAnimalUnder = action.SelectedLocation;
+            // The animal goes back two process frames later, once the page has laid out the location's cards, as the
+            // window's own click steps (ClickStepNow): its card stands for a moment at most (the third code review).
+            _devAnimalBackFrame = (long)Engine.GetProcessFrames() + 2;
+        }
+        if (_devOwnScroll != null) _devScrollUnder = action.SelectedLocation;
         string animal = his != null && !ReferenceEquals(action.SelectedAnimal, his)
             ? $"; the animal the player had picked, {his.Animal.Id}, NOT AS IT WAS: the game changed it to {action.SelectedAnimal?.Animal.Id ?? "none"} with the location" : "";
         return $"the location put back to {origin.Location.Location?.Id} with the page's own button{animal}";
@@ -324,7 +337,7 @@ public partial class HuntingRatesMod
         if (_stopped || _hunting == null || _page == null || !GodotObject.IsInstanceValid(_page)) return;
         try
         {
-            string his = string.Join(", ", DevHisNow().Select(p => $"{p} is the player's, and is left"));
+            string his = string.Join(", ", DevHisNow(scroll: false).Select(p => $"{p} is the player's, and is left"));
             _devAnimalBackWords = DevJoin(_devAnimalBackWords, his, DevAnimalBack());
         }
         catch (Exception e) { _devAnimalBackWords = DevJoin(_devAnimalBackWords, $"the animal NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message})"); }
