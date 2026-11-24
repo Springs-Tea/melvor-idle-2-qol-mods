@@ -27,11 +27,12 @@ namespace HuntingRates;
 //   with a value the page's controls cannot make (no "none").
 // - A press that selects is made only while no hunt runs, read again right before it (lesson 56). While a hunt runs,
 //   such a press, and such a put-back, is not made and is said: NOT PUT BACK when it was the request's own.
-// - The hunt guard (DevHuntGuard) listens from the request's start to its end. Every event of the hunt is marked by
-//   whether it came in a window of a press of the request's (from the press to its settled reading): HUNT STARTED,
-//   HUNT STOPPED, HUNT CHANGED (the animal hunted, the trap in use) and HUNT RESET (the hunted animal going back without
-//   a catch or an escape, the action's timer stopped, HuntingActionComponent.ShouldResetAction set) in such a window are
-//   the request's fault; outside one they are the player's or the game's (a trap swapped when one ran out), and said so.
+// - The hunt guard (DevHuntGuard) listens from the request's start to its end, and judges the hunt's events frame by
+//   frame (code review 2, fault 3): HUNT STARTED, HUNT STOPPED, HUNT CHANGED (the animal hunted, the trap in use) and
+//   HUNT RESET (the hunted animal going back with no catch or escape in that frame, the action's timer stopped and not
+//   started again in that frame, HuntingActionComponent.ShouldResetAction set). In the window of a press of the
+//   request's (from the press to its settled reading) they are the request's fault; outside every window they are the
+//   player's or the game's (a trap swapped when one ran out), the baseline, and said so.
 public partial class HuntingRatesMod
 {
     sealed record DevOwn<T>(T Value);
@@ -82,8 +83,17 @@ public partial class HuntingRatesMod
 
     bool DevOwnsAny => _devOwnLocation != null || _devOwnAnimal != null || _devOwnJournal != null || _devOwnScroll != null;
 
-    // A hunt runs: read again right before every press that selects and every put-back of a selection (lesson 56).
-    bool DevHuntRuns => _hunting!.Action.IsStarted;
+    // A hunt runs, by the window's own test (AnimalRates.IsHunting): read again right before every press that selects and
+    // every put-back of a selection (lesson 56).
+    bool DevHuntRuns => HuntRuns();
+
+    // The test and its three parts, for the log.
+    string DevHuntRunsWords()
+    {
+        var action = _hunting!.Action;
+        return $"a hunt runs by the window's test: {HuntRuns()} (started {action.IsStarted}, among the game's running actions {DevHuntingNow()}, " +
+            $"the animal hunted {action.CurrentAnimal?.Animal.Id ?? "none"} in state {action.CurrentAnimal?.State.ToString() ?? "-"})";
+    }
 
     // The page is still laying itself out after a press: the request's own, or a click on a line in its steps.
     bool DevSettling => _devSettle != null || _clickStep != null || _viewCheck != null || _scrollTo != null;
@@ -224,6 +234,14 @@ public partial class HuntingRatesMod
         DevLog($"focus | the keyboard focus taken off {DevName(owner)}, which the request's press gave it");
     }
 
+    // A hand is at the mouse now: the real pointer moved, or a button was down, within StillFor (DevWatchHand).
+    bool DevHandNow() => _devHandAt != 0 && Time.GetTicksMsec() - _devHandAt < StillFor;
+
+    // What the player is to select by hand when a selection of his could not be put back (Firemaking Rates' words).
+    string DevByHand() => _devOrigin is { } origin
+        ? $"TO SELECT BY HAND on the Hunting page: the location '{origin.Location?.Location?.DisplayName.Text ?? "-"}' and the animal '{origin.Animal?.Animal.DisplayName.Text ?? "-"}'"
+        : "";
+
     // ---- the put-back of the page's parts, each on its own, through the page's own controls ----------------------------
 
     // The view the request owns, put back by the page's own button of the view it was (the journal's or the hunt's),
@@ -278,7 +296,7 @@ public partial class HuntingRatesMod
         if (DevHuntRuns)
         {
             _devOwnLocation = null;
-            return $"the location NOT PUT BACK: a hunt runs, and nothing is selected while one runs (left on {action.SelectedLocation?.Location?.Id ?? "none"})";
+            return $"the location NOT PUT BACK: a hunt runs, and nothing is selected while one runs (left on {action.SelectedLocation?.Location?.Id ?? "none"}); {DevByHand()}";
         }
         ActiveHuntingAnimal? his = _devOwnAnimal == null ? action.SelectedAnimal : null;
         _devGuard?.Open("the put-back of the location");
@@ -306,12 +324,12 @@ public partial class HuntingRatesMod
         if (DevHuntRuns)
         {
             _devOwnAnimal = null;
-            return $"the animal NOT PUT BACK: a hunt runs, and nothing is selected while one runs (left on {action.SelectedAnimal?.Animal.Id ?? "none"})";
+            return $"the animal NOT PUT BACK: a hunt runs, and nothing is selected while one runs (left on {action.SelectedAnimal?.Animal.Id ?? "none"}); {DevByHand()}";
         }
         if (!ReferenceEquals(action.SelectedLocation, origin.Animal.Location))
         {
             _devOwnAnimal = null;
-            return $"the animal NOT PUT BACK: its card is at {origin.Animal.Location?.Location?.Id}, and the page shows {action.SelectedLocation?.Location?.Id ?? "none"}";
+            return $"the animal NOT PUT BACK: its card is at {origin.Animal.Location?.Location?.Id}, and the page shows {action.SelectedLocation?.Location?.Id ?? "none"}; {DevByHand()}";
         }
         _devGuard?.Open("the put-back of the animal");
         bool took = DevSignalCard(origin.Animal);
@@ -552,21 +570,41 @@ public partial class HuntingRatesMod
         public static void DisposeCurrent() => s_current?.Dispose();
     }
 
-    // The hunt guard: from the request's start to its end, every event of the hunt, each marked by whether it came in a
-    // window of a press of the request's (Open to Close). See the header of this file for what each mark means.
+    // The hunt guard: from the request's start to its end, every event of the hunt, gathered per process frame and judged
+    // per frame, as the watch groups its moments (code review 2, fault 3): the order of the game's events within one tick
+    // is not known, so a frame is read whole. In a frame:
+    // - the hunted animal going back to surveying, or a step or the tracks going down, is HUNT RESET only when no catch or
+    //   escape came in the same frame, and its hunt had not ended in an earlier one (a hunt that ended stays ended until
+    //   the next one leaves surveying);
+    // - the action's timer stopping is HUNT RESET only when it does not start again in the same frame (a timer the game
+    //   restarts for every step stops and starts in one frame);
+    // - HUNT STARTED, HUNT STOPPED, HUNT CHANGED (the animal hunted, the trap in use) and CHOICES CHANGED as they come.
+    // A frame's marks are the request's fault when the frame fell in the window of one of its presses (Open to Close);
+    // outside every window they are the player's or the game's, and are kept as the baseline the read back names.
     sealed class DevHuntGuard : IDisposable
     {
+        // One process frame's events of the hunt.
+        sealed class Frame
+        {
+            public long Number;
+            public bool InWindow;
+            public bool Ended, Back, Down, TimerStopped, TimerStarted;
+            public readonly List<string> Backs = new(), Marks = new(), Course = new();
+        }
+
         readonly List<Action> _off = new();
-        readonly List<(string What, bool Mark)> _window = new();
+        readonly List<string> _window = new(), _windowCourse = new();
         readonly List<string> _outside = new();
         readonly Func<ActiveHuntingAnimal?> _hunted;
         readonly Action<string> _log;
+        Frame? _frame;
         string _press = "";
-        /// <summary>Every mark that came in a press's window, with the press: what the read back holds against the request.</summary>
-        public readonly List<string> Marked = new();
         bool _ended, _resetSeen;
+        int _outsideFrames;
         public bool IsOpen { get; private set; }
         public bool AnyInPress { get; private set; }
+        /// <summary>Every mark that came in a press's window, with the press: what the read back holds against the request.</summary>
+        public readonly List<string> Marked = new();
         static DevHuntGuard? s_current;
 
         public DevHuntGuard(HuntingActionComponent action, Action<string> log)
@@ -580,11 +618,12 @@ public partial class HuntingRatesMod
                 try { add(); }
                 catch (Exception e) { log("hunt guard | a listener failed: " + e.Message); }
             }
-            EventHandler<ActionEventArgs> started = (_, _) => Safe(() => Saw("HUNT STARTED", true)), stopped = (_, _) => Safe(() => Saw("HUNT STOPPED", true));
-            EventHandler<ValueChangedEventArgs<ActiveHuntingAnimal>> animal = (_, e) => Safe(() => Saw($"HUNT CHANGED: the animal hunted {e.NewValue?.Animal.Id ?? "none"}", true));
-            EventHandler<ValueChangedEventArgs<Item>> trap = (_, e) => Safe(() => Saw($"HUNT CHANGED: the trap in use {e.NewValue?.Id ?? "none"}", true));
-            EventHandler timerStarted = (_, _) => Safe(() => Saw("the action's timer started", false)),
-                timerStopped = (_, _) => Safe(() => Saw("HUNT RESET: the action's timer stopped", true));
+            EventHandler<ActionEventArgs> started = (_, _) => Safe(() => Now().Marks.Add("HUNT STARTED")),
+                stopped = (_, _) => Safe(() => Now().Marks.Add("HUNT STOPPED"));
+            EventHandler<ValueChangedEventArgs<ActiveHuntingAnimal>> animal = (_, e) => Safe(() => Now().Marks.Add($"HUNT CHANGED: the animal hunted {e.NewValue?.Animal.Id ?? "none"}"));
+            EventHandler<ValueChangedEventArgs<Item>> trap = (_, e) => Safe(() => Now().Marks.Add($"HUNT CHANGED: the trap in use {e.NewValue?.Id ?? "none"}"));
+            EventHandler timerStarted = (_, _) => Safe(() => { Frame f = Now(); f.TimerStarted = true; f.Course.Add("the timer started"); }),
+                timerStopped = (_, _) => Safe(() => { Frame f = Now(); f.TimerStopped = true; f.Course.Add("the timer stopped"); });
             action.Started += started;
             action.Stopped += stopped;
             action.CurrentAnimalChanged += animal;
@@ -612,47 +651,51 @@ public partial class HuntingRatesMod
                 if (a == null) continue;
                 ActiveHuntingAnimal watched = a;
                 bool Hunted() => ReferenceEquals(_hunted(), watched);
+                string id = watched.Animal.LocalId;
                 EventHandler<ValueChangedEventArgs<HuntState>> state = (_, e) => Safe(() =>
                 {
                     if (!Hunted()) return;
-                    bool back = e.NewValue == HuntState.Surveying && e.OldValue != HuntState.Surveying && !_ended;
-                    Saw(back ? $"HUNT RESET: {watched.Animal.LocalId} went back to surveying from {e.OldValue} without a catch or an escape"
-                        : $"{watched.Animal.LocalId} {e.OldValue} -> {e.NewValue}", back);
-                    // A hunt that ended stays ended until the next one leaves surveying: its steps and tracks may go back
-                    // to 0 meanwhile, in whatever order the game raises them.
+                    Frame f = Now();
+                    f.Course.Add($"{id} {e.OldValue} -> {e.NewValue}");
+                    if (e.NewValue == HuntState.Surveying && e.OldValue != HuntState.Surveying)
+                    {
+                        f.Back = true;
+                        f.Backs.Add($"{id} went back to surveying from {e.OldValue}");
+                    }
+                    // A hunt that ended stays ended until the next one leaves surveying.
                     if (e.OldValue == HuntState.Surveying && e.NewValue != HuntState.Surveying) _ended = false;
                 });
                 EventHandler<ValueChangedEventArgs<int>> step = (_, e) => Safe(() =>
                 {
                     if (!Hunted() || e.NewValue >= e.OldValue) return;
-                    Saw(_ended ? $"{watched.Animal.LocalId} step {e.OldValue} -> {e.NewValue} after its hunt ended"
-                        : $"HUNT RESET: {watched.Animal.LocalId} step {e.OldValue} -> {e.NewValue} without a catch or an escape", !_ended);
+                    Frame f = Now();
+                    f.Down = true;
+                    f.Backs.Add($"{id} step {e.OldValue} -> {e.NewValue}");
                 });
                 EventHandler<ValueChangedEventArgs<int>> tracks = (_, e) => Safe(() =>
                 {
                     if (!Hunted() || e.NewValue >= e.OldValue) return;
-                    Saw(_ended ? $"{watched.Animal.LocalId} tracks {e.OldValue} -> {e.NewValue} after its hunt ended"
-                        : $"HUNT RESET: {watched.Animal.LocalId} tracks {e.OldValue} -> {e.NewValue} without a catch or an escape", !_ended);
+                    Frame f = Now();
+                    f.Down = true;
+                    f.Backs.Add($"{id} tracks {e.OldValue} -> {e.NewValue}");
                 });
-                EventHandler<HuntingAnimalEventArgs> ended = (_, _) => Safe(() => _ended = true);
-                // The player's own choices for the animal: a change in a press's window is the request's fault.
-                EventHandler<ValueChangedEventArgs<Item>> chosen = (_, e) => Safe(() => Saw($"CHOICES CHANGED: {watched.Animal.LocalId} trap {e.NewValue?.Id ?? "none"}", true));
-                EventHandler<ValueChangedEventArgs<bool>> bait = (_, e) => Safe(() => Saw($"CHOICES CHANGED: {watched.Animal.LocalId} bait {e.NewValue}", true)),
-                    trapless = (_, e) => Safe(() => Saw($"CHOICES CHANGED: {watched.Animal.LocalId} trapless {e.NewValue}", true));
-                watched.SelectedTrapChanged += chosen;
-                watched.UseBaitChanged += bait;
-                watched.TraplessEnabledChanged += trapless;
-                _off.Add(() =>
+                EventHandler<HuntingAnimalEventArgs> ended = (_, _) => Safe(() =>
                 {
-                    watched.SelectedTrapChanged -= chosen;
-                    watched.UseBaitChanged -= bait;
-                    watched.TraplessEnabledChanged -= trapless;
+                    Frame f = Now();
+                    f.Ended = true;
+                    f.Course.Add($"{id} caught or escaped");
                 });
+                EventHandler<ValueChangedEventArgs<Item>> chosen = (_, e) => Safe(() => Now().Marks.Add($"CHOICES CHANGED: {id} trap {e.NewValue?.Id ?? "none"}"));
+                EventHandler<ValueChangedEventArgs<bool>> bait = (_, e) => Safe(() => Now().Marks.Add($"CHOICES CHANGED: {id} bait {e.NewValue}")),
+                    trapless = (_, e) => Safe(() => Now().Marks.Add($"CHOICES CHANGED: {id} trapless {e.NewValue}"));
                 watched.StateChanged += state;
                 watched.CurrentStepChanged += step;
                 watched.TracksChanged += tracks;
                 watched.AnimalTrapped += ended;
                 watched.AnimalEscaped += ended;
+                watched.SelectedTrapChanged += chosen;
+                watched.UseBaitChanged += bait;
+                watched.TraplessEnabledChanged += trapless;
                 _off.Add(() =>
                 {
                     watched.StateChanged -= state;
@@ -660,49 +703,89 @@ public partial class HuntingRatesMod
                     watched.TracksChanged -= tracks;
                     watched.AnimalTrapped -= ended;
                     watched.AnimalEscaped -= ended;
+                    watched.SelectedTrapChanged -= chosen;
+                    watched.UseBaitChanged -= bait;
+                    watched.TraplessEnabledChanged -= trapless;
                 });
             }
         }
 
-        void Saw(string what, bool mark)
+        // The frame of now: a new one when the process frame has changed, after the one before is judged.
+        Frame Now()
         {
-            if (IsOpen) _window.Add((what, mark));
-            else if (mark) _outside.Add(what);
+            long number = (long)Engine.GetProcessFrames();
+            if (_frame is { } open && open.Number == number) { open.InWindow |= IsOpen; return open; }
+            Judge();
+            return _frame = new Frame { Number = number, InWindow = IsOpen };
         }
 
-        // Every tick: HuntingActionComponent.ShouldResetAction (internal, read by its name), set while a press's window is
-        // open, is a reset of the request's; set outside one, the game's.
+        // A frame read whole: its marks, and where they go.
+        void Judge()
+        {
+            if (_frame is not { } f) return;
+            _frame = null;
+            var marks = new List<string>(f.Marks);
+            if ((f.Back || f.Down) && !f.Ended && !_ended)
+                marks.Add($"HUNT RESET: {string.Join(", ", f.Backs)} without a catch or an escape in that frame");
+            if (f.TimerStopped && !f.TimerStarted) marks.Add("HUNT RESET: the action's timer stopped and did not start again in that frame");
+            if (f.Ended) _ended = true;
+            if (f.InWindow)
+            {
+                _window.AddRange(marks);
+                if (f.Course.Count > 0) _windowCourse.Add(string.Join(" ", f.Course));
+            }
+            else if (marks.Count > 0)
+            {
+                _outside.AddRange(marks);
+                _outsideFrames++;
+            }
+        }
+
+        // Every tick: the frame before is judged once it is over, and HuntingActionComponent.ShouldResetAction (internal,
+        // read by its name) is read: set in a press's window, a reset of the request's; set outside one, the game's.
         public void Poll(bool? reset)
         {
+            if (_frame is { } open && open.Number != (long)Engine.GetProcessFrames()) Judge();
             if (reset != true) { _resetSeen = false; return; }
             if (_resetSeen) return;
             _resetSeen = true;
-            Saw("HUNT RESET: HuntingActionComponent.ShouldResetAction is set", true);
+            const string words = "HUNT RESET: HuntingActionComponent.ShouldResetAction is set";
+            if (IsOpen) _window.Add(words);
+            else _outside.Add(words);
         }
 
         public void Open(string press)
         {
             if (IsOpen) _log("hunt | " + Close());
+            Judge();
             IsOpen = true;
             _press = press;
             _window.Clear();
+            _windowCourse.Clear();
         }
 
         // The words of the window that closes: what the hunt did from the press to its settled reading.
         public string Close()
         {
             if (!IsOpen) return "";
+            Judge();
             IsOpen = false;
-            var marks = _window.Where(w => w.Mark).Select(w => w.What).ToList();
-            if (marks.Count > 0) AnyInPress = true;
-            Marked.AddRange(marks.Select(m => $"{m} (after {_press})"));
-            string others = string.Join(", ", _window.Where(w => !w.Mark).Select(w => w.What));
-            return $"from {_press} to its settled reading: " + (marks.Count == 0 ? "the hunt changed nothing of its own, nothing marked" : string.Join(", ", marks)) +
-                (others.Length > 0 ? $" (its own course: {others})" : "");
+            if (_window.Count > 0) AnyInPress = true;
+            Marked.AddRange(_window.Select(m => $"{m} (after {_press})"));
+            string course = string.Join(" | ", _windowCourse);
+            return $"from {_press} to its settled reading: " + (_window.Count == 0 ? "the hunt changed nothing of its own, nothing marked" : string.Join(", ", _window)) +
+                (course.Length > 0 ? $" (its own course, frame by frame: {course})" : "");
         }
 
-        // What the hunt did outside every press's window: the player's or the game's.
-        public string Outside => _outside.Count == 0 ? "" : string.Join(", ", _outside.Distinct());
+        // What the hunt did outside every press's window, the baseline: the player's or the game's.
+        public string Outside
+        {
+            get
+            {
+                Judge();
+                return _outside.Count == 0 ? "nothing marked" : $"{_outside.Count} marks in {_outsideFrames} frames: {string.Join(", ", _outside.Distinct())}";
+            }
+        }
 
         public void Dispose()
         {

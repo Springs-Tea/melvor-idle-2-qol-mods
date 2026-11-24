@@ -5,6 +5,7 @@ using GamesByMalcs.Melvor2.Conditions;
 using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities.Hunting;
 using GamesByMalcs.Melvor2.Stats.Nodes;
+using GamesByMalcs.Melvor2;
 using Godot;
 
 namespace HuntingRates;
@@ -318,13 +319,24 @@ sealed class AnimalRates
     public static bool Listed(ActiveHuntingAnimal active) =>
         active.Animal.DisplayRequirements?.AreMet != false && LocationListed(active.Location);
 
+    /// <summary>
+    /// A hunt runs, by the one test the window and its development request share (lesson 56; Firemaking Rates' IsBurning,
+    /// which errs on the safe side): Hunting is started (ActionComponent.IsStarted), or it is among the game's running
+    /// actions (ActionManager.ActiveActions), or the animal hunted is in a state other than idle (HuntState). While it
+    /// runs, nothing is selected.
+    /// </summary>
+    public static bool IsHunting(HuntingEntity hunting, Game? game) =>
+        hunting.Action.IsStarted || hunting.Action.CurrentAnimal is { State: not HuntState.Idle } ||
+        game?.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, hunting)) == true;
+
     public static bool LocationListed(ActiveHuntingLocation? location) =>
         location?.Location is { } l && l.DisplayRequirements?.AreMet != false && (!l.OnlyShowWhenRecipesAvailable || location.UnlockedRecipeCount > 0);
 
     /// <param name="look">The name, picture and its colour the list shows (HuntingRatesMod.Look).</param>
     /// <param name="hidden">The game's word for something not found yet, for a rare species never trapped and a collectable never found.</param>
+    /// <param name="huntRuns">A hunt runs (<see cref="IsHunting"/>), read once for every line.</param>
     public static AnimalRates Read(ActiveHuntingAnimal active, HuntingEntity hunting, (string Name, Texture2D? Picture, Color Tint) look,
-        (double, double)? xpRange, Func<Item, long> inBank, string hidden)
+        (double, double)? xpRange, Func<Item, long> inBank, string hidden, bool huntRuns)
     {
         HuntingAnimal animal = active.Animal;
         HuntingActionStats stats = active.Stats;
@@ -337,8 +349,8 @@ sealed class AnimalRates
             Discovered = active.JournalEntry?.IsDiscovered != false,
             OnPage = ReferenceEquals(action.SelectedAnimal, active),
             LocationOnPage = ReferenceEquals(action.SelectedLocation, active.Location),
-            Hunted = action.IsStarted && ReferenceEquals(action.CurrentAnimal, active),
-            HuntRuns = action.IsStarted,
+            Hunted = huntRuns && ReferenceEquals(action.CurrentAnimal, active),
+            HuntRuns = huntRuns,
             XpRange = xpRange,
         };
         ConditionGroup?[] groups = [location?.Requirements, animal.Requirements];

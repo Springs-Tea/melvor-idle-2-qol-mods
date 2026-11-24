@@ -498,7 +498,10 @@ public partial class HuntingRatesMod : IMod
 
     // An animal's hour, with what the list reads from the page for it.
     AnimalRates ReadAnimal(ActiveHuntingAnimal animal) =>
-        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, InBank, _hiddenWord ?? NotFound);
+        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, InBank, _hiddenWord ?? NotFound, HuntRuns());
+
+    // A hunt runs, by the one test the window and the development request share (AnimalRates.IsHunting).
+    bool HuntRuns() => AnimalRates.IsHunting(_hunting!, _game);
 
     // The window's words for something not found yet, when the game's own (AnimalSpeciesView.HiddenText) cannot be read.
     const string NotFound = "Not found yet";
@@ -583,13 +586,13 @@ public partial class HuntingRatesMod : IMod
             bool here = ReferenceEquals(action.SelectedLocation, active.Location);
             if (step.Stage == 1 && !here)
             {
-                if (action.IsStarted || !PressLocation(active.Location!)) return;
+                if (HuntRuns() || !PressLocation(active.Location!)) return;
                 _clickStep = step with { Stage = 2, After = (long)Engine.GetProcessFrames() + 2 };
                 return;
             }
             // The player went to another location meanwhile: his, and the click lets it be.
             if (!here) return;
-            if (step.Opens == AnimalRates.Opens.Animal && !action.IsStarted && !ReferenceEquals(action.SelectedAnimal, active)) PressCard(active);
+            if (step.Opens == AnimalRates.Opens.Animal && !HuntRuns() && !ReferenceEquals(action.SelectedAnimal, active)) PressCard(active);
             _scrollTo = active;
             _scrollAfter = (long)Engine.GetProcessFrames() + 2;
         }
@@ -684,7 +687,7 @@ public partial class HuntingRatesMod : IMod
         try
         {
             var action = _hunting!.Action;
-            bool hunting = action.IsStarted, here = ReferenceEquals(action.SelectedLocation, a.Active.Location);
+            bool hunting = a.HuntRuns, here = ReferenceEquals(action.SelectedLocation, a.Active.Location);
             bool journal = JournalShown() && !_huntViewOff, selected = ReferenceEquals(action.SelectedAnimal, a.Active);
             HuntingAnimalTrackingView? card = here ? Native.Card(_page!, a.Active) : null;
             if (card != null && card.IsVisibleInTree()) a.Sight = Native.Place(card, Cover(), out _);

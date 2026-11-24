@@ -92,9 +92,10 @@ static class Words
             AddClick(lines, a);
             return string.Join("\n", lines);
         }
-        // The tool in the card's own words once the page has shown the card, as the page writes a tool it lacks too.
+        // The tool in the card's own words once the page has shown the card, as the page writes a tool it lacks too; for an
+        // animal that needs none, the page's own words for that, without "Tool:" (code review 2).
         string? tool = a.ToolWords ?? a.Tool ?? noTool;
-        if (tool is { Length: > 0 }) lines.Add(a.ToolWords == null && a.Tool == null ? tool.TrimEnd('.') + "." : $"Tool: {tool}.");
+        if (tool is { Length: > 0 }) lines.Add(a.Tool == null ? tool.TrimEnd('.') + "." : $"Tool: {tool}.");
         if (!a.HasTime)
         {
             lines.Add("The game gives no time for a step of this hunt yet.");
@@ -192,11 +193,12 @@ static class Words
         if (said.Count > 0) lines.AddRange(["", string.Join("\n", said)]);
     }
 
-    // "  Raw Hare Meat, 50% (2 a catch): 120", with the number one brings when it is not one, and per hour where it is
-    // counted; a collectable says whether the journal has it.
+    // "  Raw Hare Meat, 50% (2 each time): 120", with the number one brings when it is not one, and per hour where it is
+    // counted; a collectable says whether the journal has it. "Each time" while what the output and the finds come with is
+    // the window's reading (OutputRule not settled): no unit is said that nothing backs (code review 2).
     static string Item(AnimalRates.Drop d, string one, string many)
     {
-        string each = d.Quantity == 1 ? "" : $" ({d.Quantity:N0} a {one})";
+        string each = d.Quantity == 1 ? "" : AnimalRates.OutputRule == null ? $" ({d.Quantity:N0} each time)" : $" ({d.Quantity:N0} a {one})";
         string collectable = d.Collectable ? d.Found ? ", a collectable, found" : ", a collectable" : "";
         return $"  {d.Name}, {Percent(d.Chance)}{each}{collectable}" + (d.PerHour is { } perHour ? $": {Number(perHour)} an hour" : "");
     }

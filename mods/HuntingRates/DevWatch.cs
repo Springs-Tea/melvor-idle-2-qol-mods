@@ -76,6 +76,9 @@ public partial class HuntingRatesMod
         // The game's own count of the surveys that found no tracks (ActiveHuntingAnimal._surveyFails), the most it read
         // while this hunt surveyed: the surveys of the hunt are these and the one that found them (code review 1, fault 8).
         public int? SurveyFails;
+        // The same count when the hunt began: whether the game resets it with every hunt is read from these (said in the
+        // summary), and the surveys of a hunt are the rise within it and the one that found the tracks.
+        public int? SurveyFailsStart;
         public double SurveyXp, TrackXp, TrapXp, CatchXp, JournalXp;
         public bool Caught, Escaped, Whole;
         public HuntState? EscapedIn;
@@ -361,8 +364,8 @@ public partial class HuntingRatesMod
             if (to == HuntState.Surveying && from != HuntState.Surveying)
             {
                 w.Hunts.Add(h);
-                w.Now = new DevHuntSeen { Animal = a, Start = now, Whole = true };
-                DevLog($"hunt | {a.Animal.LocalId} a new hunt: {DevTrapNow(a)}");
+                w.Now = new DevHuntSeen { Animal = a, Start = now, Whole = true, SurveyFailsStart = DevSurveyFails(a) };
+                DevLog($"hunt | {a.Animal.LocalId} a new hunt: {DevTrapNow(a)}; the game's count of failed surveys {DevSurveyFails(a)?.ToString() ?? "not read"}");
             }
         }
         else if (to == HuntState.Surveying) w.Now = new DevHuntSeen { Animal = a, Start = now, Whole = true };
@@ -426,6 +429,9 @@ public partial class HuntingRatesMod
         if (w.Open != null && w.Open.Frame != (long)Engine.GetProcessFrames()) DevFlushMoment(w);
         ulong now = Time.GetTicksMsec();
         if (w.Open == null && now - w.LastRead >= BankReadEvery) DevBankRead(w, null);
+        // The game's count of failed surveys on every tick too: a failed survey may raise no event (code review 2).
+        if (w.Now is { } surveying && w.StateNow == HuntState.Surveying && DevSurveyFails(surveying.Animal) is { } surveyFails)
+            surveying.SurveyFails = Math.Max(surveying.SurveyFails ?? 0, surveyFails);
         if (w.Failed) DevWatchEnd("a listener failed");
         else if (now - w.Since >= w.Length) DevWatchEnd($"the {w.Length / 60000} minutes are up");
         else if (now - w.LastEvent >= WatchIdle) DevWatchEnd($"two minutes without an event of a hunt (hunting {(w.Action.IsStarted ? "started" : "stopped")})");
@@ -497,13 +503,18 @@ public partial class HuntingRatesMod
         // location's chance by the name of insights; decided only when one reading alone is within the tolerance. Its time
         // over one survey's is said beside it.
         double survey = Mean(hunts.Select(h => h.Seconds.GetValueOrDefault(HuntState.Surveying)));
-        var counted = hunts.Where(h => h.SurveyFails != null).Select(h => h.SurveyFails!.Value + 1.0).ToList();
+        var counted = hunts.Where(h => h.SurveyFails != null)
+            .Select(h => Math.Max(0, h.SurveyFails!.Value - (h.SurveyFailsStart is { } s && s <= h.SurveyFails.Value ? s : 0)) + 1.0).ToList();
+        var starts = hunts.Where(h => h.SurveyFailsStart != null).Select(h => h.SurveyFailsStart!.Value).ToList();
+        string resets = starts.Count == 0 ? "the count at a hunt's start NOT READ"
+            : starts.All(v => v == 0) ? $"the count was 0 at the start of all {starts.Count} hunts: the game resets it with every hunt"
+            : $"the count at the hunts' starts [{string.Join(", ", starts.Take(20))}]: it does not reset with every hunt, so a hunt's surveys are its rise within the hunt";
         double surveys = Mean(counted);
         double insights = ours.Insights > 0 ? 1 / ours.Insights : double.NaN;
         string surveyVerdict = !enough || counted.Count < MostCatches ? "NOT DECIDED"
             : One(surveys, Tolerance(counted), ("ONE SURVEY FINDS THE TRACKS", 1), ("EVERY SURVEY FINDS THEM AT THE INSIGHTS CHANCE", insights)) ?? "NOT DECIDED";
         Say("surveys a hunt", surveyVerdict,
-            $"by the game's count of failed surveys, {R(Math.Round(surveys, 3))} surveys a hunt over {counted.Count} hunts (tolerance {R(Math.Round(Tolerance(counted), 3))}); " +
+            $"by the game's count of failed surveys, {R(Math.Round(surveys, 3))} surveys a hunt over {counted.Count} hunts (tolerance {R(Math.Round(Tolerance(counted), 3))}; {resets}); " +
             $"surveying took {R(Math.Round(survey, 3))} s a hunt, {R(Math.Round(survey / ours.SurveySeconds, 3))} surveys of {R(ours.SurveySeconds)} s; one survey would be 1, the insights " +
             $"chance {R(ours.Insights)} would be {R(Math.Round(insights, 3))}; XP while surveying {R(Mean(hunts.Select(h => h.SurveyXp)))} a hunt in {R(Mean(hunts.Select(h => (double)h.SurveyXps)))} changes " +
             $"(the location's base {R(ours.SurveyXpBase)} a survey)");

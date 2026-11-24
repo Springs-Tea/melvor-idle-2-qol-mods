@@ -23,8 +23,11 @@ namespace HuntingRates;
 // may be settled by.
 public partial class HuntingRatesMod
 {
-    // The most parts the pointer rests on in one request: about a second and a half each, so about half a minute.
-    const int MostAims = 18;
+    // The most parts the pointer rests on in one request, how long it rests on one for the game's tooltip, and how long the
+    // whole step may take before it goes on with the parts left unread said in one line: about a minute in all, since he
+    // plays meanwhile (review 2).
+    const int MostAims = 10;
+    const ulong AimWait = 6000, AimsMost = 60000;
 
     // One part the pointer rests on for the game's tooltip, and what is kept from tick to tick.
     sealed class DevAim(string what, ActiveHuntingAnimal animal, Control aim, string aimed, Tooltip? tooltip, Func<string> words, string? shot)
@@ -161,9 +164,9 @@ public partial class HuntingRatesMod
         if (!(on && shown && content.Length > 0))
         {
             a.First = null;
-            if (Time.GetTicksMsec() - _devTipSince >= TipWait)
+            if (Time.GetTicksMsec() - _devTipSince >= AimWait)
             {
-                DevLog($"card stats | {a.What}: its tooltip was not shown filled in {TipWait / 1000} s with the pointer on {DevName(_ctx.Tree.Root.GuiGetHoveredControl())}, " +
+                DevLog($"card stats | {a.What}: its tooltip was not shown filled in {AimWait / 1000} s with the pointer on {DevName(_ctx.Tree.Root.GuiGetHoveredControl())}, " +
                     $"aimed at {a.Aimed} (the tooltip: {state}; it holds '{content}'): not read this time");
                 DevPointerBack();
                 return true;
