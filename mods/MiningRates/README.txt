@@ -17,19 +17,26 @@ while the page lists hidden rocks too. Hover a line for the whole hour: the time
 the breaks, the XP per hour and per break, the ore of a break and of an hour, every item of a
 hit with its chance and how many an hour brings, and the gold.
 
-The numbers come from the game's own values for each rock, so whatever changes those changes
-the window too. Ore per break is estimated from the listed product. How many hits that takes follows the
-game's own words on a rock's break chance: "Your chance to break the rock per hit. Rock
-automatically breaks when a sum of 100% is reached." Every hit breaks the rock at its break
-chance, the one its card shows (the card's tooltip shows it as the "Current chance for this
-Rock" even when the sum is part filled), and the hit that brings the sum of those chances to
-100% breaks it for sure. Measured: Runite Ore gave XP on 85 of 85 breaks and 0 of 318 other hits.
-The ore of a break has not been measured yet. A vein uses its own break chance, minimum,
-product and on-hit items. A dash marks a rate the window cannot count. Hover for the reason.
-The window counts the minimum as the starting bar and doubling for ore and on-hit items. Chances count as their
-long-run average. It is an estimate, not a promise. A chance to shatter a rock, a chance of
-more ore, and a rock's own stone, essence or bar are not counted; the tooltip says so when
-you have one. Mining has no mastery XP in this game, so there is no column for it.
+The numbers start from the game's own values for each rock and include your bonuses. The
+rock's card says, "Your chance to break the rock per hit. Rock
+automatically breaks when a sum of 100% is reached." A hit that misses adds its chance to the
+sum. The window reads the minimum break bar as the starting bar after a break. With a chance
+of 100% or higher, every hit breaks the rock. The tooltip shows the same chance as the card.
+On Runite Ore, breaks took 4.71 hits on average. Its chance and minimum gave 4.53 by the rule.
+A dash marks a rate the window cannot count. Hover for the reason.
+
+Runite Ore gave Mining XP on 85 of 85 breaks and 0 of 318 other hits. Topaz Vein gave XP
+and Uncut Topaz on 92 of 92 breaks and 0 of 708 other hits. The bank gained one gem on 82
+plain breaks and two on 10, averaging 1.109 per break against the window's estimate of 1.07.
+The window counts XP once per break on every other rock too. Time per ore, ore per hour and
+the gold from that ore all count the listed product on a break, as measured on Topaz Vein.
+
+The time of a hit comes from the rock. Items from hits use the chances under "On Hit Rewards".
+The window reads the game's "Your chance to double the output" as applying to both the break
+product and the items of a hit. It averages those chances over many hits and uses the game's
+sell prices for gold. A chance to shatter a rock, a chance of more ore, and a rock's own
+stone, essence or bar are not counted. The tooltip says so when you have one. Mining has no
+mastery XP in this game, so there is no column for it.
 
 Click a line to see that rock on the Mining page: the page's category filter goes to the
 rock's category when it is on another one, and its list of rocks scrolls until the rock's
@@ -37,10 +44,10 @@ whole card is in sight beside the window. When the page has no room for that, th
 tooltip says so: drag the window aside. Nothing is started or stopped, and the window stays
 open. A rock the game has no picture for yet shows none.
 
-It first opens beside the rock cards where there is room. Drag the window to move it, drag its bottom right corner to resize it, fold it down to its
-title with the button beside the X. On another page it steps aside and comes back on the
-Mining page. Its place, size, fold and sort order are kept in settings.json in the mod's
-folder.
+It first opens beside the rock cards where there is room. Drag the window to move it, drag
+its bottom right corner to resize it, or fold it down with the button beside the X.
+On another page it steps aside and comes back on the Mining page. Its place, size, fold
+and sort order are kept in settings.json in the mod's folder.
 
 INSTALL
   Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),

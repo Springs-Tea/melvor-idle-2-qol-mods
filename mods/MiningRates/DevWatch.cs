@@ -4,16 +4,16 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using GamesByMalcs.Melvor2.Components.Actions;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Components.Inventories;
-using GamesByMalcs.Melvor2.Core;
-using GamesByMalcs.Melvor2.Components.Actions;
 using GamesByMalcs.Melvor2.Components.Trackers;
-using GamesByMalcs.Melvor2.Entities.Bank;
-using MelvorModLoader;
+using GamesByMalcs.Melvor2.Core;
 using GamesByMalcs.Melvor2.Data.Items;
+using GamesByMalcs.Melvor2.Entities.Bank;
 using GamesByMalcs.Melvor2.Entities.Mining;
 using Godot;
+using MelvorModLoader;
 
 namespace MiningRates;
 
@@ -58,10 +58,12 @@ public partial class MiningRatesMod
         // The rock's break chance and the bar's minimum as the game had them at the hit (a level up changes them).
         public double Chance = double.NaN, Minimum = double.NaN;
         public readonly List<(string Rock, double Old, double New)> Progress = new();
-        public double Xp;
+        public double Xp, XpResolution;
+        public double? ListedXp;
         public int XpChanges;
         public int? OreBefore, OreAfter;
         public int? BankGain => OreAfter - OreBefore;
+        public readonly List<(Item Item, long Delta)> BankChanges = new();
         public readonly List<(Item Item, int Quantity)> Items = new();
         // The game's events of this frame in the order they came: hit, bar, mined, xp, item.
         public readonly List<string> Order = new();
@@ -78,6 +80,8 @@ public partial class MiningRatesMod
         public MiningActionComponent Action = null!;
         public readonly List<Action> Off = new();
         public readonly List<DevHit> Hits = new();
+        public readonly List<DevHit> ChangedBank = new();
+        public int XpChangesOutsideHits;
         public readonly Dictionary<string, double> Bar = new();
         // Every rock's numbers when the watch began, to see whether they changed while it ran.
         public readonly Dictionary<string, string> Start = new();
@@ -86,7 +90,8 @@ public partial class MiningRatesMod
         public readonly Dictionary<string, Item> Products = new();
         public readonly Dictionary<Item, int> BankCounts = new();
         public long SameRockTick;
-        public readonly Dictionary<IReadOnlyTrackerPeriod, long> SampleEnded = new();
+        // At each completed sample, how far the watch had read. Two boundaries enclose the same hits as the items.
+        public readonly Dictionary<IReadOnlyTrackerPeriod, Queue<(long Tick, int Hits, int? Bank)>> Samples = new();
         public bool Interrupted, Failed;
     }
 
@@ -200,6 +205,7 @@ public partial class MiningRatesMod
                 h.HitShattered |= e.WasShattered;
                 h.Chance = watched.Stats.RockBreakChance.Value;
                 h.Minimum = watched.Stats.MinimumProspecting.Value;
+                h.ListedXp = watched.Stats.Experience.XpToAdd.Value;
                 h.Order.Add("hit");
             });
             EventHandler<ValueChangedEventArgs<double>> bar = (_, e) => Safe(() =>
@@ -225,12 +231,16 @@ public partial class MiningRatesMod
             h.Broken |= e.WasBroken;
             h.Early |= e.WasEarly;
             h.MinedShattered |= e.WasShattered;
+            h.ListedXp ??= e.Rock?.Stats.Experience.XpToAdd.Value;
             h.Order.Add("mined");
         });
         EventHandler<ValueChangedEventArgs<double>> xp = (_, e) => Safe(() =>
         {
             DevHit h = DevHitNow(w, null);
             h.Xp += e.NewValue - e.OldValue;
+            // Adding an award to a large XP balance can round at the precision of that balance.
+            double balance = Math.Max(Math.Abs(e.OldValue), Math.Abs(e.NewValue));
+            h.XpResolution += Math.BitIncrement(balance) - balance;
             h.XpChanges++;
             h.Order.Add("xp");
         });
@@ -247,6 +257,7 @@ public partial class MiningRatesMod
         {
             if (e.Item == null || !w.BankCounts.ContainsKey(e.Item)) return;
             DevHit h = DevHitNow(w, null, e);
+            h.BankChanges.Add((e.Item, (long)e.NewValue - e.OldValue));
             h.Order.Add($"bank {e.Item.Id} {e.OldValue}->{e.NewValue}");
         });
         if (w.Bank != null)
@@ -257,24 +268,34 @@ public partial class MiningRatesMod
         var tracker = _mining.Tracker;
         foreach (var period in tracker.Periods)
         {
-            EventHandler finished = (_, _) => Safe(() => w.SampleEnded[period] = tracker.CurrentTick);
+            var samples = w.Samples[period] = new();
+            EventHandler finished = (_, _) => Safe(() =>
+            {
+                int? bankCount = action.CurrentRock?.Recipe.Product?.Item is { } ore ? w.Bank?.GetQuantity(ore) : null;
+                samples.Enqueue((tracker.CurrentTick, w.Hits.Count + (w.Open?.IsHit == true ? 1 : 0), bankCount));
+                if (samples.Count > period.SampleCount + 1) samples.Dequeue();
+            });
             period.SampleFinished += finished;
             w.Off.Add(() => period.SampleFinished -= finished);
         }
-        void NewRun()
+        void NewRun(string cause)
         {
             w.Interrupted = true;
             w.SameRockTick = tracker.CurrentTick;
+            foreach (var samples in w.Samples.Values) samples.Clear();
+            DevLog($"watch | interrupted by {cause} at +{Time.GetTicksMsec() - w.Since} ms, tracker tick {w.SameRockTick}");
         }
-        EventHandler<ActionEventArgs> reset = (_, _) => NewRun();
-        EventHandler<ValueChangedEventArgs<MiningRock>> changed = (_, _) => NewRun();
-        action.Started += reset;
-        action.Stopped += reset;
+        EventHandler<ActionEventArgs> started = (_, _) => Safe(() => NewRun("Started"));
+        EventHandler<ActionEventArgs> stopped = (_, _) => Safe(() => NewRun("Stopped"));
+        EventHandler<ValueChangedEventArgs<MiningRock>> changed = (_, e) => Safe(() =>
+            NewRun($"CurrentRockChanged ({e.OldValue?.Recipe.Id ?? "-"} to {e.NewValue?.Recipe.Id ?? "-"})"));
+        action.Started += started;
+        action.Stopped += stopped;
         action.CurrentRockChanged += changed;
         w.Off.Add(() =>
         {
-            action.Started -= reset;
-            action.Stopped -= reset;
+            action.Started -= started;
+            action.Stopped -= stopped;
             action.CurrentRockChanged -= changed;
         });
         action.RockMined += mined;
@@ -307,7 +328,8 @@ public partial class MiningRatesMod
 
     void DevFlushHit(DevHitWatch w, ItemQuantityChangedEventArgs? change = null)
     {
-        if (w.Open is not { } h) return;
+        var h = w.Open ?? new DevHit();
+        bool hadEvents = w.Open != null;
         w.Open = null;
         if (w.Bank != null)
         {
@@ -317,6 +339,11 @@ public partial class MiningRatesMod
                 int before = w.BankCounts[item];
                 int after = Equals(change?.Item, item) ? change.OldValue : w.Bank.GetQuantity(item);
                 w.BankCounts[item] = after;
+                // Keep additions and removals even if they cancel. Reconcile with the bank itself
+                // so an update without a quantity event also enters the total.
+                long reported = h.BankChanges.Where(c => Equals(c.Item, item)).Sum(c => c.Delta);
+                long difference = (long)after - before - reported;
+                if (difference != 0) h.BankChanges.Add((item, difference));
                 if (Equals(item, product))
                 {
                     h.OreBefore = before;
@@ -324,17 +351,21 @@ public partial class MiningRatesMod
                 }
             }
         }
+        if (h.BankChanges.Count > 0) w.ChangedBank.Add(h);
+        else if (!hadEvents) return;
         if (h.IsHit)
         {
             w.Hits.Add(h);
             w.LastHit = h.At;
         }
+        else w.XpChangesOutsideHits += h.XpChanges;
         DevLog($"{(h.IsHit ? "hit" : "other")} | {h.Rock} | hit events {h.Hits}: success {h.Success}, shattered {h.HitShattered} | the action: " +
             (h.Mined ? $"broken {h.Broken}, early {h.Early}, shattered {h.MinedShattered}" : "no event") +
             $" | break chance {R(h.Chance)}, minimum {R(h.Minimum)}" +
             $" | the break bar {(h.Before is { } b ? R(b) : "?")} -> [{string.Join(", ", h.Progress.Select(p => $"{R(p.Old)}->{R(p.New)}{(p.Rock == h.Rock ? "" : " of " + p.Rock)}"))}]" +
             $" | events [{string.Join(" ", h.Order)}] | XP +{R(h.Xp)} in {h.XpChanges} changes | items [{string.Join(", ", h.Items.Select(i => $"{i.Item.Id} x{i.Quantity}"))}]" +
             $" | bank product {w.Products.GetValueOrDefault(h.Rock)?.Id ?? "-"}: {h.OreBefore?.ToString() ?? "-"} before, {h.OreAfter?.ToString() ?? "-"} after" +
+            $" | product changes [{string.Join(", ", h.BankChanges.Select(c => $"{c.Item.Id} {c.Delta:+#;-#;0}"))}]" +
             (h.Hits > 1 ? $"  {h.Hits} HITS IN ONE FRAME" : ""));
     }
 
@@ -343,9 +374,7 @@ public partial class MiningRatesMod
     void DevWatchTick()
     {
         if (_devHits is not { } w) return;
-        if (w.Open != null && w.Open.Frame != (long)Engine.GetProcessFrames()) DevFlushHit(w);
-        else if (w.Open == null && w.Bank != null && w.Action.CurrentRock?.Recipe.Product?.Item is { } ore)
-            w.BankCounts[ore] = w.Bank.GetQuantity(ore);
+        if (w.Open?.Frame != (long)Engine.GetProcessFrames()) DevFlushHit(w);
         ulong now = Time.GetTicksMsec();
         if (w.Failed) DevWatchEnd("a listener failed", summarise: false);
         else if (now - w.Since >= w.Length) DevWatchEnd($"the {w.Length / 60000} minutes are up");
@@ -382,7 +411,7 @@ public partial class MiningRatesMod
                 foreach (var group in w.Hits.GroupBy(h => h.Rock).OrderByDescending(g => g.Count()))
                 {
                     if (_mining!.Action.Rocks.Values.FirstOrDefault(r => r.Recipe.Id == group.Key) is not { } rock) continue;
-                    var said = DevWatchSummary(group.ToList(), RockRates.Read(rock, _mining, Shown), w.Start.GetValueOrDefault(group.Key, "not read"), w.Interrupted ? null : seconds);
+                    var said = DevWatchSummary(group.ToList(), RockRates.Read(rock, _mining, Shown), w, w.Interrupted ? null : seconds);
                     verdicts.Add($"{rock.Recipe.LocalId}: {string.Join(", ", said)}");
                 }
                 if (verdicts.Count == 0) verdicts.Add("NO HIT SEEN");
@@ -437,7 +466,7 @@ public partial class MiningRatesMod
         _ => "THE SAME CHANCE ON EVERY HIT",
     };
 
-    List<string> DevWatchSummary(List<DevHit> hits, RockRates ours, string start, double? seconds)
+    List<string> DevWatchSummary(List<DevHit> hits, RockRates ours, DevHitWatch watch, double? seconds)
     {
         var verdicts = new List<string>();
         string rock = ours.Rock.Recipe.Id;
@@ -453,7 +482,7 @@ public partial class MiningRatesMod
         string fewer = enough ? "" : $" (fewer than {MostBreaks} breaks decide nothing)";
 
         // The rock's numbers at the start and at the end: a level up while it ran changes them.
-        string end = DevRockStats(ours.Rock);
+        string start = watch.Start.GetValueOrDefault(rock, "not read"), end = DevRockStats(ours.Rock);
         DevLog($"watch | {rock} | the rock's numbers | at the start {start}; at the end {end}" + (start == end ? "" : "  CHANGED WHILE IT RAN"));
 
         // What the hit's Success says, against the action's own word of a break.
@@ -543,23 +572,48 @@ public partial class MiningRatesMod
         bool singles = hits.All(h => h.Hits <= 1);
         bool both = singles && whole.Count > 0 && breaks.Count > 0;
         double? xpEach = plainBreaks.Count > 0 ? plainBreaks.Average(h => h.Xp) : null;
-        string xpTiming = !both ? "NOT DECIDED" : xpOnWhole == 0 && xpOnBreak == breaks.Count ? "XP ON A BREAK ONLY"
+        string xpTiming = !both || watch.XpChangesOutsideHits > 0 ? "NOT DECIDED" : xpOnWhole == 0 && xpOnBreak == breaks.Count ? "XP ON A BREAK ONLY"
             : xpOnWhole == whole.Count && xpOnBreak == breaks.Count ? "XP ON EVERY HIT" : "OTHER XP TIMING";
+        double? xpHour = watch.XpChangesOutsideHits == 0 ? hits.Sum(h => h.Xp) / seconds * 3600 : null;
         Say("XP", xpTiming, $"XP on {xpOnBreak} of {breaks.Count} breaks and {xpOnWhole} of {whole.Count} other hits; " +
-            $"{R(xpEach)} per plain break, listed {R(ours.XpEach)}; measured {R(hits.Sum(h => h.Xp) / seconds * 3600)} an hour over uninterrupted mining, ours {R(ours.XpPerHour)}");
+            $"{watch.XpChangesOutsideHits} XP changes outside hit frames during the watch; " +
+            $"{R(xpEach)} per plain break, listed at the end {R(ours.XpEach)}; measured {R(xpHour)} an hour over uninterrupted mining, ours {R(ours.XpPerHour)}");
+        bool xpReadable = singles && watch.XpChangesOutsideHits == 0 && plainBreaks.Count > 0 && plainBreaks.All(h =>
+            h.ListedXp is { } listed && double.IsFinite(listed) && double.IsFinite(h.Xp) && double.IsFinite(h.XpResolution));
+        int matches = plainBreaks.Count(h => h.ListedXp is { } listed && Math.Abs(h.Xp - listed) <= h.XpResolution);
+        Say("XP per plain break", !xpReadable ? "NOT DECIDED" : matches == plainBreaks.Count ? "AS LISTED" : "DIFFERS",
+            $"{matches} of {plainBreaks.Count} plain breaks gave the XP listed at that hit; " +
+            $"largest tolerance from the observed XP balances {R(plainBreaks.Max(h => (double?)h.XpResolution))}");
 
         // The bank is independent of ActionComponent.ItemAdded. A zero counts only when both quantities were read.
         if (ours.Ore is { } ore)
         {
-            bool readable = singles && hits.All(h => h.BankGain is >= 0);
+            var changes = watch.ChangedBank.SelectMany(h => h.BankChanges.Where(c => Equals(c.Item, ore))
+                .Select(c => (Frame: h, c.Delta))).Where(c => c.Delta != 0).ToList();
+            string Total(Func<DevHit, bool> inFrame)
+            {
+                if (watch.Bank == null) return "unread";
+                var amounts = changes.Where(c => inFrame(c.Frame)).Select(c => c.Delta).ToList();
+                return $"+{amounts.Where(a => a > 0).Sum()}/{amounts.Where(a => a < 0).Sum()}";
+            }
+            bool outside = changes.Any(c => !c.Frame.IsHit || c.Frame.Rock != rock);
+            bool removed = changes.Any(c => c.Delta < 0);
+            bool countsRead = hits.All(h => h.BankGain.HasValue);
+            bool readable = singles && !outside && !removed && countsRead;
             double? average = readable && plainBreaks.Count > 0 ? plainBreaks.Average(h => (double)h.BankGain!.Value) : null;
             int oreOnBreak = breaks.Count(h => h.BankGain > 0), oreOnWhole = whole.Count(h => h.BankGain > 0);
-            string verdict = !readable || breaks.Count == 0 ? "NOT DECIDED"
-                : oreOnBreak == 0 ? "NO BANK GAIN ON OBSERVED BREAKS"
+            string verdict = outside ? "NOT DECIDED: PRODUCT CHANGED OUTSIDE THIS ROCK'S HITS"
+                : removed ? "NOT DECIDED: PRODUCT REMOVED DURING THE WATCH"
+                : !readable || breaks.Count == 0 ? "NOT DECIDED"
+                : oreOnBreak == 0 && oreOnWhole == 0 ? "NO BANK GAIN DURING THE WATCH"
                 : !both ? "BANK GAIN ON BREAKS; NO OTHER HITS TO COMPARE"
                 : oreOnBreak == breaks.Count && oreOnWhole == 0 ? "BANK GAIN ON BREAKS ONLY"
                 : oreOnBreak == breaks.Count && oreOnWhole == whole.Count ? "BANK GAIN ON EVERY HIT" : "MIXED BANK GAINS";
-            Say("the ore", verdict, $"{ore.Id}: bank increased on {oreOnBreak} of {breaks.Count} breaks and {oreOnWhole} of {whole.Count} other hits; " +
+            Say("the ore", verdict, $"{ore.Id}: bank added/removed over the whole watch {Total(_ => true)}, " +
+                $"on {breaks.Count} breaks {Total(h => h.IsHit && h.Rock == rock && h.Breaks)}, " +
+                $"on {whole.Count} other hits {Total(h => h.IsHit && h.Rock == rock && !h.Breaks)}, " +
+                $"without a hit {Total(h => !h.IsHit)}, on other rocks' hits {Total(h => h.IsHit && h.Rock != rock)}; " +
+                (countsRead ? $"bank increased on {oreOnBreak} breaks and {oreOnWhole} other hits; " : "bank increases per hit unread; ") +
                 $"bank change per plain break [{string.Join(", ", plainBreaks.GroupBy(h => h.BankGain).Select(g => $"{g.Key?.ToString() ?? "unread"} x{g.Count()}"))}], " +
                 $"average {R(average)}, " +
                 $"window {R(ours.OrePerBreak)} per break; action item events gave {hits.Sum(h => h.Items.Where(i => Equals(i.Item, ore)).Sum(i => i.Quantity))} total" +
@@ -617,17 +671,42 @@ public partial class MiningRatesMod
                 string perHour = covered > 0 ? R(xp / covered * TimeSpan.FromHours(1).TotalMilliseconds) : "-";
                 // Only attribute a completed period to one rock. The newest sample may end before this
                 // tick. Until its boundary was seen, allow a full extra sample when looking back.
-                long endTick = watch.SampleEnded.GetValueOrDefault(period, tracker.CurrentTick - period.SampleTicks);
+                var samples = watch.Samples[period];
+                long endTick = samples.Count > 0 ? samples.Last().Tick : tracker.CurrentTick - period.SampleTicks;
                 long fromTick = endTick - Math.Min(period.CycleTicks, period.Experience.RecordedCount * period.SampleTicks);
                 var markers = tracker.Markers;
                 var first = markers.LastOrDefault(m => m.Tick <= fromTick);
                 bool describesRock = ours != null && first != null && Equals(first.Description, ours.Rock.Recipe) &&
                     markers.Where(m => m.Tick > fromTick).All(m => Equals(m.Description, ours.Rock.Recipe));
                 bool sameRock = watch.Action.IsStarted && ours != null && covered > 0 &&
-                    (fromTick >= watch.SameRockTick || describesRock);
-                DevLog($"tracker | {when} | period {i++}: cycle {R(period.CycleDuration)}, {period.SampleCount} samples of {R(period.SamplePeriod)}, " +
+                    (fromTick >= watch.SameRockTick || (!watch.Interrupted && describesRock));
+                int periodNumber = i++;
+                DevLog($"tracker | {when} | period {periodNumber}: cycle {R(period.CycleDuration)}, {period.SampleCount} samples of {R(period.SamplePeriod)}, " +
                     $"{period.Experience.RecordedCount} recorded | Mining XP {R(xp)}, over {R(covered)} ms, an hour by it {perHour}, ours {(sameRock ? $"{R(ours!.XpPerHour)} at {ours.Name}" : "- (period not observed on one rock)")} | " +
                     $"items [{string.Join(", ", items.Select(item => $"{item.Id} {(period.Items.TryGetValue(item, out var l) ? l.Total : 0)}"))}]");
+                if (ours?.Ore is not { } ore) continue;
+                int recorded = period.Items.RecordedCount;
+                var bounds = samples.TakeLast(recorded + 1).ToArray();
+                double quantity = period.Items.TryGetValue(ore, out var entry) ? entry.Total : 0;
+                string comparison = "breaks and bank not compared (no complete single-rock sample window with distinct hits)";
+                if (watch.Action.IsStarted && recorded > 0 && bounds.Length == recorded + 1)
+                {
+                    var observed = watch.Hits.GetRange(bounds[0].Hits, bounds[^1].Hits - bounds[0].Hits);
+                    if (observed.All(h => h.Rock == ours.Rock.Recipe.Id && h.Hits <= 1))
+                    {
+                        int broken = observed.Count(h => h.Breaks);
+                        comparison = $"{broken} breaks in {observed.Count} observed hits over the same samples, " +
+                            $"bank net change {R(bounds[^1].Bank - bounds[0].Bank)}, " +
+                            $"{R(broken > 0 ? quantity / broken : null)} tracker items per observed break";
+                    }
+                }
+                double duration = Math.Min(period.CycleDuration, recorded * period.SamplePeriod);
+                long itemStart = endTick - Math.Min(period.CycleTicks, recorded * period.SampleTicks);
+                bool oreComparable = duration > 0 && watch.Action.IsStarted && (itemStart >= watch.SameRockTick ||
+                    (recorded == period.Experience.RecordedCount && sameRock));
+                DevLog($"tracker | {when} | period {periodNumber}: {ore.Id} {R(quantity)} in {recorded} recorded item samples; {comparison}; " +
+                    $"tracker ore per hour {R(duration > 0 ? quantity / duration * TimeSpan.FromHours(1).TotalMilliseconds : null)}, " +
+                    $"window {R(oreComparable ? ours.OrePerHour : null)}");
             }
             if (i == 0) DevLog($"tracker | {when} | the tracker has no periods");
         }

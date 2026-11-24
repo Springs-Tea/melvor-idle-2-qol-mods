@@ -10,10 +10,9 @@
 
 <!-- picture: Mining Rates beside the rock cards, sorted by Mining XP per hour -->
 
-Mining Rates compares the rocks on the Mining page. A rock's XP counts once per break. A rock that
-takes more hits to break gives its XP less often. The window estimates ore from the listed break product
-and shows the items a hit can bring separately. Hover a line for the whole hour, or click it to see
-that rock on the Mining page.
+On the Mining page, the rates window shows one line per rock. Compare the time for one ore and the ore,
+Mining XP and gold per hour at each rock. A rock that takes more hits to break gives its XP less often.
+Hover a line for the whole hour, or click it to see that rock on the Mining page.
 
 ## Contents
 
@@ -56,8 +55,7 @@ category, and:
 - **The best number of each column is gold**: the shortest time and the most ore, XP and gold.
 - **Click a column's name to sort by it.** The first click puts the best rocks on top, the next turns the
   order around. "Rock" goes back to the order of the page. The name the list is sorted by is gold, with the
-  game's small arrow after it. The tip of the name "Ore" quotes the game's break rule and says the ore of a break
-  has not been measured yet.
+  game's small arrow after it. The Time, Ore and Gold tips give the Topaz Vein bank counts.
 - **The rock the Mining page shows** in its big panel, the one you are mining, has the lit outline of a
   selected line, so it can be found in a sorted list.
 - **Click a line to see that rock on the Mining page**: when the page's category filter is on another
@@ -87,25 +85,33 @@ Put the pointer on a line for the whole hour at that rock:
 
 | Line | What it is |
 | --- | --- |
-| **Locked: ...** | What the rock is missing, in the game's own words. Only on a locked rock. |
+| **Rock name (category)** | The first line gives the rock's name and, when the game supplies it, its category. |
+| **Locked** or **Locked: ...** | A locked rock shows its missing requirement when the game gives one. |
 | **You hid this rock on the Mining page.** | Only on a rock you hid yourself. |
 | **The rock the Mining page shows.** | Only on the line with the lit outline. |
+| **The game gives no time for a hit on this rock yet.** | Without a hit time, the tooltip skips the hourly figures. |
 | **One hit every 1.5s: 2,400 hits an hour.** | The game's time of a hit for the rock, with your bonuses. |
 | **A break every 1.85 hits on average, worked out by the game's own rule: 1,296 an hour.** | How many hits a break takes, from the rock's break chance (see [What is counted](#what-is-counted)), and the breaks of an hour. |
-| **Your minimum break bar (10%) is counted as where the bar starts.** | Only when you have a minimum break bar. |
-| **XP, ore, time per ore and gold per hour are unmeasured here (-).** | The row explains what is missing for this rock. Its listed on-hit items still have their own lines. |
-| **Mining XP** | XP per break and per hour. The next line gives the Runite Ore watch counts. |
-| **Every break (break chance 45% a hit)**, and the ore | The rock's break chance, the ore a break gives, and how many an hour brings. |
+| **A break every hit: 2,400 an hour.** | When one hit always breaks this rock, breaks per hour equal hits per hour. |
+| **There is no usable break chance for this rock.** | The game gives no positive, finite chance. |
+| **There is no usable minimum break bar for this rock.** or **The minimum break bar reads ...** | The game gives no finite minimum, or gives a value outside the range from 0 to under 1. |
+| **This rock has no listed break product with a positive quantity.** | The rock has no break product, or gives none of it. |
+| **The window cannot count XP, ore, time per ore or gold for this rock (-).** | The line above says why. |
+| **Your minimum break bar (10%) is counted as where the bar starts.** | When the window uses your minimum to count the hits a break takes. |
+| **Mining XP** | XP per break and per hour. The XP column's tip names the rocks where this was measured. |
+| **Every break (break chance 45.00% a hit)**, and a line for the product | The current chance on the rock's card, even above 100%. The next line gives the product, its listed quantity per break and its estimated total from breaks per hour. |
+| **Time and Ore count this product on each break. Gold includes its sell value.** | How the listed break product contributes to the columns. |
+| **On Topaz Vein, the bank gained one gem on 82 breaks and two on 10 (1.109 per break).** | Only on gem veins with a counted break product. The counts were measured on Topaz. |
 | **Every hit**, and a line per item | Each item a hit can bring, with its chance per hit, how many a hit brings when it is more than one, and how many an hour brings. |
-| **The doubling chance (5%) is counted in the ore and the items of a hit.** | Only when you have one. |
+| **The doubling chance (5%) is counted in the ore and the items of a hit.** | When doubling contributes to the estimate. If the window can count only the items of a hit, the line names only those items. |
 | **Gold** | What the ore and the items of a hit sell for in an hour, and how much of it is the items of a hit. |
 | **Not counted, the rock's own stone, essence or bar you have a chance at:** | Each with its chance, when you have one and the game does not list it among a hit's items. |
-| **Not counted: your ...** | A bonus of yours the window does not count, by the name the Mining page gives it in its list of bonuses. |
+| **Not counted: your ...** or **Not counted: a chance ...** | A bonus the window leaves out. It gives the name from the Mining page when available, or describes the chance to shatter a rock or get more ore. |
 | **Click to show this rock on the Mining page. Mining is not started.** | What a click on the line does. Not there when a click changes nothing. |
 | **The Mining page has no room for this rock's card beside this window: drag the window aside.** | Instead of the line above, when no scroll of the page's list shows the rock's whole card clear of the window. |
 | **The Mining page has no room to show this rock's whole card.** | Instead of the line above, when the page's list is smaller than a card, window or not. |
 
-<!-- picture: a rock's tooltip with XP per break, the Runite Ore counts and the unmeasured ore estimate -->
+<!-- picture: a rock's tooltip with XP per break and the Topaz Vein bank counts -->
 
 ## What is counted
 
@@ -123,16 +129,18 @@ How many hits a break takes rests on the words the Mining page shows on a rock's
 | A hit takes the rock's time of a hit. | The game's value for the rock. |
 | Every hit breaks the rock at its break chance, the one its card shows. One that does not adds the chance to a sum, and the hit that brings the sum to 100% breaks it for sure (ten hits of 10% reach it). The hits a break takes on average follow from that. | The game's own words above. The tooltip of a card's break chance shows it as the "Current chance for this Rock", with your bonuses, even when the sum is part filled. |
 | A minimum break bar is where the sum starts after a break. | The mod's reading of its name. |
-| Ore per break is an estimate from the listed product and quantity. | The page lists the ore under "On Break Rewards". How much reaches the bank on a break has not been measured yet. |
-| Mining XP comes once a break. | Measured: Runite Ore gave XP on 85 of 85 breaks and 0 of 318 other hits. |
+| A break gives the listed ore or gem. | On Topaz Vein, the bank gained Uncut Topaz on 92 of 92 breaks and 0 of 708 other hits. Of those breaks, 82 gave one gem and 10 gave two, averaging 1.109 against the window's estimate of 1.07. |
+| The window counts Mining XP once per break on every rock. | Runite Ore gave XP on 85 of 85 breaks and 0 of 318 other hits. Topaz Vein gave XP on 92 of 92 breaks and 0 of 708 other hits. |
 | The items of a hit come at their chance on every hit. | The game's chances, from its list of the items of a hit, the ones the page lists under "On Hit Rewards". |
 | The doubling chance doubles the ore of a break and the items of a hit. | The mod's reading of the game's words for it, "Your chance to double the output". |
 | Gold is what the ore and the items of a hit sell for. | The game's sell prices. |
 | Chances count as their long-run average. | The mod's. |
 
-Gem and emerald veins use their own break chance, minimum bar, break product and on-hit item list.
-If the chance or minimum cannot be used, or there is no positive break product, the window shows
-a dash for the break-dependent rates. The tooltip explains why.
+On Runite Ore, breaks took 4.71 hits on average. The rock's chance and minimum gave 4.53 by the rule.
+Time per ore, ore per hour and the gold from that ore all count the listed product on each break, as
+measured on Topaz Vein.
+A break chance of 100% or higher means every hit breaks the rock, whatever the starting bar.
+If a required value is missing or unusable, the break-dependent rates show a dash. Hover for the reason.
 
 ## Questions it answers
 

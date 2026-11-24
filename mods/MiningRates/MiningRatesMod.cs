@@ -315,8 +315,14 @@ public partial class MiningRatesMod : IMod
             scale = largest;
         }
         var window = _window;
-        if (at == null && !window.Minimised && FirstPlace(window.Root.GetCombinedMinimumSize()) is { } first)
-            window.MoveTo(first);
+        Vector2? first = at == null && !window.Minimised ? FirstPlace(window.Root.GetCombinedMinimumSize()) : null;
+        if (first is { } position) window.MoveTo(position);
+#if DEVTOOLS
+        _devOpened = first != null ? $"opened at the first place {first} (no saved position)"
+            : at != null ? $"opened at the player's own place {at} from settings.json"
+            : window.Minimised ? "opened in the middle (folded, with no saved position)"
+            : "opened in the middle (no saved position and no first place could be measured)";
+#endif
         window.CloseRequested += () => Click(Close);
         window.MinimisedChanged += folded => Click(() =>
         {
@@ -402,7 +408,7 @@ public partial class MiningRatesMod : IMod
     // come from the current Mining page, the game's button strip or the available screen.
     Vector2? FirstPlace(Vector2 size)
     {
-        if (!PageShown || _clicksOff) return null;
+        if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
         try
         {
             var cards = Native.RockViews(_page!)?.Values.Where(c => GodotObject.IsInstanceValid(c) &&
@@ -410,7 +416,7 @@ public partial class MiningRatesMod : IMod
             if (cards == null || cards.Count == 0 || Native.ScrollOf(cards[0]) is not { } list) return null;
             Rect2 screen = _ctx.Tree.Root.GetVisibleRect(), page = Native.Drawn(list);
             float right = screen.End.X;
-            if (_opener?.GetParent() is Control strip && strip.IsVisibleInTree())
+            if (GodotObject.IsInstanceValid(_opener) && _opener!.GetParent() is Control strip && strip.IsVisibleInTree())
             {
                 Rect2 buttons = Native.Drawn(strip);
                 right = buttons.Position.X - Math.Max(0, screen.End.X - buttons.End.X);

@@ -57,26 +57,29 @@ static class Words
 
         lines.Add($"One hit every {Seconds(r.HitSeconds)}: {Number(r.HitsPerHour)} hits an hour.");
         if (r.HitsPerBreak is { } hits && r.BreaksPerHour is { } breaks && RockRates.Settled is { } settled)
-            lines.Add($"A break every {Number(hits)} hits on average, {How(settled.Source)}: {Number(breaks)} an hour.");
+            lines.Add(hits == 1 ? $"A break every hit: {Number(breaks)} an hour."
+                : $"A break every {Number(hits)} hits on average, {How(settled.Source)}: {Number(breaks)} an hour.");
         if (r.UnknownBreakReward is { } reason)
         {
             lines.Add(reason);
-            lines.Add("XP, ore, time per ore and gold per hour are unmeasured here (-).");
+            lines.Add("The window cannot count XP, ore, time per ore or gold for this rock (-).");
         }
         // The minimum moves the sure break forward: where it is counted, it is said, as the mod's reading of its name.
-        if (r.HitsPerBreak != null && r.MinimumProspecting > 0)
+        if (r.HitsPerBreak != null && r.BreakChance < 1 && r.MinimumCounted && r.MinimumProspecting > 0)
             lines.Add($"Your minimum break bar ({Percent(r.MinimumProspecting)}) is counted as where the bar starts.");
         if (r.XpPerHour is { } xp)
             lines.Add($"Mining XP: {Number(xp)} an hour, {Number(r.XpEach)} a break.");
-        lines.Add(RockRates.XpMeasured);
 
         lines.Add("");
         if (r.BreakOrePerHour is { } ore)
         {
             // The ore of a break, and of an hour where the breaks are counted.
-            lines.Add($"Every break (break chance {Percent(r.BreakChance)} a hit):");
+            lines.Add($"Every break (break chance {r.CardBreakChance:P2} a hit):");
             lines.Add($"  {r.OreName}, {r.OreQuantity} a break: {Number(ore)} an hour");
-            lines.Add(RockRates.OreUnmeasured);
+            lines.Add("Time and Ore count this product on each break. Gold includes its sell value.");
+            const string gemVein = "Gem Vein";
+            if (r.Category == gemVein || r.Rock.Category?.DisplayName.Message == gemVein)
+                lines.Add("On Topaz Vein, the bank gained one gem on 82 breaks and two on 10 (1.109 per break).");
         }
         if (r.PerHit.Count > 0)
         {

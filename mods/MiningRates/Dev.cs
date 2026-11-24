@@ -70,7 +70,7 @@ namespace MiningRates;
 //     order of cards against ours, and the big panel's break bar and minimum when it shows a rock. "Dev: minimum": the
 //     minimum break bar of every rock that has one. "Dev: words": the page's own words for the rules the hour rests on
 //     (the ones the game keeps as constants read by reflection, the member named when one is not there), whether the
-//     Ore column's quote is still the game's words, and the filter's words and buttons. "Dev: hidden": every rock not
+//     guide still quotes the game's words, and the filter's words and buttons. "Dev: hidden": every rock not
 //     listed, and why. "Dev: lit". "Dev: tips": the longest line of every tip against Fishing Rates' longest. "Dev: cut"
 //     over every label of the picture. crop-mining-window.png and, when the list scrolls, crop-mining-window-end.png.
 //     "Dev: room": the window's place as drawn, the page's list, and every line's card against them (Native.Place):
@@ -1293,6 +1293,9 @@ public partial class MiningRatesMod
         return $"{said} (the card at {Native.Drawn(card)}, {list}, the window at {Cover()?.ToString() ?? "none, not on the screen"})";
     }
 
+    // Recorded by Build, before a later drag or fold can change the settings.
+    string _devOpened = "";
+
     // Every line's card against the window, and what its line says of it: a line is clickable for a card the page shows
     // only when a scroll shows it clear (MISMATCH otherwise), and the tooltip of a line whose card has no room says so
     // (NOT SAID otherwise). The window's place and the page's list are said once.
@@ -1312,7 +1315,7 @@ public partial class MiningRatesMod
         }
         string places = any != null ? DevCardSight(any, true) : "no card shown";
         DevLog($"room | {when} | the window at {Cover()?.ToString() ?? "none, not on the screen"}, from its frame {(_window is { IsAlive: true } w ? w.Root.GetGlobalRect().ToString() : "-")} " +
-            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}; the first card shown: {places}");
+            $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}; {_devOpened}; the first card shown: {places}");
         DevLog($"room | {when} | {string.Join("; ", said)}");
     }
 
@@ -1614,8 +1617,8 @@ public partial class MiningRatesMod
     }
 
     // The hits a break takes by each reading of the bar, where the rock's chance and minimum are usable.
-    static string DevReadings(RockRates r) => !r.HasBreakChance || !r.MinimumCounted ? "unusable break chance or minimum" : string.Join(", ", Enum.GetValues<BreakRule>().Select(rule =>
-        $"{rule} {(RockRates.ExpectedHits(rule, r.BreakChance, r.MinimumProspecting) is { } hits ? R(hits) : "never")}"));
+    static string DevReadings(RockRates r) => r.BreakChance <= 0 ? "unusable break chance" : string.Join(", ", Enum.GetValues<BreakRule>().Select(rule =>
+        $"{rule} {(RockRates.ExpectedHits(rule, r.BreakChance, r.MinimumProspecting) is { } hits ? R(hits) : "-")}"));
 
     // The longest line of every tip of the window in characters, against Fishing Rates' longest: Godot's tooltip does
     // not wrap, so a longer line makes a wider tooltip than Fishing Rates' (the code review of turn 1, fault 3).
@@ -1769,15 +1772,15 @@ public partial class MiningRatesMod
             Read("the filter's All button", "MiningCategoryFilterView.s_all", () => AllWords(null).Text),
             Read("the filter's box for hidden rocks", "MiningCategoryFilterView.s_showHidden", () => ShowHiddenWords(null).Text),
         }));
-        // The Ore column's tip quotes the card's break chance: still the game's words, or not (after a game update).
+        // Check the guide's quote of the card's break chance after a game update.
         try
         {
             static string Flat(string text) => Regex.Replace(text, @"\s+", " ").Trim();
             string game = Flat(DevWordsOf(BreakChanceWords(null).Text)), quote = Flat(RockRates.GameWords);
-            DevLog($"words | the quote in the Ore column's tip '{quote}': " + (game.StartsWith(quote, StringComparison.Ordinal) ? "the game's words, as they begin"
+            DevLog($"words | the break rule quoted in the guide '{quote}': " + (game.StartsWith(quote, StringComparison.Ordinal) ? "the game's words, as they begin"
                 : game.Contains(quote, StringComparison.Ordinal) ? "in the game's words" : $"NOT THE GAME'S WORDS ('{game}')"));
         }
-        catch (Exception e) { DevLog($"words | the quote in the Ore column's tip could not be held against the game's words (MiningRockSelectView.s_rockBreakChanceStatDescription: {e.GetType().Name})"); }
+        catch (Exception e) { DevLog($"words | the guide's break rule could not be compared with the game's words (MiningRockSelectView.s_rockBreakChanceStatDescription: {e.GetType().Name})"); }
         // Every button of the page's filter, and which is which: the All button the put-back would press is found by the
         // game's word only (DevAllButton).
         try
