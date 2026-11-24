@@ -13,6 +13,14 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
   each column is gold, a click on a column's name sorts by it, the log the page shows is lit, a locked log is greyed
   with the level it needs, and a click on a line opens that log on the page while nothing burns; while a log burns it
   only scrolls to it, so the fire is never touched.
+- **Hunting Rates**, a new mod: on the Hunting page, a round button opens one line per animal, with its
+  picture, its location, the time of a catch, and catches, Hunting XP, gold and traps per hour for your
+  character. How surveying, tracking, trapping and escapes join into a catch was measured in the game; the
+  surveys of a hunt and the XP range of a catch are the ones the Hunting page writes. XP and Gold of an animal
+  above level 7 wait for 5 of its catches at its level. The best of each column is gold, a click on a column's
+  name sorts by it, the animal the page shows is lit, a locked animal is greyed with the level it needs, and a
+  click on a line opens that animal's location and selects it on the page without starting to hunt; while you
+  hunt, it only shows. A line's tooltip has the whole hour.
 - **Woodcutting Rates**, a new mod: on the Woodcutting page, a round button opens one line per tree, with its
   picture, its category, the time of one log, and logs, Woodcutting XP and gold per hour for your character: the hits
   a cut takes (a hit takes 1, a double hit 2) and the XP coming with a cut were measured in the game. The best of each
