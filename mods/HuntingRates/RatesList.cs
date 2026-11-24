@@ -42,24 +42,37 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         new("time", "Time", string.Join("\n", ChainTip("Seconds for one catch: surveying, tracking and trapping, escapes too")), 58,
             a => a.SecondsPerCatch, Words.Seconds, Better.Less),
         new("catches", "Catches", string.Join("\n", ChainTip("Animals caught per hour")), 66, a => a.CatchesPerHour, Words.Number, Better.More),
-        new("xp", "XP", string.Join("\n", ChainTip("Hunting XP per hour: the XP of a catch, the middle of the page's range")), 66,
+        new("xp", "XP", string.Join("\n", ChainTip("Hunting XP per hour, the middle of the range the page writes", XpTip())), 66,
             a => a.XpPerHour, Words.Number, Better.More),
-        new("gold", "Gold", string.Join("\n", ChainTip("What the catches and surveys of an hour bring, in gold")), 66,
+        new("gold", "Gold", string.Join("\n", ChainTip("What the output and the finds of an hour sell for", OutputTip())), 66,
             a => a.GoldPerHour, Words.Number, Better.More),
         // Every hunt with a trap uses them, so the fastest animal uses the most: that is no reason to call any the best.
         new("traps", "Traps", string.Join("\n", ChainTip("Traps used per hour; none for an animal hunted without one")), 58,
             a => a.Trapless ? 0 : a.TrapsPerHour, Words.Number, Better.Neither),
     ];
 
-    // A column's tip, and what backs the chain of a catch once it is settled: the game's words quoted, or what was measured.
-    static IEnumerable<string> ChainTip(string first)
+    // A column's tip, and what backs the chain of a catch once it is settled (and what else the column rests on): the
+    // game's words quoted, or what was measured.
+    static IEnumerable<string> ChainTip(string first, IEnumerable<string>? more = null)
     {
         yield return first;
-        if (AnimalRates.ChainRule is not { } chain) yield break;
-        yield return "How the steps of a hunt join: " + Words.How(chain.Source);
-        if (chain.Source == RuleSource.Measured && chain.Seen.Length > 0) yield return "Measured: " + chain.Seen;
-        if (chain.Quote.Length > 0)
-            foreach (string line in chain.Quote.Split('\n'))
+        if (AnimalRates.ChainRule is { } chain)
+            foreach (string line in Backed("How the steps of a hunt join", chain.Source, chain.Seen, chain.Quote)) yield return line;
+        foreach (string line in more ?? []) yield return line;
+    }
+
+    // When the XP is added, once settled (lesson 55: never assumed).
+    static IEnumerable<string> XpTip() => AnimalRates.XpRule is { } xp ? Backed("The XP comes with a catch", xp.Source, xp.Seen, xp.Quote) : [];
+
+    // When the output comes, once settled.
+    static IEnumerable<string> OutputTip() => AnimalRates.OutputRule is { } output ? Backed("The output comes with a catch", output.Source, output.Seen, output.Quote) : [];
+
+    static IEnumerable<string> Backed(string what, RuleSource source, string seen, string quote)
+    {
+        yield return $"{what}: {(source == RuleSource.Measured ? "measured in the game" : "by the game's own words")}";
+        if (source == RuleSource.Measured && seen.Length > 0) yield return "Measured: " + seen;
+        if (quote.Length > 0)
+            foreach (string line in quote.Split('\n'))
                 yield return $"\"{line}\"";
     }
 }

@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using GamesByMalcs.Melvor2;
+using GamesByMalcs.Melvor2.CustomControls;
 using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities;
 using GamesByMalcs.Melvor2.Entities.Bank;
 using GamesByMalcs.Melvor2.Entities.Hunting;
 using GamesByMalcs.Melvor2.Settings;
+using GamesByMalcs.Melvor2.Utils;
 using Godot;
 using MelvorModLoader;
 using MelvorMods.Shared;
@@ -63,10 +65,16 @@ public partial class HuntingRatesMod : IMod
     Vector2 _fullSize;
     // The player opened the window and has not closed it: it is there whenever the Hunting page is.
     bool _wanted, _fitPending, _clicksOff, _stopped;
-    // The page's own button that shows the hunt instead of the journal did not do so: a click no longer presses it.
-    bool _huntViewOff;
-    // A click on a line: the animal whose card the page's list shows clear of the window once the page has laid it out
-    // (two drawn frames after the click), and the frame the click came in.
+    // A page control a click on a line goes through did not do what its own click does (the view did not follow, the
+    // location or the animal was not selected): from then on a click no longer presses it, said once.
+    bool _huntViewOff, _locationOff, _cardOff;
+    // A click on a line in steps, each once the page has laid itself out after the step before (two process frames: the
+    // layout needs no drawing, so a minimised game does not hold it up): the hunt shown instead of the journal, then the
+    // location, then the animal's card (_clickStep); the view judged once it settled (_viewCheck); the page's list
+    // scrolled to the card (_scrollTo).
+    sealed record ClickStep(ActiveHuntingAnimal Animal, AnimalRates.Opens Opens, int Stage, long After);
+    ClickStep? _clickStep;
+    (long After, bool Hunt, bool Journal)? _viewCheck;
     ActiveHuntingAnimal? _scrollTo;
     long _scrollAfter;
     // Where the window was put when it opened without a place of the player's (FirstPlace), or null.
@@ -78,8 +86,11 @@ public partial class HuntingRatesMod : IMod
     // while the page shows the cards (the animals of the location it shows); _looksOff once a member is gone.
     readonly Dictionary<ActiveHuntingAnimal, (string Name, Texture2D? Picture, Color Tint)> _looks = new(ReferenceEqualityComparer.Instance);
     readonly Dictionary<ActiveHuntingAnimal, (double Low, double High)> _xpRanges = new(ReferenceEqualityComparer.Instance);
+    // The tool as each card writes it (HuntingAnimalTrackingView.TrackingTool), for the tooltip (review 1, fault 10).
+    readonly Dictionary<ActiveHuntingAnimal, string> _toolWords = new(ReferenceEqualityComparer.Instance);
     Texture2D? _spiderPicture;
-    bool _looksOff;
+    // _spiderUnread: the game's spider setting could not be read once, and counts as on from then (no exception per tick).
+    bool _looksOff, _spiderUnread;
     // The page's words for an animal that needs no tool, and the game's word for something not found yet, read once.
     string? _noTool, _hiddenWord;
     bool _wordsRead;
@@ -101,7 +112,10 @@ public partial class HuntingRatesMod : IMod
     {
         try
         {
-            if (_scrollTo != null && (long)Engine.GetFramesDrawn() >= _scrollAfter) ScrollToCard();
+            long frame = (long)Engine.GetProcessFrames();
+            if (_viewCheck is { } check && frame >= check.After) ViewChecked();
+            if (_clickStep is { } step && frame >= step.After) ClickNext();
+            if (_scrollTo != null && frame >= _scrollAfter) ScrollToCard();
             if (!_tick.Due()) return;
             Game? game = GameAccess.CurrentGame;
             if (game is not { IsSaveLoaded: true }) game = null;
@@ -147,6 +161,8 @@ public partial class HuntingRatesMod : IMod
         if (GodotObject.IsInstanceValid(_page)) _page!.VisibilityChanged -= PageVisibilityChanged;
         _page = null;
         _scrollTo = null;
+        _clickStep = null;
+        _viewCheck = null;
         if (_window is { IsAlive: true }) _window.Visible = false;
         if (GodotObject.IsInstanceValid(_opener)) _opener!.Visible = false;
     }
@@ -283,8 +299,8 @@ public partial class HuntingRatesMod : IMod
             {
                 if (animal == null || !AnimalRates.Listed(animal)) continue;
                 AnimalRates a = ReadAnimal(animal);
-                a.Clickable = ClickChanges(a, out CardSight? sight);
-                a.Sight = sight;
+                a.ToolWords = _toolWords.GetValueOrDefault(animal);
+                a.Clickable = ClickChanges(a);
                 a.PanelCovered = panelCovered;
                 animals.Add(a);
             }
@@ -419,6 +435,7 @@ public partial class HuntingRatesMod : IMod
                         _spiderPicture = GameStyle.Load<Texture2D>(path);
                 }
                 if (Native.XpViewOf(card) is { } xp) ReadXpRange(xp, animal);
+                if (Native.ToolOf(card)?.Text is { Length: > 0 } tool) _toolWords[animal] = StringUtils.StripBBCode(tool).Trim();
             }
             if (Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() &&
                 Native.XpViewOf(panel) is { } panelXp && _hunting!.Action.SelectedAnimal is { } selected)
@@ -442,7 +459,7 @@ public partial class HuntingRatesMod : IMod
 
     // The path of the picture the game's own control shows for a spider (its exported _arachnophobiaModeIconPath), read
     // as a value through Godot; "" when it is not there.
-    static string SpiderPath(GamesByMalcs.Melvor2.CustomControls.SettingsIcon icon)
+    static string SpiderPath(SettingsIcon icon)
     {
         try
         {
@@ -456,9 +473,11 @@ public partial class HuntingRatesMod : IMod
     // be read it counts as on: no spider is ever shown by mistake.
     bool SpiderSetting()
     {
+        if (_spiderUnread) return true;
         try { return LocalSettingsManager.Settings?.Interface?.ArachnophobiaMode != false; }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException)
         {
+            _spiderUnread = true;
             Report("The game's spider setting could not be read (the game was updated?): spiders are shown without their picture.");
             return true;
         }
@@ -494,45 +513,85 @@ public partial class HuntingRatesMod : IMod
 
     // Asked for in issue #72, as the maintainer allowed it for Fishing Rates and Thieving Overview (22 Nov 2026) and for
     // the four rate windows of #70 to #73 (23 Nov 2026): a click on a line opens that animal on the Hunting page, and does
-    // what the player's own clicks there would, nothing more. The Hunting page has a selection that starts nothing: its
-    // location buttons and its animal cards select, and the animal then shows in the page's panel for the animal
-    // selected, whose own button starts the hunt (HuntingSelectedRecipeContainer.CreateRecipeButton, never pressed here).
-    // So, as Fishing Rates' click selects a spot (FishingRatesMod.OpenOnPage): through the game's public members that set
-    // what the page shows, the animal's location (HuntingActionComponent.SelectLocation), then the animal (SelectAnimal);
-    // when the page shows the journal, first its own button that shows the hunt (HuntView); then the page's list scrolled
-    // so that the animal's card is in sight clear of this window, once it is laid out (ScrollToCard). A locked animal
-    // opens its location only, and an animal whose location is locked nothing (AnimalRates.ClickOpens). The game keeps
-    // the animal selected apart from the one hunted (SelectedAnimal and CurrentAnimal, each with its own event), so the
-    // click selects also while a hunt runs; the development request reads the hunt in progress before and after every
-    // click (HUNT CHANGED), and compares the click with the game's own buttons. Nothing is started or stopped, the trap,
-    // the bait and hunting without a trap are left as they are, and the window stays open where the player put it.
+    // what the player's own clicks there would, nothing more. By the rule of lesson 56 (the brief template's "Only quality
+    // of life", and review 1 of this job):
+    // - It selects only through the page's own controls, pressed as a player's click presses them: the animal's location
+    //   by the page's button of that location (PressLocation), then, once the page has laid out that location's cards, the
+    //   animal by its card's own button (PressCard). Never through the members behind them.
+    // - It selects only while no hunt runs (HuntingActionComponent.IsStarted, read at the click and again before every
+    //   step): a selection may change the running hunt, and no check on the maintainer's character is to find out.
+    // - While a hunt runs, a click only shows: the hunt instead of the journal, by the page's own button (HuntView), and
+    //   the page's list scrolled to the animal's card when the page shows its location (ScrollToCard). Any other line
+    //   then does nothing, and its tooltip says so (AnimalRates.HuntBlocks).
+    // - A locked animal opens its location only, and its card is scrolled to, where the page says what it needs; a line
+    //   whose location is locked opens nothing (AnimalRates.ClickOpens). A card whose own button the page keeps
+    //   disabled is not selected (AnimalRates.CardBlocked).
+    // The buttons that start or stop a hunt, and the trap, bait and trapless controls, are never pressed; the window stays
+    // open where the player put it.
     void ShowOnPage(AnimalRates line)
     {
-        if (!PageShown || _clicksOff) return;
+        if (!PageShown || _clicksOff || _clickStep != null) return;
         ActiveHuntingAnimal active = line.Active;
-        var action = _hunting!.Action;
         // As it is now, not as it was at the last tick.
         AnimalRates.Opens opens = AnimalRates.ClickOpens(active);
         if (opens == AnimalRates.Opens.Nothing || active.Location == null) return;
-#if DEVTOOLS
-        // The game's events raised while the click runs are the click's own (DevClickEvents).
-        _devInClick = true;
-#endif
         try
         {
-            if (JournalShown()) HuntView();
-            if (!ReferenceEquals(action.SelectedLocation, active.Location)) action.SelectLocation(active.Location);
-            if (opens == AnimalRates.Opens.Animal)
+            if (JournalShown() && !_huntViewOff)
             {
-                if (!ReferenceEquals(action.SelectedAnimal, active)) action.SelectAnimal(active);
-                _scrollTo = active;
-                _scrollAfter = (long)Engine.GetFramesDrawn() + 2;
+                // The hunt first: the location buttons and the cards are part of it. The rest once the view has settled.
+                HuntView();
+                _clickStep = new ClickStep(active, opens, 1, (long)Engine.GetProcessFrames() + 2);
             }
+            else ClickStepNow(new ClickStep(active, opens, 1, 0));
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
         {
             ClicksOff(e);
             return;
+        }
+        Refresh();
+    }
+
+    // The steps after the first, two process frames after the one before.
+    void ClickNext()
+    {
+        ClickStep step = _clickStep!;
+        _clickStep = null;
+        if (!PageShown || _clicksOff) return;
+        try { ClickStepNow(step); }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
+        {
+            ClicksOff(e);
+            return;
+        }
+        if (_window is { IsAlive: true, Visible: true }) Refresh();
+    }
+
+    // Stage 1: the location, by its own button, while no hunt runs; stage 2: the animal, by its card's own button, while
+    // no hunt runs and the page still shows the location the click opened. Then the scroll to the card, which only shows.
+    void ClickStepNow(ClickStep step)
+    {
+        var action = _hunting!.Action;
+        ActiveHuntingAnimal active = step.Animal;
+#if DEVTOOLS
+        // The game's events raised while the click's own presses run are the click's (DevClickEvents).
+        _devInClick = true;
+#endif
+        try
+        {
+            bool here = ReferenceEquals(action.SelectedLocation, active.Location);
+            if (step.Stage == 1 && !here)
+            {
+                if (action.IsStarted || !PressLocation(active.Location!)) return;
+                _clickStep = step with { Stage = 2, After = (long)Engine.GetProcessFrames() + 2 };
+                return;
+            }
+            // The player went to another location meanwhile: his, and the click lets it be.
+            if (!here) return;
+            if (step.Opens == AnimalRates.Opens.Animal && !action.IsStarted && !ReferenceEquals(action.SelectedAnimal, active)) PressCard(active);
+            _scrollTo = active;
+            _scrollAfter = (long)Engine.GetProcessFrames() + 2;
         }
         finally
         {
@@ -540,46 +599,113 @@ public partial class HuntingRatesMod : IMod
             _devInClick = false;
 #endif
         }
-        Refresh();
+    }
+
+    // A control of the page's a player could click now: there, shown and not disabled.
+    static bool CanPress(Control? control) => control != null && GodotObject.IsInstanceValid(control) && control.IsVisibleInTree() &&
+        control switch { BaseButton b => !b.Disabled, BaseButtonContainer c => !c.Disabled, _ => false };
+
+    // The page's own button of a location, pressed as a player's click presses it: a toggle button goes down, then its
+    // Pressed (a C# event of the game's button container, raised as its click raises it). True when the page then shows
+    // that location. When it does not, the button is drawn again as it was, one line in the log, and from then on a click
+    // no longer changes the location (Woodcutting Rates' CategoryFilter, for the Hunting page's location buttons).
+    bool PressLocation(ActiveHuntingLocation location)
+    {
+        if (_locationOff) return false;
+        HuntingLocationButton? button = Native.LocationButton(_page!, location.Location);
+        if (!CanPress(button)) return false;
+        bool drawn = button!.ButtonPressed;
+        if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        Native.PressedEvent(button)?.Invoke();
+        if (ReferenceEquals(_hunting!.Action.SelectedLocation, location)) return true;
+        if (GodotObject.IsInstanceValid(button) && button.ButtonPressed != drawn) button.SetPressedNoSignal(drawn);
+        _locationOff = true;
+        Report("The Hunting page's own location button did not open its location when pressed (the game was updated?): a click on a line no longer changes the location.");
+        return false;
+    }
+
+    // The animal's card's own button, pressed as a player's click presses it (a toggle button goes down, then its pressed
+    // signal), only when the page shows it and does not keep it disabled. When the page then does not select the animal,
+    // the buttons of its group are drawn again as they were, one line, and from then on a click no longer selects.
+    bool PressCard(ActiveHuntingAnimal animal)
+    {
+        if (_cardOff || Native.Card(_page!, animal) is not { } card || Native.CardButton(card) is not { } button || !CanPress(button)) return false;
+        var group = button.ButtonGroup?.GetButtons().OfType<BaseButton>().ToList() ?? new List<BaseButton>();
+        if (!group.Contains(button)) group.Add(button);
+        var drawn = group.Select(b => (Button: b, Pressed: b.ButtonPressed)).ToList();
+        if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
+        button.EmitSignal(BaseButton.SignalName.Pressed);
+        if (ReferenceEquals(_hunting!.Action.SelectedAnimal, animal)) return true;
+        foreach (var (b, pressed) in drawn)
+            if (GodotObject.IsInstanceValid(b) && b.ButtonPressed != pressed) b.SetPressedNoSignal(pressed);
+        _cardOff = true;
+        Report("The Hunting page's own card button did not select its animal when pressed (the game was updated?): a click on a line no longer selects an animal.");
+        return false;
     }
 
     // The page shows its journal instead of the hunt (HuntingTrackingView.JournalView on the screen).
     bool JournalShown() => PageShown && Native.TrackingView(_page!) is { } view && Native.Journal(view) is { } journal && journal.IsVisibleInTree();
 
     // The page's own button that shows the hunt instead of the journal, pressed the way a player's click presses it (a
-    // toggle button goes down, which lets the journal's button of its group go, then its pressed signal), as Woodcutting
-    // Rates presses the page's own category button (WoodcuttingRatesMod.CategoryFilter). When the page still shows the
-    // journal, one line in the log, and from then on a click no longer presses it.
+    // toggle button goes down, which lets the journal's button of its group go, then its pressed signal). Whether the page
+    // followed is judged once it has settled (ViewChecked), never in the same call.
     void HuntView()
     {
-        if (_huntViewOff || Native.TrackingView(_page!) is not { } view || Native.HuntButton(view) is not { } button ||
-            button.Disabled || !button.IsVisibleInTree()) return;
+        if (_huntViewOff || Native.TrackingView(_page!) is not { } view || Native.HuntButton(view) is not { } button || !CanPress(button)) return;
+        Button? journal = Native.JournalButton(view);
+        _viewCheck = ((long)Engine.GetProcessFrames() + 2, button.ButtonPressed, journal?.ButtonPressed ?? false);
         if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
         button.EmitSignal(BaseButton.SignalName.Pressed);
-        if (!JournalShown()) return;
+    }
+
+    // Two process frames after the hunt's view button was pressed: when the page still shows the journal, both view
+    // buttons are drawn again as they were, so that neither stays drawn for a view the page does not show, one line, and
+    // from then on a click no longer presses it.
+    void ViewChecked()
+    {
+        var check = _viewCheck!.Value;
+        _viewCheck = null;
+        if (!JournalShown() || Native.TrackingView(_page!) is not { } view) return;
+        if (Native.HuntButton(view) is { } hunt && GodotObject.IsInstanceValid(hunt) && hunt.ButtonPressed != check.Hunt) hunt.SetPressedNoSignal(check.Hunt);
+        if (Native.JournalButton(view) is { } journal && GodotObject.IsInstanceValid(journal) && journal.ButtonPressed != check.Journal) journal.SetPressedNoSignal(check.Journal);
         _huntViewOff = true;
+        _clickStep = null;
         Report("The Hunting page's own button that shows the hunt did not hide its journal (the game was updated?): a click on a line no longer presses it.");
     }
 
-    // A click on the animal's line would change what the Hunting page shows: its location or the animal selected, the
-    // hunt shown instead of the journal, or, for the animal selected already, a scroll of the page's list that shows its
-    // card whole clear of this window (Native.Place). Read on every tick, for the line's look and its tooltip, and again
-    // at the click. sight: how the card stands while the page shows the animal's location (null otherwise), which the
-    // tooltip says when no scroll shows it clear.
-    bool ClickChanges(AnimalRates a, out CardSight? sight)
+    // A click on the animal's line would change what the Hunting page shows, by the rule of ShowOnPage: the hunt instead of
+    // the journal, its card scrolled into sight clear of this window (Native.Place) when the page shows its location,
+    // and, while no hunt runs, its location or the animal selected through the page's own controls. Read on every tick,
+    // for the line's look and its tooltip, and again at the click. Sets on the line what its tooltip says when a click
+    // cannot serve it: the hunt that runs, the card's button the page keeps disabled, the card with no room.
+    bool ClickChanges(AnimalRates a)
     {
-        sight = null;
         if (_clicksOff || !PageShown) return false;
         try
         {
             var action = _hunting!.Action;
-            bool here = ReferenceEquals(action.SelectedLocation, a.Active.Location), journal = JournalShown() && !_huntViewOff;
-            if (here && Native.Card(_page!, a.Active) is { } card && card.IsVisibleInTree()) sight = Native.Place(card, Cover(), out _);
+            bool hunting = action.IsStarted, here = ReferenceEquals(action.SelectedLocation, a.Active.Location);
+            bool journal = JournalShown() && !_huntViewOff, selected = ReferenceEquals(action.SelectedAnimal, a.Active);
+            HuntingAnimalTrackingView? card = here ? Native.Card(_page!, a.Active) : null;
+            if (card != null && card.IsVisibleInTree()) a.Sight = Native.Place(card, Cover(), out _);
+            bool scroll = a.Sight == CardSight.Scroll;
+            bool canLocation = !here && !_locationOff && CanPress(Native.LocationButton(_page!, a.Active.Location?.Location));
+            Button? cardButton = card != null ? Native.CardButton(card) : null;
+            bool canCard = here && !selected && !_cardOff && CanPress(cardButton);
+            if (a.Click == AnimalRates.Opens.Animal && here && !selected && cardButton is { Disabled: true }) a.CardBlocked = true;
+            bool selects = a.Click switch
+            {
+                AnimalRates.Opens.Location => !here,
+                AnimalRates.Opens.Animal => !here || !selected,
+                _ => false,
+            };
+            if (hunting && selects) a.HuntBlocks = true;
             return a.Click switch
             {
-                AnimalRates.Opens.Location => !here || journal,
-                AnimalRates.Opens.Animal => !here || journal || !ReferenceEquals(action.SelectedAnimal, a.Active) || sight == CardSight.Scroll,
-                _ => false,
+                AnimalRates.Opens.Nothing => false,
+                _ when hunting => journal || (here && scroll),
+                AnimalRates.Opens.Location => canLocation || journal || (here && scroll),
+                _ => canLocation || canCard || journal || scroll,
             };
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
@@ -608,10 +734,11 @@ public partial class HuntingRatesMod : IMod
     // Where the window opens while the player has not placed it himself (Woodcutting Rates' review 4: in the middle of the
     // page it left almost no line clickable). Of the four corners of the page's own view (its right side as far from the
     // strip of round buttons as the strip is from the screen's edge, so it never covers a round button; its left side;
-    // level with its top, or with its bottom above the game's bottom bar), the one that leaves the page's panel of the
-    // animal selected uncovered, then its location buttons, then the most of the cards of its list whole beside it
-    // (Native.Place: in sight, or after a scroll); the right top when they are equal. Everything is measured from the
-    // page as it is drawn now. Null when the page's parts are not there: the window then opens in the middle.
+    // level with its top, or with its bottom above the game's bottom bar), the one that leaves uncovered the page's panel
+    // of the animal selected and its panel of the hunt in progress (a hunting player watches it), then its location
+    // buttons, then the most of the cards of its list whole beside it (Native.Place: in sight, or after a scroll); the right
+    // top when they are equal. Everything is measured from the page as it is drawn now. Null when the page's parts are
+    // not there: the window then opens in the middle.
     Vector2? FirstPlace(Vector2 size)
     {
         if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
@@ -619,9 +746,9 @@ public partial class HuntingRatesMod : IMod
         {
             if (Native.TrackingView(_page!) is not { } view || !view.IsVisibleInTree()) return null;
             var cards = Native.Cards(_page!).Where(c => c.IsVisibleInTree()).ToList();
-            Control? panel = Native.Panel(view) is { } p && p.IsVisibleInTree() ? p : null;
+            var panels = new Control?[] { Native.Panel(view), Native.Current(view) }.OfType<Control>().Where(p => p.IsVisibleInTree()).ToList();
             Control? places = Native.LocationSelect(view) is { } l && l.IsVisibleInTree() ? l : null;
-            if (cards.Count == 0 && panel == null) return null;
+            if (cards.Count == 0 && panels.Count == 0) return null;
             Rect2 screen = _ctx.Tree.Root.GetVisibleRect(), page = Native.Drawn(view);
             float right = screen.End.X;
             if (GodotObject.IsInstanceValid(_opener) && _opener!.GetParent() is Control strip && strip.IsVisibleInTree())
@@ -638,7 +765,7 @@ public partial class HuntingRatesMod : IMod
                 {
                     float x = Math.Clamp(left, screen.Position.X, widest), y = Math.Clamp(top, screen.Position.Y, lowest);
                     var cover = new Rect2(x, y, size);
-                    int room = (panel != null && !Native.Covered(panel, cover) ? 10_000 : 0) + (places != null && !Native.Covered(places, cover) ? 1_000 : 0) +
+                    int room = panels.Count(p => !Native.Covered(p, cover)) * 10_000 + (places != null && !Native.Covered(places, cover) ? 1_000 : 0) +
                         cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
                     if (room > most) { most = room; best = new Vector2(x, y); }
                 }
@@ -651,11 +778,11 @@ public partial class HuntingRatesMod : IMod
         }
     }
 
-    // Two drawn frames after a click: the page has laid out its list for the location, and the list is scrolled as little
-    // as it takes to show the animal's whole card clear of this window (Native.Place), as Woodcutting Rates scrolls to a
-    // tree's card (WoodcuttingRatesMod.ScrollToCard). A card the page has no room for there is brought into its list as far
-    // as the list can scroll (ScrollContainer.EnsureControlVisible), and from the next tick on its line's tooltip says that
-    // the window is in the way. A card in no scrolling list is left where it is.
+    // Two process frames after the click's last step: the page has laid out its list for the location, and the list is
+    // scrolled as little as it takes to show the animal's whole card clear of this window (Native.Place), as Woodcutting
+    // Rates scrolls to a tree's card (WoodcuttingRatesMod.ScrollToCard). A card the page has no room for there is brought
+    // into its list as far as the list can scroll (ScrollContainer.EnsureControlVisible), and from the next tick on its
+    // line's tooltip says that the window is in the way. A card in no scrolling list is left where it is. Only shows.
     void ScrollToCard()
     {
         ActiveHuntingAnimal? animal = _scrollTo;
@@ -675,12 +802,13 @@ public partial class HuntingRatesMod : IMod
     }
 
     // A part of the page the click needs is gone after a game update (HuntingActiveView.TrackingView, the parts of
-    // HuntingTrackingView, HuntingAnimalTrackingView.Animal, all private, or the public SelectLocation and SelectAnimal):
-    // the lines show the numbers and open nothing.
+    // HuntingTrackingView, HuntingLocationSelect.Buttons, a button container's Pressed, a card's Animal or ToggleButton,
+    // all private): the lines show the numbers and open nothing.
     void ClicksOff(Exception e)
     {
         _clicksOff = true;
         _scrollTo = null;
+        _clickStep = null;
         Report($"A click on a line opens nothing from now on: the Hunting page has changed (the game was updated?): {e.Message}");
     }
 
@@ -759,6 +887,7 @@ public partial class HuntingRatesMod : IMod
         _pictures = null;
         _looks.Clear();
         _xpRanges.Clear();
+        _toolWords.Clear();
         _spiderPicture = null;
     }
 

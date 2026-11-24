@@ -31,9 +31,11 @@ enum CardSight
 // member names and types from tools/ApiDump are used here. A member that is gone after a game update throws when it is
 // first used: for a click on a line that switches the clicks off with one line in the log (HuntingRatesMod.ClicksOff),
 // for what the list reads from the page (the look of an animal not discovered, the XP range) that is given up with one
-// line, elsewhere it stops the mod with one line. Nothing here presses or changes anything: the page's buttons that
-// start or stop a hunt (HuntingSelectedRecipeContainer.CreateRecipeButton, HuntingCurrentRecipeContainer.StopButton)
-// are not named at all.
+// line, elsewhere it stops the mod with one line. Nothing here presses or changes anything by itself; the page's own
+// controls a click on a line goes through (a location's button, an animal's card button, the hunt's view button) are
+// pressed only by HuntingRatesMod, by the rule of its ShowOnPage. The page's buttons that start or stop a hunt
+// (HuntingSelectedRecipeContainer.CreateRecipeButton, HuntingCurrentRecipeContainer.StopButton) and its trap, bait and
+// trapless controls are not named at all.
 internal static class Native
 {
     // The page's own view, with its location buttons, its list of the location's animals, the panel of the animal
@@ -48,10 +50,29 @@ internal static class Native
     internal static extern HuntingLocationSelect? LocationSelect(HuntingTrackingView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_JournalView")]
     internal static extern HuntingJournalView? Journal(HuntingTrackingView view);
-    // The page's own button that shows the hunt instead of the journal: a click on a line presses it as a player would
-    // when the page shows the journal (HuntingRatesMod.HuntView).
+    // The page's own buttons that show the hunt or the journal: a click on a line presses the hunt's as a player would
+    // when the page shows the journal (HuntingRatesMod.HuntView), and draws both again when the view does not follow.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ViewHuntingButton")]
     internal static extern Button? HuntButton(HuntingTrackingView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ViewJournalButton")]
+    internal static extern Button? JournalButton(HuntingTrackingView view);
+    // The panel of the hunt in progress, which the window's first place keeps clear too.
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CurrentRecipeContainer")]
+    internal static extern HuntingCurrentRecipeContainer? Current(HuntingTrackingView view);
+
+    // The page's own controls a click on a line selects through, as a player's own click there would (lesson 56): a
+    // location's button (HuntingLocationSelect.Buttons; a BaseButtonContainer, whose Pressed is a C# event of its own,
+    // raised on a click by its private InternalPressed) and an animal's card button (HuntingAnimalTrackingView
+    // .ToggleButton, a Godot button).
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Buttons")]
+    internal static extern Dictionary<HuntingLocation, HuntingLocationButton>? LocationButtons(HuntingLocationSelect select);
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "Pressed")]
+    internal static extern ref Action? PressedEvent(BaseButtonContainer button);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_ToggleButton")]
+    internal static extern Button? CardButton(HuntingAnimalTrackingView card);
+    // The tool as the card writes it (HuntingAnimalTrackingView.TrackingTool): the line's tooltip says it in the card's words.
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_TrackingTool")]
+    internal static extern Label? ToolOf(HuntingAnimalTrackingView card);
 
     // An animal's card in the page's list: which animal it shows, and its name and picture as drawn.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Animal")]
@@ -86,6 +107,11 @@ internal static class Native
             ? list.GetChildren().OfType<HuntingAnimalTrackingView>().Where(c => GodotObject.IsInstanceValid(c) && !c.IsQueuedForDeletion())
             : Enumerable.Empty<HuntingAnimalTrackingView>();
 
+    /// <summary>A location's button on the page, or null when the page has none for it.</summary>
+    internal static HuntingLocationButton? LocationButton(HuntingActiveView page, HuntingLocation? location) =>
+        location != null && TrackingView(page) is { } view && LocationSelect(view) is { } select && LocationButtons(select) is { } buttons &&
+        buttons.TryGetValue(location, out HuntingLocationButton? button) && GodotObject.IsInstanceValid(button) ? button : null;
+
     /// <summary>The card of an animal in the page's list, or null when the list holds none for it.</summary>
     internal static HuntingAnimalTrackingView? Card(HuntingActiveView page, ActiveHuntingAnimal animal) =>
         Cards(page).FirstOrDefault(c => ReferenceEquals(AnimalOf(c), animal));
@@ -98,8 +124,11 @@ internal static class Native
     {
         try
         {
-            FieldInfo? field = typeof(AnimalSpeciesView).GetField("HiddenText", BindingFlags.NonPublic | BindingFlags.Static);
-            return field?.GetValue(null) is string { Length: > 0 } word ? StringUtils.StripBBCode(word).Trim() : null;
+            // A constant has no field an accessor can reach: its value is read from the metadata (Woodcutting Rates'
+            // DevNative.Constant, after Mining Rates' check-2).
+            FieldInfo? field = typeof(AnimalSpeciesView).GetField("HiddenText", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+            object? value = field == null ? null : field.IsLiteral ? field.GetRawConstantValue() : field.GetValue(null);
+            return value is string { Length: > 0 } word ? StringUtils.StripBBCode(word).Trim() : null;
         }
         catch (Exception e) when (e is not (MissingMemberException or TypeLoadException)) { return null; }
     }

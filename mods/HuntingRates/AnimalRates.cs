@@ -65,6 +65,26 @@ enum BaitUse { Hunt, Catch, TrapAttempt }
 /// </summary>
 sealed record UseRule(TrapUse Trap, bool TrapKept, BaitUse Bait, bool BaitKept);
 
+/// <summary>
+/// When the XP of the page's XP tag (HuntingActionStats.Experience) is added, a reading: nothing in its name or the page's
+/// says (lesson 55: Woodcutting's "per action" was a cut, not a hit). The silent watch tells the readings apart.
+/// </summary>
+enum XpWith
+{
+    /// <summary>With a catch, once, and with no other step of a hunt.</summary>
+    Catch,
+}
+
+/// <summary>
+/// When the page's output of an animal (HuntingActionStats.Products) comes, a reading: on a catch, each at its own chance.
+/// The silent watch counts the bank's items at every catch.
+/// </summary>
+enum OutputWith
+{
+    /// <summary>On a catch, each item at its own chance.</summary>
+    Catch,
+}
+
 /// <summary>What backs a part of the rule the hour rests on.</summary>
 enum RuleSource
 {
@@ -108,11 +128,23 @@ sealed class AnimalRates
     /// <summary>When traps and bait are used up, and what backs it: set here, in this one place. Not settled.</summary>
     static readonly Settled<UseRule>? KnownUse = null;
 
+    /// <summary>When the XP of the page's XP tag is added, and what backs it: set here, in this one place. Not settled.</summary>
+    static readonly Settled<XpWith>? KnownXp = null;
+
+    /// <summary>When the page's output comes, and what backs it: set here, in this one place. Not settled.</summary>
+    static readonly Settled<OutputWith>? KnownOutput = null;
+
     /// <summary>How the links of a hunt join, or null while nothing has settled it (<see cref="KnownChain"/>).</summary>
     public static Settled<ChainRule>? ChainRule => KnownChain;
 
     /// <summary>When traps and bait are used up, or null while nothing has settled it (<see cref="KnownUse"/>).</summary>
     public static Settled<UseRule>? UseRule => KnownUse;
+
+    /// <summary>When the XP is added, or null while nothing has settled it (<see cref="KnownXp"/>).</summary>
+    public static Settled<XpWith>? XpRule => KnownXp;
+
+    /// <summary>When the page's output comes, or null while nothing has settled it (<see cref="KnownOutput"/>).</summary>
+    public static Settled<OutputWith>? OutputRule => KnownOutput;
 
     /// <summary>Every reading of the chain the brief leaves open, for the light check and the watch to hold against.</summary>
     public static readonly ChainRule[] Readings =
@@ -168,6 +200,14 @@ sealed class AnimalRates
     public CardSight? Sight { get; set; }
     /// <summary>The page's panel of the selected animal lies under the window, where a click's animal would show.</summary>
     public bool PanelCovered { get; set; }
+    /// <summary>A hunt runs (HuntingActionComponent.IsStarted): a click only shows, and selects nothing.</summary>
+    public bool HuntRuns { get; init; }
+    /// <summary>While a hunt runs, a click would select on this line, and so does nothing (HuntingRatesMod.ClickChanges).</summary>
+    public bool HuntBlocks { get; set; }
+    /// <summary>The page keeps this animal's card button disabled: a click does not select it.</summary>
+    public bool CardBlocked { get; set; }
+    /// <summary>The tool as the animal's card on the page writes it, once the page has shown that card (null before).</summary>
+    public string? ToolWords { get; set; }
 
     /// <summary>
     /// What a click on an animal's line opens: the animal; only its location while the animal is locked; nothing while
@@ -220,8 +260,10 @@ sealed class AnimalRates
     /// (ExperienceStatsXPView), read from the page (HuntingRatesMod.XpRange); null until the page has shown them.
     /// </summary>
     public (double Low, double High)? XpRange { get; init; }
-    /// <summary>The XP of a catch, ours: the middle of the page's range; null until the range is read.</summary>
-    public double? XpPerCatch => XpRange is { } r ? XpEach * (r.Low + r.High) / 2 : null;
+    /// <summary>The middle of the page's range of the XP, ours; null until the range is read.</summary>
+    public double? XpMiddle => XpRange is { } r ? XpEach * (r.Low + r.High) / 2 : null;
+    /// <summary>The XP of a catch by the settled rule (<see cref="XpRule"/>), the middle of the page's range; null until both are known.</summary>
+    public double? XpPerCatch => XpRule != null ? XpMiddle : null;
     /// <summary>The animal's journal XP for tracking and for trapping, the game's base values (no bonuses known).</summary>
     public uint JournalTrackingXp { get; private set; }
     public uint JournalTrappingXp { get; private set; }
@@ -258,7 +300,7 @@ sealed class AnimalRates
     /// <summary>What the products and rare extras of a catch sell for in gold (collectables apart); null when one does not count.</summary>
     public double CatchGold { get; private set; }
     public double SurveyGold { get; private set; }
-    public double? GoldPerHour => CatchesPerHour is { } c ? c * CatchGold + c * (SurveysPerCatch ?? 0) * SurveyGold : null;
+    public double? GoldPerHour => CatchesPerHour is { } c && OutputRule != null ? c * CatchGold + c * (SurveysPerCatch ?? 0) * SurveyGold : null;
     public double? TrapsPerHour { get; private set; }
     public double? BaitPerHour { get; private set; }
 
@@ -296,6 +338,7 @@ sealed class AnimalRates
             OnPage = ReferenceEquals(action.SelectedAnimal, active),
             LocationOnPage = ReferenceEquals(action.SelectedLocation, active.Location),
             Hunted = action.IsStarted && ReferenceEquals(action.CurrentAnimal, active),
+            HuntRuns = action.IsStarted,
             XpRange = xpRange,
         };
         ConditionGroup?[] groups = [location?.Requirements, animal.Requirements];
@@ -348,7 +391,8 @@ sealed class AnimalRates
             r.SurveysPerCatch = time.Surveys;
             if (UseRule is { } use) (r.TrapsPerHour, r.BaitPerHour) = Uses(use.Reading, chain.Reading, r) is { } u ? (u.Traps, u.Bait) : (null, null);
         }
-        double? catches = r.CatchesPerHour;
+        // An hour of an item rests on the catches of an hour and on what the output comes with (OutputRule).
+        double? catches = OutputRule != null ? r.CatchesPerHour : null;
 
         // A catch's products, with the character's bonuses (not the animal's base list). The doubling chance doubles them,
         // as Fishing Rates and Woodcutting Rates count theirs: the window's reading of the game's words for it, "Your

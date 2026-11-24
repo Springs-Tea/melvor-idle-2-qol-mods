@@ -5,18 +5,16 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using GamesByMalcs.Melvor2.Components.Actions;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Conditions;
-using GamesByMalcs.Melvor2.Core;
 using GamesByMalcs.Melvor2.CustomControls;
+using GamesByMalcs.Melvor2.Data.Items;
 using GamesByMalcs.Melvor2.Entities.Hunting;
 using GamesByMalcs.Melvor2.GameMenus;
 using GamesByMalcs.Melvor2.GameMenus.Pages;
 using GamesByMalcs.Melvor2.InfoLabels;
 using GamesByMalcs.Melvor2.Settings;
 using GamesByMalcs.Melvor2.StatDisplays;
-using GamesByMalcs.Melvor2.Tooltips;
 using GamesByMalcs.Melvor2.Utils;
 using Godot;
 using MelvorModLoader;
@@ -27,81 +25,72 @@ namespace HuntingRates;
 // Development: a file "hunting.request" in the mod's folder runs the light check below with nobody at the keyboard, one
 // step about every half second, and writes "hunting.done" when it ends: "ok" or "failed at <step>: <why>", and in both
 // cases what was put back. Every step logs what it read as one-line "Dev: ..." entries in MelvorModLoader.log. It is
-// short (about a minute when nobody moves the mouse): no simulation, a few pictures. A second request,
+// short (about a minute and a half when nobody moves the mouse): no simulation, a few pictures. A second request,
 // "huntingwatch.request", only listens while the character hunts (DevWatch.cs); one waits for the other.
 //   pwsh .claude\codex\check-mod.ps1 -Worktree <worktree> -Mod HuntingRates -Request hunting.request -Produces hunting.done -Out <folder>
 // The request file may say "fail=<step>": that step then fails on purpose, to show that a failed request puts
-// everything back (-Text 'fail=click'). Built on Woodcutting Rates' request (mods/WoodcuttingRates/Dev.cs) as merged,
-// after its six turns and three code reviews, for the Hunting page; its put-back rule is the same, its parts are the
-// Hunting page's: the location selected, the animal selected, the journal or the hunt shown, the scroll of the list.
-// It only looks, points and clicks the mod's own controls and, in step 9, the Hunting page's own location button and
-// animal card button, which select and start nothing: no hunt is started, stopped or moved on, no trap, bait or trapless
-// choice is touched (they are read before and after every press: CHOICES CHANGED), and the buttons that start or stop
-// a hunt are not named in this file. What is put back is the page as it was just before the request's own first change
-// to it, so a selection the player made after the request began stays his. A click is made in two steps (DevPress): the
-// pointer is put on the control, and a later step presses only when the game says the pointer is on that control; a
-// control of the game under the mod's own window is pointed at beside it, or not at all (said at once). Nothing is
-// pointed at or pressed while somebody is at the mouse: a step waits until the real pointer has been still for 5 s, and
-// after 90 s the request ends, which puts everything back. A picture of something just shown is taken two drawn frames
-// later, and its pixels prove what it shows (DevChanged). The pictures go into the mod's folder (shot-hunting-*.png,
-// crop-hunting-*.png).
+// everything back; "fail=click" fails the step right after the click, so that the put-back of what the click changed is
+// shown (code review 1). Built on Woodcutting Rates' request (mods/WoodcuttingRates/Dev.cs) as merged; the page's parts it
+// changes, who owns each, how each is put back and the hunt guard are in DevPage.cs, the pointer on the page's parts in
+// DevAims.cs.
+// Lesson 56: nothing is selected while a hunt runs. "A hunt runs" (HuntingActionComponent.IsStarted) is read again right
+// before every press that selects and every put-back of a selection; while one runs, those are not made and are said
+// (NOT PUT BACK for what the request owned). The check is meant to run while the character is not hunting; run while he
+// hunts, it only proves that a click on a line selects nothing and leaves the hunt alone.
+// What it presses: the mod's own controls; the Hunting page's own journal button, location buttons and cards' buttons,
+// with the pointer as a player would (DevPress: the pointer is put on the control, a later step presses only when the game
+// says the pointer is on it; nothing while somebody is at the mouse, waiting until the real pointer has been still for
+// 5 s, and ending the request after 90 s, which puts everything back). The put-backs press the same controls by their own
+// signal or event, as the window's click does. The buttons that start or stop a hunt and the trap, bait and trapless
+// controls are never named or pressed; every animal's trap, bait and trapless choice is watched throughout (CHOICES
+// CHANGED). The game's methods it calls besides the window's own: GameView.SetCurrentPage (to open the Hunting page) and
+// the read-only ones the window calls. The pictures go into the mod's folder (shot-hunting-*.png, crop-hunting-*.png),
+// each two drawn frames after what it shows, with its pixels read back (DevChanged).
 //  1. Remembers the page on the screen, whether the window was open and folded, the round button, settings.json as it
 //     is on disk, the page's location and animal selected, whether it shows the journal, the scroll of its list of
 //     animals, the hunt in progress (IsStarted, CurrentAnimal, its State, CurrentStep, RequiredSteps, Tracks,
-//     TrapFailCount, the trap in use), and every animal's trap, bait and trapless choice.
+//     TrapFailCount, the trap in use), every animal's trap, bait and trapless choice; and starts the hunt guard.
 //  2. Opens the Hunting page the way the sidebar does, if another page is open, and reads back that it is shown; stops
-//     with one line when it cannot be opened that way (then open it by hand and send the request again).
-//  3. "Dev: strip": every round button in the strip. Closes the window if it was open. A picture of the screen without
-//     the window, for the proofs. Presses the round button, and opens the window up with its own button if it opened
-//     folded; the round button must be lit.
-//  4. "Dev: row": every line's numbers as the game gives them (raw) and as counted, the time of a catch by every reading
-//     of the chain (AnimalRates.Readings), as drawn (with colours), and its tooltip. "Dev: game": for the animal the
-//     page's panel shows, the game's own labels (the three intervals, the trapping chance, the XP and its range, the
-//     tool, the outputs, its list of bonuses) beside ours, DIFFER on a difference, and every card of the page's list (its
-//     name, picture, tool, trap, XP) beside the line, and the page's order of locations and animals against ours.
-//     "Dev: words": the page's own words for the rules the hour rests on (the constants of its views read by reflection,
-//     the rows and tooltips of its list of bonuses as filled in for the animal selected). "Dev: spiders": the game's
-//     spider setting and which picture each spider's line shows. "Dev: hidden": every animal not listed, and why, and the
-//     page's location buttons against ours. "Dev: discovery": every animal not discovered yet, as the page draws its card
-//     and as the line shows it. "Dev: lit". "Dev: tips". "Dev: room": the window's place, the panel, and every card
-//     against them. "Dev: cut" over every label of the picture. crop-hunting-window.png and, when the list scrolls,
-//     crop-hunting-window-end.png.
-//  5. One tooltip (shot-hunting-tooltip.png, "Dev: tooltip"), and the tooltip of the name with the longest tip
-//     (shot-hunting-header-tooltip.png). A tooltip that does not come up in 20 s is one line, and the request goes on.
-//  6. One sort: a click on the XP column's name; "Dev: order" and crop-hunting-sorted.png.
-//  7. "Dev: click": one click on a line of an animal at another location than the page's, when there is one. Reads back
-//     the page's location and animal selected, what the page shows in its own words (the panel's name), the lit line,
-//     the window, and the hunt in progress before and after, with the game's events raised during the click itself
-//     (DevClickEvents): HUNT STARTED, HUNT STOPPED, HUNT CHANGED, CHOICES CHANGED, NOT OPENED, THE PAGE SHOWS ANOTHER
-//     ANIMAL and THE WINDOW CLOSED mark what must not happen. Picture shot-hunting-clicked.png. Puts the selection back,
-//     then presses the game's own location button and animal button for the same animal with the pointer, as a player
-//     would, and compares (DIFFER, EVENTS DIFFER); then puts the selection back again. When the click changed the hunt,
-//     the game's buttons are not pressed. Each put-back follows the rule of step 9.
-//  8. "Dev: size": the window at its smallest and at its largest size (crop-hunting-smallest.png, crop-hunting-largest.png),
-//     LARGER or OVER THE BOTTOM BAR when it does not fit, and "Dev: cut" at both. Closes the window with its X:
-//     shot-hunting-closed.png.
-//  9. Puts back settings.json byte for byte from the copy read in step 1 (sort, size, place, fold), the window open or
-//     closed and folded as it was, and the page's parts: the journal or the hunt shown (by the page's own buttons), the
-//     location and the animal selected (by the members the click uses), the scroll of its list two drawn frames later.
-//     One rule for each part, each on its own (Woodcutting Rates' review 3): what the request left on a part is read from
-//     the page once it has settled after the request's own press (DevSettle), and at the put-back the part is read
-//     again: still exactly that, it is put back; otherwise the player changed it, and it is his: left, said in one line,
-//     never taken as the request's own. A location of his takes the animal and the scroll with it (they belong to the
-//     location shown). No wait on the mouse decides whose a value is. The keyboard focus is taken off a control right
-//     after the request's own press of it (DevFocusOff); nothing is given back. Every part is put back in its own try,
-//     with one line: a part that fails is NOT AS IT WAS, and the next part runs all the same.
-// 10. Reads it back from the screen, the game and the disk, the hunt in progress and every animal's choices too, then the
-//     page that was on the screen (only if the request opened Hunting itself) and the pointer where the real one is, and
-//     says in its last line what was put back, with NOT AS IT WAS for anything that is not, NOT READ BACK for what could
-//     not be read. What the player changed himself is said as his, and is no fault.
-// A step that fails jumps to 9: a failed request puts everything back too. If the mod stops while a request runs, or
-// another character is opened, the done file says so and settings.json is written back from the copy (DevStopped,
-// DevReset).
+//     with one line when it cannot be opened that way. "Dev: strip". Closes the window if it was open.
+//  3. "Dev: card stats": rests the pointer on every part of an animal's card and of the page's panel of the animal
+//     selected that the game shows a tooltip for (DevAims.cs), and logs each tooltip word for word, with its numbers
+//     named; shot-hunting-panel-tooltip.png.
+//  4. A picture of the screen without the window; presses the round button, and opens the window up with its own button
+//     if it opened folded; the round button must be lit.
+//  5. "Dev: row" (raw, counted, the time of a catch by every reading of the chain, drawn, tooltip), "Dev: game" (the
+//     panel's labels beside ours, its bonus rows, and the animal's trap, bait, trapless, journal and fail bonuses beside
+//     its stats), "Dev: card" (every card: name, picture, tool as drawn with its colour, its button), "order", "words",
+//     "spiders", "hidden", "discovery", "lit", "tips", "size", "room". "Dev: cut" over every label of the picture;
+//     crop-hunting-window.png and, when the list scrolls, crop-hunting-window-end.png.
+//  6. One tooltip (shot-hunting-tooltip.png) and the tooltip of the name with the longest tip
+//     (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and crop-hunting-sorted.png.
+//  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the click
+//     after has to show the hunt again by the page's own button.
+//  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's, which
+//     the click opens and selects through the page's own controls; read back: the location, the animal, the view and both
+//     view buttons as drawn, the panel's name, the lit line, the window, the game's events during the click itself, and
+//     the hunt guard over the click's window. NOT OPENED, THE HUNT IS NOT SHOWN, THE PAGE SHOWS ANOTHER ANIMAL, THE
+//     WINDOW CLOSED and the guard's marks are what must not happen. While a hunt runs: a line of another location, which
+//     must select nothing (THE CLICK SELECTED WHILE A HUNT RUNS). shot-hunting-clicked.png. Puts the page back, then,
+//     while no hunt runs and the player has changed nothing, presses the page's own location button and the card's
+//     button for the same animal with the pointer, compares (DIFFER, EVENTS DIFFER), and puts the page back again.
+//  9. "Dev: size": the window at its smallest and at its largest size (crop-hunting-smallest.png,
+//     crop-hunting-largest.png), and "Dev: cut" at both. Closes the window with its X: shot-hunting-closed.png.
+// 10. Puts back settings.json byte for byte from the copy read in step 1, the window as it was, and the page's parts, each
+//     by the rule of DevPage.cs, each in its own try: the view by the page's own view button, judged once settled; the
+//     location by its own button and the animal by its card's own button, only while no hunt runs; the scroll.
+// 11. Reads it all back, then puts back the page that was on the screen (only if the request opened Hunting itself) and
+//     the pointer, and says in its last line what was put back, NOT AS IT WAS for anything that is not, NOT PUT BACK for
+//     what lesson 56 kept it from putting back, NOT READ BACK for what could not be read. A change of the hunt or of a
+//     choice is the request's fault only when the guard saw it in the window of one of its presses; otherwise it is said
+//     as the player's or the game's.
+// A step that fails jumps to 10. If the mod stops while a request runs, or another character is opened, the done file says
+// so and settings.json is written back from the copy (DevStopped, DevReset).
 public partial class HuntingRatesMod
 {
     const string RequestFile = "hunting.request", DoneFile = "hunting.done";
-    // Woodcutting Rates' times (CombatGoals/DevWindowShots.cs before it): how long the real pointer must be still before a
-    // step points or presses, and how long a step waits for that before the request ends.
+    // Woodcutting Rates' times: how long the real pointer must be still before a step points or presses, and how long a
+    // step waits for that before the request ends.
     const ulong StillFor = 5000, GiveUpAfter = 90000, StepTime = 6000, PointerStepTime = GiveUpAfter + 10000;
     const ulong TipWait = 20000;
     // Fishing Rates' longest tip of a column's name, line by line, and the longest line of its tooltips, in characters.
@@ -113,37 +102,16 @@ public partial class HuntingRatesMod
     long _devFrameMark;
     string? _devFailure, _devFailOnPurpose, _devPutBackWords;
     bool _devPutBackOk, _devPutBackRead, _devOpenedPage;
-    // Put-backs on the way whose line says NOT AS IT WAS, and presses not made: the done line carries them.
+    // Put-backs on the way whose line says NOT AS IT WAS or NOT PUT BACK, and presses not made: the done line carries them.
     readonly List<string> _devOnTheWay = new();
     Image? _devWithout;
     string? _devSettingsCopy;
     bool _devSettingsRead;
-    // True while a click on a line runs (ShowOnPage): the game's events raised then are the click's own.
+    // True while a click on a line runs its presses (ShowOnPage, ClickStepNow): the game's events raised then are the click's.
     bool _devInClick;
-
-    // The parts of the Hunting page the request can change, each owned on its own (Woodcutting Rates' rule): what the
-    // request left is read from the page once it has settled after the request's own press (_devSettle), and kept (null:
-    // the request owns nothing of that part). The scroll belongs to the list of one location (_devScrollUnder).
-    sealed record DevOwn<T>(T Value);
-    DevOwn<ActiveHuntingLocation?>? _devOwnLocation;
-    DevOwn<ActiveHuntingAnimal?>? _devOwnAnimal;
-    DevOwn<bool>? _devOwnJournal;
-    DevOwn<int?>? _devOwnScroll;
-    ActiveHuntingLocation? _devScrollUnder;
-    (long Frame, bool Both)? _devSettle;
-    long _devTick, _devSettledTick = -1;
-    DevPageWas? _devOrigin, _devOriginWait;
-    readonly HashSet<string> _devHis = new();
-    (Control Target, long Frame)? _devFocusAfter;
-    HuntingActionComponent? _devAction;
 
     // What the request found, to be put back as it was.
     sealed record DevBefore(GamePage? Page, bool Wanted, bool Shown, bool? Folded, bool? Lit, string? Settings, DevPageWas Hunting);
-
-    // The Hunting page's selection, view and scroll at one moment (_devOrigin).
-    sealed record DevPageWas(ActiveHuntingLocation? Location, ActiveHuntingAnimal? Animal, bool Journal, int? Scroll);
-
-    DevPageWas DevPageNow() => new(_hunting!.Action.SelectedLocation, _hunting.Action.SelectedAnimal, DevJournalNow(), DevScrollNow());
 
     void DevReset()
     {
@@ -213,6 +181,8 @@ public partial class HuntingRatesMod
         catch (Exception e) { _devFocusAfter = null; DevLog($"focus | not read: {e.GetType().Name}: {e.Message}"); }
         try { DevSettle(); }
         catch (Exception e) { _devSettle = null; DevLog($"page | what the request left could not be read: {e.GetType().Name}: {e.Message}"); }
+        try { DevGuardTick(); }
+        catch (Exception e) { DevLog($"hunt | the guard could not be read: {e.GetType().Name}: {e.Message}"); }
         string step = "";
         try
         {
@@ -282,6 +252,8 @@ public partial class HuntingRatesMod
     void DevEnd(string result)
     {
         DevLog("Hunting Rates check " + result);
+        DevHuntGuard.DisposeCurrent();
+        _devGuard = null;
         _devSteps.Clear();
         _devAt = 0;
         _devWithout?.Dispose();
@@ -309,247 +281,6 @@ public partial class HuntingRatesMod
 
     static string DevJoin(params string[] parts) => string.Join(", ", parts.Where(p => p.Length > 0));
 
-    // ---- the page's parts the request owns (Woodcutting Rates' rule, for the Hunting page) ------------------------------
-
-    bool? DevJournalNowOrNull()
-    {
-        try { return JournalShown(); }
-        catch (Exception) { return null; }
-    }
-
-    bool DevJournalNow() => DevJournalNowOrNull() ?? false;
-
-    // Where the page's list of animals is scrolled to, or null when the list is in no scrolling container.
-    int? DevScrollNow()
-    {
-        try { return DevListScroll() is { } scroll ? scroll.ScrollVertical : null; }
-        catch (Exception) { return null; }
-    }
-
-    ScrollContainer? DevListScroll() =>
-        _page != null && GodotObject.IsInstanceValid(_page) && Native.TrackingView(_page) is { } view && Native.AnimalList(view) is { } list ? Native.ScrollOf(list) : null;
-
-    bool DevOwnsAny => _devOwnLocation != null || _devOwnAnimal != null || _devOwnJournal != null || _devOwnScroll != null;
-
-    // A press the request makes on the Hunting page (a line, a location button, an animal's card), on every tick until it
-    // is made. It waits for the request's own last press to settle. While nothing of the request's is left on the page,
-    // the page as it is on that tick is taken as what the put-backs go back to. While the request owns a part that is not
-    // exactly what it left, the player changed it: the request lets go of it and the press is not made (null).
-    bool? DevPagePress(Func<bool> press, DevBefore before, string what)
-    {
-        if (_devSettle != null) return false;
-        bool owns = DevOwnsAny;
-        if (owns)
-        {
-            var moved = DevHisNow();
-            if (moved.Count > 0)
-            {
-                string words = $"{what} NOT MADE: the player changed {string.Join(" and ", moved)} while the press waited for the mouse, which stays his";
-                DevLog("click | " + words);
-                _devOnTheWay.Add(words);
-                return null;
-            }
-        }
-        else _devOriginWait = DevPageNow();
-        if (!press()) return false;
-        if (!owns)
-        {
-            DevPageWas was = _devOrigin ?? before.Hunting;
-            _devOrigin = _devOriginWait ?? DevPageNow();
-            _devHis.Clear();
-            if (_devOrigin != was)
-                DevLog($"click | the page just before {what}: {DevPageWords(_devOrigin)}; not as the request found it ({DevPageWords(was)}): the player changed it " +
-                    "meanwhile, and that is what is put back");
-        }
-        _devSettle = ((long)Engine.GetFramesDrawn(), true);
-        return true;
-    }
-
-    static string DevPageWords(DevPageWas p) =>
-        $"the location {p.Location?.Location?.Id ?? "none"}, the animal {p.Animal?.Animal.Id ?? "none"}, the {(p.Journal ? "journal" : "hunt")} shown, " +
-        $"the list scrolled to {p.Scroll?.ToString() ?? "-"}";
-
-    // Each part the request owns, read again: one that is not exactly what the request left is the player's, and is let
-    // go of. A location of his takes the animal and the scroll with it: they belong to the location shown.
-    List<string> DevHisNow()
-    {
-        var moved = new List<string>();
-        var action = _hunting!.Action;
-        if (_devOwnLocation is { } location && !ReferenceEquals(action.SelectedLocation, location.Value))
-        {
-            moved.Add($"the location (now {action.SelectedLocation?.Location?.Id ?? "none"}, the request left {location.Value?.Location?.Id ?? "none"})");
-            _devOwnLocation = null;
-            _devHis.Add("location");
-            if (_devOwnAnimal != null) { moved.Add("the animal with it"); _devOwnAnimal = null; _devHis.Add("animal"); }
-            if (_devOwnScroll != null) { moved.Add("the scroll with it"); _devOwnScroll = null; _devHis.Add("scroll"); }
-        }
-        if (_devOwnAnimal is { } animal && !ReferenceEquals(action.SelectedAnimal, animal.Value))
-        {
-            moved.Add($"the animal (now {action.SelectedAnimal?.Animal.Id ?? "none"}, the request left {animal.Value?.Animal.Id ?? "none"})");
-            _devOwnAnimal = null;
-            _devHis.Add("animal");
-        }
-        if (_devOwnJournal is { } journal && DevJournalNowOrNull() is { } now && now != journal.Value)
-        {
-            moved.Add($"the view (now the {(now ? "journal" : "hunt")}, the request left the {(journal.Value ? "journal" : "hunt")})");
-            _devOwnJournal = null;
-            _devHis.Add("view");
-        }
-        if (_devOwnScroll != null && !ReferenceEquals(action.SelectedLocation, _devScrollUnder))
-        {
-            moved.Add("the scroll (the list is of another location now)");
-            _devOwnScroll = null;
-            _devHis.Add("scroll");
-        }
-        if (_devOwnScroll is { } scroll && DevScrollNow() is var at && at != scroll.Value)
-        {
-            moved.Add($"the scroll (now {at?.ToString() ?? "-"}, the request left {scroll.Value?.ToString() ?? "-"})");
-            _devOwnScroll = null;
-            _devHis.Add("scroll");
-        }
-        return moved;
-    }
-
-    // What the request's own last press left on the page, read once the page has settled: two drawn frames after the
-    // press, and after the window's own scroll to a card. A change of the request's: every part is its own now. A put-back
-    // of the request's: the scroll it still owns is read again, since the list was laid out anew.
-    void DevSettle()
-    {
-        if (_devSettle is not { } settle || _scrollTo != null || (long)Engine.GetFramesDrawn() < settle.Frame + 2) return;
-        _devSettle = null;
-        _devSettledTick = _devTick;
-        if (_hunting == null || _page == null || !GodotObject.IsInstanceValid(_page)) return;
-        var action = _hunting.Action;
-        if (settle.Both)
-        {
-            _devOwnLocation = new(action.SelectedLocation);
-            _devOwnAnimal = new(action.SelectedAnimal);
-            _devOwnJournal = DevJournalNowOrNull() is { } journal ? new(journal) : null;
-            _devOwnScroll = new(DevScrollNow());
-            _devScrollUnder = action.SelectedLocation;
-        }
-        else if (_devOwnScroll != null)
-        {
-            _devOwnScroll = new(DevScrollNow());
-            _devScrollUnder = action.SelectedLocation;
-        }
-        DevLog($"page | settled after the request's {(settle.Both ? "press" : "put-back")}: the request owns the location " +
-            $"{(_devOwnLocation is { } l ? l.Value?.Location?.Id ?? "none" : "(none)")}, the animal {(_devOwnAnimal is { } a ? a.Value?.Animal.Id ?? "none" : "(none)")}, " +
-            $"the view {(_devOwnJournal is { } j ? j.Value ? "journal" : "hunt" : "(none)")} and the scroll {(_devOwnScroll is { } s ? s.Value?.ToString() ?? "-" : "(none)")}");
-    }
-
-    void DevFocusOff()
-    {
-        if (_devFocusAfter is not { } after || (long)Engine.GetFramesDrawn() < after.Frame + 1) return;
-        _devFocusAfter = null;
-        Control? owner = _ctx.Tree.Root.GuiGetFocusOwner();
-        if (owner == null || !GodotObject.IsInstanceValid(after.Target) || (owner != after.Target && !after.Target.IsAncestorOf(owner))) return;
-        owner.ReleaseFocus();
-        DevLog($"focus | the keyboard focus taken off {DevName(owner)}, which the request's press gave it");
-    }
-
-    // The page's parts as they were just before the request's first change (_devOrigin), each on its own by the rule
-    // above: the view through the page's own buttons (the hunt's or the journal's, pressed by their signal as a click on a
-    // line presses the hunt's); the location and the animal through the members a click on a line uses
-    // (HuntingActionComponent.SelectLocation, SelectAnimal). A part that could not be put back stays the request's own,
-    // for the final put-back. The scroll goes back on its own afterwards (DevScrollBack).
-    string DevPageBack()
-    {
-        if (_devOrigin is not { } origin || !DevOwnsAny) return "nothing of the request's is left on the page";
-        if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Hunting page is gone: its selection NOT AS IT WAS (not put back)";
-        var action = _hunting!.Action;
-        var said = new List<string>();
-        foreach (string part in DevHisNow()) said.Add($"{part} is the player's, and is left");
-        if (_devOwnJournal is { } journal)
-        {
-            if (journal.Value == origin.Journal) { _devOwnJournal = null; said.Add($"the {(origin.Journal ? "journal" : "hunt")} shown, as it was"); }
-            else if (Native.TrackingView(_page) is { } view && (origin.Journal ? DevNative.JournalButton(view) : Native.HuntButton(view)) is { } button)
-            {
-                if (button.ToggleMode && !button.ButtonPressed) button.ButtonPressed = true;
-                button.EmitSignal(BaseButton.SignalName.Pressed);
-                bool took = DevJournalNow() == origin.Journal;
-                if (took) _devOwnJournal = null;
-                said.Add(took ? $"the {(origin.Journal ? "journal" : "hunt")} shown again with the page's own button"
-                    : $"the view NOT AS IT WAS: the page's own button did not show the {(origin.Journal ? "journal" : "hunt")}");
-            }
-            else said.Add("the view NOT AS IT WAS: the page's own button was not found");
-        }
-        bool changed = false;
-        if (_devOwnLocation is { } location)
-        {
-            if (ReferenceEquals(action.SelectedLocation, origin.Location)) { _devOwnLocation = null; said.Add("the location as it was"); }
-            else
-            {
-                try
-                {
-                    action.SelectLocation(origin.Location!);
-                    changed = true;
-                    // What the game did with the animal on the request's own put-back is the request's, not his.
-                    if (_devOwnAnimal != null) _devOwnAnimal = new(action.SelectedAnimal);
-                    bool took = ReferenceEquals(action.SelectedLocation, origin.Location);
-                    if (took) _devOwnLocation = null;
-                    said.Add(took ? $"the location put back to {origin.Location?.Location?.Id ?? "none"}" : $"the location NOT AS IT WAS (now {action.SelectedLocation?.Location?.Id ?? "none"})");
-                }
-                catch (Exception e) { said.Add($"the location NOT AS IT WAS: SelectLocation failed ({e.GetType().Name}: {e.Message})"); }
-            }
-        }
-        if (_devOwnAnimal is { } animal)
-        {
-            if (ReferenceEquals(action.SelectedAnimal, origin.Animal)) { _devOwnAnimal = null; said.Add("the animal as it was"); }
-            else if (_devOwnLocation != null) said.Add("the animal left with the request's location, which is not put back: both stay the request's own");
-            else
-            {
-                try
-                {
-                    action.SelectAnimal(origin.Animal!);
-                    changed = true;
-                    bool took = ReferenceEquals(action.SelectedAnimal, origin.Animal);
-                    if (took) _devOwnAnimal = null;
-                    else _devOwnAnimal = new(action.SelectedAnimal);
-                    said.Add(took ? $"the animal put back to {origin.Animal?.Animal.Id ?? "none"}" : $"the animal NOT AS IT WAS (now {action.SelectedAnimal?.Animal.Id ?? "none"})");
-                }
-                catch (Exception e) { said.Add($"the animal NOT AS IT WAS: SelectAnimal({origin.Animal?.Animal.Id ?? "none"}) failed ({e.GetType().Name}: {e.Message})"); }
-            }
-        }
-        // The list was laid out anew: the scroll the request still owns is read again once it settled.
-        if (changed) _devSettle = ((long)Engine.GetFramesDrawn(), false);
-        return DevJoin(said.ToArray());
-    }
-
-    // The scroll the request owns, read again on a later tick than what it left was read: still exactly that, it is put
-    // back to where it was before the request's first change; otherwise the player moved it, and it is left.
-    string DevScrollBack()
-    {
-        if (_devOwnScroll is not { } own || _devOrigin is not { } origin) return "";
-        if (_devOwnLocation != null) return "the scroll left with the request's location, which is not put back: both stay the request's own";
-        if (!ReferenceEquals(_hunting!.Action.SelectedLocation, _devScrollUnder))
-        {
-            _devOwnScroll = null;
-            _devHis.Add("scroll");
-            return "the scroll is left: the page shows another location's list now, the player's";
-        }
-        int? now = DevScrollNow();
-        if (now != own.Value)
-        {
-            _devOwnScroll = null;
-            _devHis.Add("scroll");
-            return $"the scroll {now?.ToString() ?? "-"} is not what the request left ({own.Value?.ToString() ?? "-"}): the player moved it, and it is left";
-        }
-        if (now == origin.Scroll) { _devOwnScroll = null; return "the scroll as it was"; }
-        if (origin.Scroll is not { } back || !ReferenceEquals(_hunting.Action.SelectedLocation, origin.Location))
-        {
-            _devOwnScroll = null;
-            return origin.Scroll == null ? "the scroll NOT AS IT WAS: where it stood was not read, so it is not written" : "the scroll left: the page's location is not the one it was read under";
-        }
-        if (DevListScroll() is not { } list) { _devOwnScroll = null; return "the scroll NOT AS IT WAS: the list is not found"; }
-        list.ScrollVertical = back;
-        int? after = DevScrollNow();
-        if (after == back) { _devOwnScroll = null; return $"the scroll put back to {back}"; }
-        _devOwnScroll = new(after);
-        _devScrollUnder = _hunting.Action.SelectedLocation;
-        return $"the scroll NOT AS IT WAS (put back to {back}, it reads {after?.ToString() ?? "-"}); what the request's write left stays its own";
-    }
-
     // ---- the steps ---------------------------------------------------------------------------------------------------
 
     void DevPlan(string asked)
@@ -566,6 +297,8 @@ public partial class HuntingRatesMod
         _devOwnAnimal = null;
         _devOwnJournal = null;
         _devOwnScroll = null;
+        _devAnimalUnder = _devScrollUnder = null;
+        _devViewDrawn = null;
         _devSettle = null;
         _devSettledTick = -1;
         _devOrigin = _devOriginWait = null;
@@ -585,11 +318,13 @@ public partial class HuntingRatesMod
             _window is { IsAlive: true } ? _window.Minimised : null, GodotObject.IsInstanceValid(_opener) ? _opener!.ButtonPressed : null,
             _devSettingsCopy, DevPageNow());
         string huntAtStart = DevHunt(), choicesAtStart = DevChoices();
+        _devGuard = new DevHuntGuard(action, DevLog);
         void Add(string name, Func<bool> run, ulong timeout = StepTime) => _devSteps.Add((name, run, timeout));
         DevLog($"before: page {before.Page?.Id ?? "none"}, window {(before.Wanted ? "open" : "closed")}{(before.Shown ? " and on the screen" : "")}" +
             $"{(before.Folded == true ? ", folded" : "")}, round button {(before.Lit is { } lit ? lit ? "lit" : "unlit" : "not made yet")}, settings.json " +
             (before.Settings == null ? "not there" : $"{before.Settings.Length} characters: {before.Settings}") +
-            $" | {huntAtStart} | the page: {DevPageWords(before.Hunting)} | the choices: {choicesAtStart} | the real pointer at {DisplayServer.MouseGetPosition()}");
+            $" | {huntAtStart} | the page: {DevPageWords(before.Hunting)} | the choices: {choicesAtStart} | the real pointer at {DisplayServer.MouseGetPosition()}" +
+            (action.IsStarted ? " | A HUNT RUNS: nothing will be selected, and the click only proves that it selects nothing" : ""));
 
         Add("open the Hunting page", () =>
         {
@@ -614,6 +349,33 @@ public partial class HuntingRatesMod
             if (IsOpen) Close();
             return true;
         });
+        // The game's own words on the parts of a card and of the panel, before the window is open over the page.
+        List<DevAim>? aims = null;
+        int aimAt = 0;
+        Add("the parts' own words", () =>
+        {
+            if (aims == null)
+            {
+                if (!DevFramesDrawn()) return false;
+                aims = DevAims(out string why);
+                if (why.Length > 0) DevLog($"card stats | {why}");
+                DevLog($"card stats | {aims.Count} parts to rest the pointer on");
+                aimAt = 0;
+                _devTipSince = 0;
+                _devFrameMark = 0;
+            }
+            while (aimAt < aims.Count)
+            {
+                if (!DevAimStep(aims[aimAt])) return false;
+                aims[aimAt].Before?.Dispose();
+                aims[aimAt].Before = null;
+                aimAt++;
+                _devTipSince = 0;
+                _devFrameMark = 0;
+            }
+            DevPointerBack();
+            return true;
+        }, GiveUpAfter + MostAims * (TipWait + 3000));
         Add("the screen without the window", () =>
         {
             if (!DevFramesDrawn()) return false;
@@ -677,7 +439,6 @@ public partial class HuntingRatesMod
         {
             if (_list!.DevScroll.ScrollVertical != 0) return false;
             var lines = _list.DevLines().ToList();
-            // An animal that can be hunted first, with its whole hour in the tooltip.
             target = (lines.FirstOrDefault(l => !l.Animal.Locked && l.Animal.Discovered).Button ?? lines.FirstOrDefault().Button)
                 ?? throw new InvalidOperationException("No line to point at.");
             DevLog($"tooltip | the line pointed at: {lines.First(l => l.Button == target).Animal.Animal.Id}");
@@ -732,50 +493,125 @@ public partial class HuntingRatesMod
             return true;
         });
 
-        // A click on a line of an animal at another location than the page's, then the page's own location button and
-        // the animal's card button for the same animal, to compare. The selection is put back after each.
+        // The journal by the page's own button, then a click on a line, then (while no hunt runs) the page's own location
+        // and card buttons for the same animal, to compare. The page is put back after each, by the rule of DevPage.cs.
         AnimalRates? clicked = null;
         DevClickEvents? events = null;
         Image? beforeClick = null;
-        string huntBefore = "", choicesBefore = "", ours = "", ourEvents = "", pageBack = "";
-        bool huntChanged = false, compareSkipped = false;
+        Button? journalButton = null;
+        string huntBefore = "", choicesBefore = "", ours = "", ourEvents = "";
+        bool huntingAtClick = false, compareSkipped = false;
+        bool Waiting() => DevSettling || _devSettledTick >= _devTick;
 
+        // The put-back of the page's parts in steps, each part on its own and in its own try, each step after the page has
+        // settled from the one before: the view, then (once the view is read back) the location, then the animal, whose card
+        // is laid out only once the location is shown, then the scroll and one line that says all of it.
         void AddPageBack(string name, Func<bool> skip, string head)
         {
-            Add($"{name}: the selection", () =>
+            string words = "";
+            void Put(string part, Func<string> put)
+            {
+                try
+                {
+                    string said = put();
+                    if (said.Length > 0) words = DevJoin(words, said);
+                }
+                catch (Exception e) { words = DevJoin(words, $"{part} NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message})"); }
+            }
+            void His() => Put("what the player changed", () => string.Join(", ", DevHisNow().Select(p => $"{p} is the player's, and is left")));
+            Add($"{name}: the view", () =>
             {
                 if (skip()) return true;
-                if (_devSettle != null || _devSettledTick >= _devTick) return false;
-                pageBack = DevPageBack();
+                if (Waiting()) return false;
+                words = "";
+                His();
+                Put("the view", DevViewBack);
+                return true;
+            });
+            Add($"{name}: the view read back", () =>
+            {
+                if (skip()) return true;
+                if (Waiting()) return false;
+                Put("the view", DevViewBackRead);
+                return true;
+            });
+            Add($"{name}: the location", () =>
+            {
+                if (skip()) return true;
+                if (Waiting()) return false;
+                His();
+                Put("the location", DevLocationBack);
+                return true;
+            });
+            Add($"{name}: the animal", () =>
+            {
+                if (skip()) return true;
+                if (Waiting()) return false;
+                His();
+                Put("the animal", DevAnimalBack);
                 return true;
             });
             Add($"{name}: the scroll", () =>
             {
                 if (skip()) return true;
-                if (_devOwnScroll != null && (_devSettle != null || _devSettledTick >= _devTick)) return false;
-                string scrollWords;
-                try { scrollWords = DevScrollBack(); }
-                catch (Exception e) { scrollWords = $"the scroll NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message})"; }
-                string said = DevJoin(pageBack, scrollWords);
-                DevLog($"{head} {said}; now {DevPageWords(DevPageNow())}");
-                if (said.Contains("NOT AS IT WAS")) _devOnTheWay.Add($"{head} {said}");
-                pageBack = "";
+                if (Waiting()) return false;
+                Put("the scroll", DevScrollBack);
+                DevLog($"{head} {(words.Length > 0 ? words : "nothing of the request's was left on the page")}; now {DevPageWords(DevPageNow())}");
+                if (words.Contains("NOT AS IT WAS") || words.Contains("NOT PUT BACK")) _devOnTheWay.Add($"{head} {words}");
+                words = "";
                 return true;
             });
         }
 
+        Add("the journal by its own button", () =>
+        {
+            // The page's own view: when it shows the hunt, its journal button is pressed with the pointer, so that the click
+            // after has to show the hunt again by the page's own button (code review 1, fault 5). This only shows a view of
+            // the page, and is made while a hunt runs too.
+            if (journalButton == null)
+            {
+                if (DevJournalNow()) { DevLog("journal | the page shows its journal already: the click starts from it"); return true; }
+                journalButton = Native.TrackingView(_page!) is { } tv ? Native.JournalButton(tv) : null;
+                if (journalButton == null || !CanPress(journalButton) || !DevSight(journalButton).HasArea())
+                {
+                    DevLog("journal | the page's own journal button cannot be pressed (not found, disabled, or under the mod's window): the click starts from the hunt");
+                    journalButton = null;
+                    return true;
+                }
+            }
+            Button button = journalButton;
+            bool? pressed = DevPagePress(() => DevGamePress(button, "the page's own journal button"), before.Hunting, "the press of the page's own journal button");
+            if (pressed != null) return pressed.Value;
+            journalButton = null;
+            return true;
+        }, PointerStepTime);
+        Add("the journal shown", () =>
+        {
+            if (journalButton == null) return true;
+            if (Waiting() || !DevFramesDrawn()) return false;
+            bool shown = DevJournalNow();
+            DevLog($"journal | after the page's own journal button: the {(shown ? "journal" : "hunt")} shown{(shown ? "" : "  THE JOURNAL IS NOT SHOWN")}, {DevViewButtons()}");
+            Refresh();
+            Shot("journal");
+            return true;
+        });
         Add("a line to click", () =>
         {
-            var location = _hunting!.Action.SelectedLocation;
-            var lines = _list!.DevLines().Select(l => l.Animal).Where(a => a.Clickable && a.Click == AnimalRates.Opens.Animal).ToList();
-            // An animal at another location than the page's first: the click then changes both, as the issue asks.
-            clicked = lines.FirstOrDefault(a => !ReferenceEquals(a.Active.Location, location)) ?? lines.FirstOrDefault();
-            if (clicked == null) { DevLog("click | no line opens an animal a click would change: none is clicked."); return true; }
+            var action = _hunting!.Action;
+            huntingAtClick = action.IsStarted;
+            ActiveHuntingLocation? location = action.SelectedLocation;
+            var lines = _list!.DevLines().Select(l => l.Animal).Where(a => a.Click == AnimalRates.Opens.Animal).ToList();
+            // No hunt: a clickable line of an animal at another location first, which the click opens and selects. A hunt:
+            // a line at another location, which the click must leave alone (lesson 56).
+            clicked = huntingAtClick
+                ? lines.FirstOrDefault(a => !ReferenceEquals(a.Active.Location, location)) ?? lines.FirstOrDefault()
+                : lines.Where(a => a.Clickable).OrderBy(a => ReferenceEquals(a.Active.Location, location) ? 1 : 0).FirstOrDefault();
+            if (clicked == null) { DevLog("click | no line to click: none is clicked."); return true; }
             _list.DevScroll.EnsureControlVisible(DevLineOf(clicked));
             huntBefore = DevHunt();
             choicesBefore = DevChoices();
-            DevLog($"click | the line of {clicked.Animal.Id} at {clicked.Active.Location?.Location?.Id}{(clicked.OnPage ? ", the animal the page shows" : "")}; " +
-                $"before: {DevSelection(clicked)}; {huntBefore}");
+            DevLog($"click | the line of {clicked.Animal.Id} at {clicked.Active.Location?.Location?.Id}, clickable {clicked.Clickable}" +
+                (huntingAtClick ? ", A HUNT RUNS: the click must select nothing" : "") + $"; before: {DevSelection(clicked)}; {huntBefore}");
             return true;
         });
         Add("the screen before the click", () =>
@@ -790,7 +626,7 @@ public partial class HuntingRatesMod
             if (clicked == null) return true;
             events ??= new DevClickEvents(_hunting!.Action, () => _devInClick, DevLog);
             AnimalRates line = clicked;
-            bool? pressed = DevPagePress(() => DevClickLine(line), before, $"the click on the line of {line.Animal.Id}");
+            bool? pressed = DevPagePress(() => DevClickLine(line), before.Hunting, $"the click on the line of {line.Animal.Id}");
             if (pressed != null) return pressed.Value;
             events.Dispose();
             events = null;
@@ -800,25 +636,27 @@ public partial class HuntingRatesMod
         Add("the animal shown", () =>
         {
             if (clicked == null) return true;
-            if (_scrollTo != null || _devSettle != null || _devSettledTick >= _devTick || !DevFramesDrawn()) return false;
+            if (Waiting() || !DevFramesDrawn()) return false;
             var action = _hunting!.Action;
             Refresh();
             string hunt = DevHunt(), choices = DevChoices();
             ours = DevSelection(clicked);
             ourEvents = string.Join(", ", events!.Seen);
-            var during = events.During.ToList();
-            huntChanged = during.Any(e => e.StartsWith("HUNT"));
+            DevPageWas start = _devOrigin ?? before.Hunting;
             bool opened = ReferenceEquals(action.SelectedLocation, clicked.Active.Location) && ReferenceEquals(action.SelectedAnimal, clicked.Active);
+            bool moved = !ReferenceEquals(action.SelectedLocation, start.Location) || !ReferenceEquals(action.SelectedAnimal, start.Animal);
             string panelName = DevPanelName();
             var lit = _list!.DevLines().Where(l => l.Animal.OnPage).Select(l => l.Animal.Animal.Id).ToList();
+            var litMeant = action.SelectedAnimal is { } s && _list.DevLines().Any(l => ReferenceEquals(l.Animal.Active, s)) ? new[] { s.Animal.Id } : Array.Empty<string>();
             HuntingAnimalTrackingView? card = Native.Card(_page!, clicked.Active);
-            string sight = card == null ? "no card in the page's list" : DevCardSight(card, true);
-            DevLog($"click | after the click on the line of {clicked.Animal.Id}: {ours}; the panel names '{panelName}'; {sight}; the game's events [{ourEvents}], " +
-                $"during the click itself [{string.Join(", ", during)}]; {hunt}" + DevHuntMarks(huntBefore, hunt) + (huntChanged ? "  HUNT CHANGED (by an event during the click)" : "") +
-                (choices == choicesBefore ? "" : $"  CHOICES CHANGED ({choices})") + (opened ? "" : "  NOT OPENED") +
-                (panelName.Length > 0 && !string.Equals(panelName, clicked.Animal.DisplayName.Text, StringComparison.OrdinalIgnoreCase) && clicked.Discovered ? "  THE PAGE SHOWS ANOTHER ANIMAL" : "") +
-                (lit.SequenceEqual(new[] { clicked.Animal.Id }) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
-                (IsOpen ? "" : "  THE WINDOW CLOSED"));
+            string marks = (huntingAtClick ? moved ? "  THE CLICK SELECTED WHILE A HUNT RUNS" : "" : opened ? "" : "  NOT OPENED") +
+                (DevJournalNow() ? "  THE HUNT IS NOT SHOWN" : "") +
+                (opened && clicked.Discovered && panelName.Length > 0 && !string.Equals(panelName, clicked.Animal.DisplayName.Text, StringComparison.OrdinalIgnoreCase) ? "  THE PAGE SHOWS ANOTHER ANIMAL" : "") +
+                (choices == choicesBefore ? "" : $"  CHOICES CHANGED ({choices})") + (lit.SequenceEqual(litMeant) ? "" : $"  THE LIT LINE IS [{string.Join(", ", lit)}]") +
+                (IsOpen ? "" : "  THE WINDOW CLOSED");
+            DevLog($"click | after the click on the line of {clicked.Animal.Id}: {ours}; {(card == null ? "no card in the page's list" : DevCardSight(card, true))}; the game's events " +
+                $"[{ourEvents}], during the click's own presses [{string.Join(", ", events.During)}]; {hunt} (before: {DevHuntKey(huntBefore)}; what the hunt did in the " +
+                $"click's window is the next 'hunt' line){marks}");
             Shot("clicked");
             if (beforeClick != null)
             {
@@ -830,70 +668,69 @@ public partial class HuntingRatesMod
             events = null;
             return true;
         });
-        AddPageBack("the page back after the click", () => clicked == null, "click | the selection put back for the page's own buttons:");
-        // The page's own buttons, pressed with the pointer as a player would: the location's button, then the animal's card
-        // button. Not while the click changed the hunt: the game's buttons would change it again.
+        AddPageBack("the page back after the click", () => clicked == null, "click | the page put back for the page's own buttons:");
+        // The page's own buttons, pressed with the pointer as a player would: the location's button, then the card's button.
+        // Only while no hunt runs, read again before each, and only while the player has changed nothing of the page
+        // (Woodcutting Rates' code review 4: the comparison is a development check, never made over a page he uses).
         Control? locationButton = null;
+        Button? cardButton = null;
+        bool CompareOff(string why)
+        {
+            compareSkipped = true;
+            events?.Dispose();
+            events = null;
+            DevLog($"click | the page's own buttons are not pressed: {why}");
+            return true;
+        }
         Add("the page's own location button", () =>
         {
-            if (clicked == null) return true;
-            if (huntChanged) { compareSkipped = true; DevLog("click | the click changed the hunt in progress: the page's own buttons are not pressed, to change nothing more"); return true; }
+            if (clicked == null || compareSkipped) return true;
+            if (Waiting()) return false;
+            if (huntingAtClick || DevHuntRuns) return CompareOff("a hunt runs, and nothing is selected while one runs (lesson 56)");
+            if (_devHis.Count > 0) return CompareOff($"the player changed the page meanwhile ({string.Join(", ", _devHis)})");
             var action = _hunting!.Action;
             if (ReferenceEquals(action.SelectedLocation, clicked.Active.Location)) { DevLog("click | the page shows the animal's location already: its button is not pressed"); return true; }
             if (locationButton == null)
             {
-                var select = Native.TrackingView(_page!) is { } tv ? Native.LocationSelect(tv) : null;
-                locationButton = select != null && DevNative.LocationButtons(select) is { } buttons && clicked.Active.Location?.Location is { } place &&
-                    buttons.TryGetValue(place, out HuntingLocationButton? b) && GodotObject.IsInstanceValid(b) ? b : null;
-                if (locationButton == null) throw new InvalidOperationException($"the page has no location button of {clicked.Active.Location?.Location?.Id}");
-                if (!DevSight(locationButton).HasArea())
-                {
-                    compareSkipped = true;
-                    DevLog($"click | the page's own location button of {clicked.Active.Location?.Location?.Id} lies under the mod's own window: it is not pressed, and the click is not compared with it");
-                    return true;
-                }
+                locationButton = Native.LocationButton(_page!, clicked.Active.Location?.Location);
+                if (locationButton == null || !CanPress(locationButton)) return CompareOff($"the page's own location button of {clicked.Active.Location?.Location?.Id} cannot be pressed");
+                if (!DevSight(locationButton).HasArea()) return CompareOff($"the page's own location button of {clicked.Active.Location?.Location?.Id} lies under the mod's own window");
             }
             events ??= new DevClickEvents(action, DevInGamePress, DevLog);
-            bool? pressed = DevPagePress(() => DevGamePress(locationButton, $"the page's own location button of {clicked.Active.Location?.Location?.Id}"),
-                before, "the press of the page's own location button, to compare");
+            Control button = locationButton;
+            bool? pressed = DevPagePress(() => DevGamePress(button, $"the page's own location button of {clicked.Active.Location?.Location?.Id}"),
+                before.Hunting, "the press of the page's own location button, to compare");
             if (pressed != null) return pressed.Value;
-            compareSkipped = true;
-            return true;
+            return CompareOff("the player changed the page while the press waited for the mouse");
         }, PointerStepTime);
-        Button? cardButton = null;
         Add("the page's own animal button", () =>
         {
             if (clicked == null || compareSkipped) return true;
-            if (_devSettle != null || _devSettledTick >= _devTick || !DevFramesDrawn()) return false;
+            if (Waiting() || !DevFramesDrawn()) return false;
             var action = _hunting!.Action;
+            if (DevHuntRuns) return CompareOff("a hunt runs now, and nothing is selected while one runs (lesson 56)");
             if (cardButton == null)
             {
                 DevLog($"click | after the page's own location button: {DevSelection(clicked)}");
                 if (ReferenceEquals(action.SelectedAnimal, clicked.Active)) { DevLog("click | the location's button selected the animal already: its card's button is not pressed"); return true; }
-                HuntingAnimalTrackingView card = Native.Card(_page!, clicked.Active) ?? throw new InvalidOperationException($"the page's list has no card of {clicked.Animal.Id}");
-                cardButton = DevNative.CardButton(card);
+                HuntingAnimalTrackingView? card = Native.Card(_page!, clicked.Active);
+                cardButton = card != null ? Native.CardButton(card) : null;
                 // The page's list is not scrolled for it: that would be a change of the page the request does not own.
-                if (!DevSight(cardButton).HasArea())
-                {
-                    compareSkipped = true;
-                    DevLog($"click | the card's button of {clicked.Animal.Id} is out of sight or under the mod's own window: it is not pressed, and the click is not compared with it");
-                    return true;
-                }
+                if (cardButton == null || !CanPress(cardButton) || !DevSight(cardButton).HasArea())
+                    return CompareOff($"the card's button of {clicked.Animal.Id} is not there, disabled, out of sight or under the mod's own window");
             }
             events ??= new DevClickEvents(action, DevInGamePress, DevLog);
-            bool? pressed = DevPagePress(() => DevGamePress(cardButton, $"the card's button of {clicked.Animal.Id}"), before, "the press of the card's own button, to compare");
+            Button button = cardButton;
+            bool? pressed = DevPagePress(() => DevGamePress(button, $"the card's button of {clicked.Animal.Id}"), before.Hunting, "the press of the card's own button, to compare");
             if (pressed != null) return pressed.Value;
-            compareSkipped = true;
-            return true;
+            return CompareOff("the player changed the page while the press waited for the mouse");
         }, PointerStepTime);
         Add("the page's buttons compared", () =>
         {
-            if (clicked == null || compareSkipped) { events?.Dispose(); events = null; return true; }
-            if (_devSettle != null || _devSettledTick >= _devTick || !DevFramesDrawn()) return false;
+            if (clicked == null || compareSkipped) return true;
+            if (Waiting() || !DevFramesDrawn()) return false;
             string game = DevSelection(clicked), gameEvents = string.Join(", ", events?.Seen ?? new List<string>()), hunt = DevHunt(), choices = DevChoices();
-            var during = events?.During.ToList() ?? new List<string>();
-            DevLog($"click | after the page's own buttons: {game}; the game's events [{gameEvents}], in the frames of the presses [{string.Join(", ", during)}]; {hunt}" +
-                DevHuntMarks(huntBefore, hunt) + (during.Any(e => e.StartsWith("HUNT")) ? "  HUNT CHANGED (by the game's own buttons)" : "") +
+            DevLog($"click | after the page's own buttons: {game}; the game's events [{gameEvents}], in the frames of the presses [{string.Join(", ", events?.During ?? new List<string>())}]; {hunt}" +
                 (choices == choicesBefore ? "" : $"  CHOICES CHANGED ({choices})") + " | " +
                 (game == ours ? "the page as after the click on the line" : $"DIFFER from the click on the line ({ours})") + "; " +
                 (DevSameEvents(gameEvents, ourEvents) ? "the same events" : $"EVENTS DIFFER from the click on the line ([{ourEvents}])"));
@@ -901,7 +738,7 @@ public partial class HuntingRatesMod
             events = null;
             return true;
         });
-        AddPageBack("the page back after its own buttons", () => clicked == null || compareSkipped, "click | the selection put back:");
+        AddPageBack("the page back after its own buttons", () => clicked == null || compareSkipped, "click | the page put back:");
         Add("smallest", () =>
         {
             Resize(GameWindow.MinScale);
@@ -961,13 +798,13 @@ public partial class HuntingRatesMod
             else Say(same, what, now);
         }
         // One part of the put-back in its own try: one line, NOT AS IT WAS for a part that failed, and the next part runs.
-        void Part(string part, Func<string> put, bool carry = true)
+        void Part(string part, Func<string> put)
         {
             try
             {
                 string words = put();
                 DevLog($"put back | {part}: {words}");
-                if (carry && words.Contains("NOT AS IT WAS")) _devOnTheWay.Add($"{part}: {words}");
+                if (words.Contains("NOT AS IT WAS")) _devOnTheWay.Add($"{part}: {words}");
             }
             catch (Exception e)
             {
@@ -998,9 +835,10 @@ public partial class HuntingRatesMod
             });
             return true;
         });
-        AddPageBack("put back the page", () => false, "put back | the page's selection, view and scroll:");
+        AddPageBack("put back the page", () => false, "put back | the page:");
         Add("read back the Hunting page", () =>
         {
+            if (Waiting()) return false;
             var action = _hunting!.Action;
             DevPageWas want = _devOrigin ?? before.Hunting;
             if (!PageShown)
@@ -1015,6 +853,7 @@ public partial class HuntingRatesMod
             SayPage(ReferenceEquals(action.SelectedAnimal, want.Animal), "animal", $"the page's animal {want.Animal?.Animal.Id ?? "none"}", action.SelectedAnimal?.Animal.Id ?? "none");
             SayPage(DevJournalNow() == want.Journal, "view", $"the {(want.Journal ? "journal" : "hunt")} shown", DevJournalNow() ? "the journal" : "the hunt");
             SayPage(DevScrollNow() == want.Scroll, "scroll", $"the page's list scrolled to {want.Scroll?.ToString() ?? "-"}", DevScrollNow()?.ToString() ?? "-");
+            said.Add(DevViewButtons());
             return true;
         });
         Add("put back the page that was shown", () =>
@@ -1055,14 +894,25 @@ public partial class HuntingRatesMod
             string? settings = File.Exists(SettingsFile) ? File.ReadAllText(SettingsFile) : null;
             Say(settings == before.Settings, before.Settings == null ? "settings.json not there" : "settings.json byte for byte",
                 settings == null ? "not there" : $"{settings.Length} characters");
-            // The hunt goes on by itself while the request runs: whether it is started, which animal and the trap in use
-            // are what must not have changed; its state and steps move.
-            string huntNow = DevHunt();
-            Say(DevHuntMarks(huntAtStart, huntNow).Length == 0, $"the hunt ({DevHuntKey(huntAtStart)})", DevHuntKey(huntNow));
-            Say(DevChoices() == choicesAtStart, "every animal's trap, bait and trapless choice", DevChoices());
+            // The hunt and the choices: the request's fault only when the guard saw a change in the window of one of its
+            // presses; otherwise a change is the player's or the game's (a trap swapped when one ran out), said as such.
+            _devGuard?.Poll(DevNative.ShouldReset(_hunting!.Action));
+            if (_devGuard is { IsOpen: true }) DevLog($"hunt | {_devGuard.Close()}");
+            var marked = _devGuard?.Marked ?? new List<string>();
+            string huntNow = DevHunt(), choicesNow = DevChoices();
+            var huntMarks = marked.Where(m => m.StartsWith("HUNT")).ToList();
+            var choiceMarks = marked.Where(m => m.StartsWith("CHOICES")).ToList();
+            string outside = _devGuard?.Outside ?? "";
+            if (huntMarks.Count > 0) Say(false, "the hunt", string.Join(" | ", huntMarks));
+            else if (DevHuntMarks(huntAtStart, huntNow).Length > 0)
+                said.Add($"the hunt changed ({DevHuntMarks(huntAtStart, huntNow).Trim()}: {DevHuntKey(huntNow)}) outside every press of the request: the player's or the game's ({outside})");
+            else Say(true, $"the hunt ({DevHuntKey(huntAtStart)})", "");
+            if (choiceMarks.Count > 0) Say(false, "every animal's trap, bait and trapless choice", string.Join(" | ", choiceMarks));
+            else if (choicesNow != choicesAtStart) said.Add($"a choice changed outside every press of the request: the player's or the game's (now {choicesNow})");
+            else Say(true, "every animal's trap, bait and trapless choice", "");
             said.Add("the pointer back where the real one is");
             var notOk = _devOnTheWay.Where(w => !w.Contains(" NOT MADE: ")).ToList();
-            if (notOk.Count > 0) said.Add($"on the way NOT AS IT WAS: {string.Join(" | ", notOk)}");
+            if (notOk.Count > 0) said.Add($"on the way NOT AS IT WAS or NOT PUT BACK: {string.Join(" | ", notOk)}");
             if (_devOnTheWay.Count > notOk.Count) said.Add($"not made: {string.Join(" | ", _devOnTheWay.Where(w => w.Contains(" NOT MADE: ")))}");
             _devPutBackWords = string.Join("; ", said) + $"; the order before the click on XP was {(firstBefore.Length > 0 ? firstBefore : "not read")}";
             _devPutBackOk = readOk && notOk.Count == 0;
@@ -1075,7 +925,9 @@ public partial class HuntingRatesMod
         {
             if (!line.StartsWith("fail=")) { DevLog($"the request's line '{line}' is not understood and left out."); continue; }
             string name = line["fail=".Length..].Trim();
-            if (name == "click") name = "click the line";
+            // "fail=click" fails the step right after the click, so that what the click changed is put back by the failure
+            // path (code review 1).
+            if (name == "click") name = "the animal shown";
             if (_devSteps.Take(_devPutBackAt).Any(s => s.Name == name))
             {
                 _devFailOnPurpose = name;
@@ -1085,206 +937,21 @@ public partial class HuntingRatesMod
         }
     }
 
+    // Both view buttons of the page as drawn.
+    string DevViewButtons()
+    {
+        try
+        {
+            return Native.TrackingView(_page!) is { } view
+                ? $"the hunt button drawn {(Native.HuntButton(view)?.ButtonPressed == true ? "pressed" : "up")}, the journal button drawn {(Native.JournalButton(view)?.ButtonPressed == true ? "pressed" : "up")}"
+                : "the view's buttons not found";
+        }
+        catch (Exception e) { return $"the view's buttons not read ({e.GetType().Name})"; }
+    }
+
     Button DevFoldButton() => _window!.Root.FindChildren("*", "Button", true, false).OfType<Button>()
         .FirstOrDefault(b => b.TooltipText is "Fold down to the title" or "Open the window again")
         ?? throw new InvalidOperationException("The window has no fold button.");
-
-    bool DevHuntingNow() => _game!.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, _hunting));
-
-    // The hunt in progress: no click of the request may change it. Its state and steps move by themselves.
-    string DevHunt()
-    {
-        var action = _hunting!.Action;
-        ActiveHuntingAnimal? hunted = action.CurrentAnimal;
-        return $"hunting: started {action.IsStarted}, active {DevHuntingNow()}, the animal hunted {hunted?.Animal.Id ?? "none"}, the trap in use {action.CurrentTrap?.Id ?? "none"}" +
-            (hunted == null ? "" : $"; its state {hunted.State}, step {hunted.CurrentStep} of {hunted.RequiredSteps}, tracks {hunted.Tracks}, trap fails {hunted.TrapFailCount}");
-    }
-
-    // The part of the hunt that must stay: started, the animal, the trap in use.
-    static string DevHuntKey(string hunt) => hunt.Split(';')[0];
-
-    static string DevHuntMarks(string before, string after)
-    {
-        string Part(string all, string key) => Regex.Match(all, key + @" ([\w:]+)").Groups[1].Value;
-        string marks = "";
-        if (Part(before, "started") == "False" && Part(after, "started") == "True") marks += "  HUNT STARTED";
-        if (Part(before, "started") == "True" && Part(after, "started") == "False") marks += "  HUNT STOPPED";
-        if (Part(before, "animal hunted") != Part(after, "animal hunted") || Part(before, "trap in use") != Part(after, "trap in use")) marks += "  HUNT CHANGED";
-        return marks;
-    }
-
-    // Every animal's choices that are the player's: its trap, its bait and hunting it without a trap, and whether traps
-    // swap by themselves (HuntingActionComponent.AutoSwapToNextTrap).
-    string DevChoices()
-    {
-        var action = _hunting!.Action;
-        return $"auto swap {action.AutoSwapToNextTrap}; " + string.Join(", ", action.Animals.Values.Where(a => a != null)
-            .Select(a => $"{a.Animal.LocalId} {a.SelectedTrap?.LocalId ?? "-"}/{(a.UseBait ? "bait" : "no bait")}/{(a.TraplessEnabled ? "trapless" : "trap")}"));
-    }
-
-    // The page's selection and what it shows: the location and the animal, the view, the panel's name, the list's card.
-    string DevSelection(AnimalRates a)
-    {
-        var action = _hunting!.Action;
-        HuntingAnimalTrackingView? card = Native.Card(_page!, a.Active);
-        return $"the location {action.SelectedLocation?.Location?.Id ?? "none"}, the animal {action.SelectedAnimal?.Animal.Id ?? "none"}, the {(DevJournalNow() ? "journal" : "hunt")} shown, " +
-            $"the list holds {Native.Cards(_page!).Count()} cards, the card of {a.Animal.Id} " + (card == null ? "not in it" : $"pressed {DevNative.CardButton(card).ButtonPressed}");
-    }
-
-    string DevPanelName()
-    {
-        try { return Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() ? DevNative.PanelName(panel).Text : ""; }
-        catch (Exception) { return ""; }
-    }
-
-    string DevCardSight(HuntingAnimalTrackingView card, bool places)
-    {
-        if (!card.IsVisibleInTree()) return "its card not shown";
-        CardSight sight = Native.Place(card, Cover(), out int to);
-        string said = sight switch
-        {
-            CardSight.Clear => "its card in sight, clear of the window",
-            CardSight.Scroll => $"its card not in sight clear of the window, a scroll to {to} shows it",
-            CardSight.UnderWindow => "its card not in sight clear of the window, and no scroll shows it beside the window",
-            _ => "its card not in sight, and no scroll shows it whole",
-        };
-        if (!places) return said;
-        string list = Native.ScrollOf(card) is { } scroll ? $"its list at {Native.Drawn(scroll)} scrolled to {scroll.ScrollVertical}" : "in no scrolling list";
-        return $"{said} (the card at {Native.Drawn(card)}, {list}, the window at {Cover()?.ToString() ?? "none"})";
-    }
-
-    Button DevLineOf(AnimalRates a) => _list!.DevLines().First(l => ReferenceEquals(l.Animal.Active, a.Active)).Button;
-
-    bool DevClickLine(AnimalRates a)
-    {
-        Button line = DevLineOf(a);
-        if (!DevSight(line).HasArea()) return false;
-        return DevPress(line, $"the line of {a.Name}");
-    }
-
-    // A game button pressed with the pointer (DevPress), with the frame it was pressed in: the game's events of that frame
-    // are the press's (DevClickEvents).
-    long _devPressFrame = -1;
-    bool _devGamePressing;
-    bool DevGamePress(Control target, string what)
-    {
-        _devGamePressing = true;
-        try
-        {
-            if (!DevPress(target, what)) return false;
-        }
-        finally { _devGamePressing = false; }
-        _devPressFrame = (long)Engine.GetProcessFrames();
-        return true;
-    }
-
-    // While the request's press of a game button is dispatched, or in its frame or the next (an input the game handles at
-    // the next flush): the game's events then are the press's own, and a hunt's event there counts against the button.
-    bool DevInGamePress()
-    {
-        long frame = (long)Engine.GetProcessFrames();
-        return _devGamePressing || (_devPressFrame >= 0 && (frame == _devPressFrame || frame == _devPressFrame + 1));
-    }
-
-    static bool DevSameEvents(string a, string b) =>
-        a.Split(", ", StringSplitOptions.RemoveEmptyEntries).Order().SequenceEqual(b.Split(", ", StringSplitOptions.RemoveEmptyEntries).Order());
-
-    // The game's events about the page's selection and about the hunt, listened to while one click is made: those raised
-    // while the click itself runs (now()) are its own; the hunt's other events are the hunt going on by itself. Each
-    // listener runs inside a try; they are taken off by Dispose, which Stop and Detach reach through DevUnwatchAll.
-    sealed class DevClickEvents : IDisposable
-    {
-        public readonly List<string> Seen = new();
-        public readonly List<string> During = new();
-        readonly List<Action> _off = new();
-        static DevClickEvents? s_current;
-
-        public DevClickEvents(HuntingActionComponent action, Func<bool> now, Action<string> log)
-        {
-            s_current?.Dispose();
-            s_current = this;
-            void Safe(Action add)
-            {
-                try { add(); }
-                catch (Exception e) { log("click events | a listener failed: " + e.Message); }
-            }
-            void Saw(string what, bool hunt)
-            {
-                if (!hunt) Seen.Add(what);
-                if (now()) During.Add(what);
-            }
-            EventHandler<ValueChangedEventArgs<ActiveHuntingLocation>> location = (_, e) => Safe(() => Saw($"the location {e.NewValue?.Location?.Id ?? "none"}", false));
-            EventHandler<ValueChangedEventArgs<ActiveHuntingAnimal>> animal = (_, e) => Safe(() => Saw($"the animal {e.NewValue?.Animal.Id ?? "none"}", false));
-            EventHandler<ValueChangedEventArgs<ActiveHuntingAnimal>> hunted = (_, e) => Safe(() => Saw($"HUNT: the animal hunted {e.NewValue?.Animal.Id ?? "none"}", true));
-            EventHandler<ValueChangedEventArgs<GamesByMalcs.Melvor2.Data.Items.Item>> trap = (_, e) => Safe(() => Saw($"HUNT: the trap in use {e.NewValue?.Id ?? "none"}", true));
-            EventHandler<ValueChangedEventArgs<bool>> swap = (_, e) => Safe(() => Saw($"HUNT: auto swap {e.NewValue}", true));
-            EventHandler<ActionEventArgs> started = (_, _) => Safe(() => Saw("HUNT STARTED", true)), stopped = (_, _) => Safe(() => Saw("HUNT STOPPED", true));
-            action.SelectedLocationChanged += location;
-            action.SelectedAnimalChanged += animal;
-            action.CurrentAnimalChanged += hunted;
-            action.CurrentTrapChanged += trap;
-            action.AutoSwapToNextTrapChanged += swap;
-            action.Started += started;
-            action.Stopped += stopped;
-            _off.Add(() =>
-            {
-                action.SelectedLocationChanged -= location;
-                action.SelectedAnimalChanged -= animal;
-                action.CurrentAnimalChanged -= hunted;
-                action.CurrentTrapChanged -= trap;
-                action.AutoSwapToNextTrapChanged -= swap;
-                action.Started -= started;
-                action.Stopped -= stopped;
-            });
-            foreach (ActiveHuntingAnimal a in action.Animals.Values)
-            {
-                if (a == null) continue;
-                string id = a.Animal.LocalId;
-                EventHandler<ValueChangedEventArgs<HuntState>> state = (_, e) => Safe(() => Saw($"HUNT: {id} state {e.NewValue}", true));
-                EventHandler<ValueChangedEventArgs<int>> step = (_, e) => Safe(() => Saw($"HUNT: {id} step {e.NewValue}", true)),
-                    steps = (_, e) => Safe(() => Saw($"HUNT: {id} steps {e.NewValue}", true)),
-                    tracks = (_, e) => Safe(() => Saw($"HUNT: {id} tracks {e.NewValue}", true)),
-                    fails = (_, e) => Safe(() => Saw($"HUNT: {id} trap fails {e.NewValue}", true));
-                EventHandler<ValueChangedEventArgs<GamesByMalcs.Melvor2.Data.Items.Item>> chosen = (_, e) => Safe(() => Saw($"CHOICES: {id} trap {e.NewValue?.Id ?? "none"}", false));
-                EventHandler<ValueChangedEventArgs<bool>> bait = (_, e) => Safe(() => Saw($"CHOICES: {id} bait {e.NewValue}", false)),
-                    trapless = (_, e) => Safe(() => Saw($"CHOICES: {id} trapless {e.NewValue}", false));
-                a.StateChanged += state;
-                a.CurrentStepChanged += step;
-                a.RequiredStepsChanged += steps;
-                a.TracksChanged += tracks;
-                a.TrapFailCountChanged += fails;
-                a.SelectedTrapChanged += chosen;
-                a.UseBaitChanged += bait;
-                a.TraplessEnabledChanged += trapless;
-                _off.Add(() =>
-                {
-                    a.StateChanged -= state;
-                    a.CurrentStepChanged -= step;
-                    a.RequiredStepsChanged -= steps;
-                    a.TracksChanged -= tracks;
-                    a.TrapFailCountChanged -= fails;
-                    a.SelectedTrapChanged -= chosen;
-                    a.UseBaitChanged -= bait;
-                    a.TraplessEnabledChanged -= trapless;
-                });
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (Action off in _off) off();
-            _off.Clear();
-            if (s_current == this) s_current = null;
-        }
-
-        public static void DisposeCurrent() => s_current?.Dispose();
-    }
-
-    void DevUnwatchAll()
-    {
-        DevClickEvents.DisposeCurrent();
-        DevUnwatchHunts();
-    }
 
     // ---- what is logged ------------------------------------------------------------------------------------------
 
@@ -1332,8 +999,8 @@ public partial class HuntingRatesMod
                 $"survey XP base {a.Active.Location?.Location?.BaseSurveyingExperience}, journal {h.BaseJournalTrackingExperience}/{h.BaseJournalTrappingExperience} at level {a.JournalLevel}, " +
                 $"products [{Items(s.Products)}], survey finds [{Items(s.SurveyingProducts)}], tool {h.Tool?.Id ?? "none"}, trap type {h.TrapType?.Id ?? "none"}, " +
                 $"its trap {a.Trap?.Id ?? "none"} ({a.TrapsInBank} in the bank), trapless {a.Trapless} (enabled by the game {h.EnableTrapless}), bait {h.PreferredBait?.Id ?? "none"} " +
-                $"used {a.UseBait} ({a.BaitInBank} in the bank), can track it {_hunting!.Action.CanTrackAnimal(a.Active)} | counted: XP range {(a.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")} " +
-                $"so {R(a.XpPerCatch)} a catch, catch gold {R(a.CatchGold)}, survey gold {R(a.SurveyGold)}, the chain {(AnimalRates.ChainRule is { } c ? $"{c.Reading}, {c.Source}" : "NOT SETTLED")}, " +
+                $"used {a.UseBait} ({a.BaitInBank} in the bank), its card's button {(Native.Card(_page!, a.Active) is { } cd && Native.CardButton(cd) is { } cb ? $"disabled {cb.Disabled}" : "not on the page")} | counted: XP range {(a.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")} " +
+                $"the middle {R(a.XpMiddle)} (a catch by the XP rule {R(a.XpPerCatch)}), catch gold {R(a.CatchGold)}, survey gold {R(a.SurveyGold)}, the chain {(AnimalRates.ChainRule is { } c ? $"{c.Reading}, {c.Source}" : "NOT SETTLED")}, " +
                 $"time per catch {R(a.SecondsPerCatch)}, catches/h {R(a.CatchesPerHour)}, XP/h {R(a.XpPerHour)}, gold/h {R(a.GoldPerHour)}, traps/h {R(a.TrapsPerHour)}, bait/h {R(a.BaitPerHour)} | " +
                 $"rare [{string.Join(", ", a.Rare.Select(sp => $"{sp.Name} {R(sp.Share)}{(sp.Locked.Length > 0 ? " locked" : "")} with [{string.Join(", ", sp.Extras.Select(DevDrop))}]"))}] | " +
                 $"picture {DevTexture(picture)} tint {a.PictureTint}{(picture != null && _pictures!.IsStandIn(picture) ? "  STAND-IN DRAWN" : "")}");
@@ -1404,7 +1071,8 @@ public partial class HuntingRatesMod
             foreach (ModifierStatLabel row in DevNative.PanelStats(panel).FindChildren("*", "", true, false).OfType<ModifierStatLabel>())
                 DevLog($"game | the panel's bonus '{DevWordsOf(row.StatName ?? "")}' = '{DevNative.RowValue(row)?.Text}' shown {row.IsVisibleInTree()}, its tooltip '{DevWordsOf(row.StatTooltipContent ?? "")}' " +
                     $"/ '{(DevNative.RowTooltip(row) is { } tip ? DevWordsOf(string.Join(" / ", DevNative.Content(tip) ?? [])) : "")}', bound to {DevStatName(DevNative.RowStat(row), selected.Stats)}");
-            if (DevNative.Current(view) is { } current)
+            DevBonuses(selected);
+            if (Native.Current(view) is { } current)
                 DevLog($"game | the panel of the hunt in progress: shown {current.IsVisibleInTree()}, hunting shown {DevNative.CurrentShown(current).IsVisibleInTree()}, " +
                     $"its name '{DevNative.CurrentName(current).Text}', at {Native.Drawn(current)}; the panel of the animal selected at {Native.Drawn(panel)}");
         }
@@ -1426,6 +1094,43 @@ public partial class HuntingRatesMod
     static string DevTexts(Control control) => string.Join(", ", control.FindChildren("*", "", true, false).OfType<Control>().Where(c => c.IsVisibleInTree())
         .Select(c => c is Label l ? $"'{l.Text}'" : c is TextureRect t && t.Texture != null ? DevTexture(t.Texture) : "").Where(w => w.Length > 0));
 
+    // The tool as the card draws it: its words, its colour, and whether it is shown (code review 1, fault 10: the window
+    // follows what the card does with a tool the player lacks, once this is seen).
+    static string DevToolDrawn(HuntingAnimalTrackingView card)
+    {
+        Label? tool = Native.ToolOf(card);
+        if (tool == null) return "NOT FOUND";
+        return $"'{tool.Text}' in {tool.GetThemeColor("font_color").ToHtml()} (modulate {tool.Modulate.ToHtml()}/{tool.SelfModulate.ToHtml()}), shown {tool.IsVisibleInTree()}";
+    }
+
+    // The bonus sets of the animal beside its stats (code review 1, fault 7): its trap's (ActiveHuntingAnimal
+    // .SelectedTrapBonuses), its bait's, hunting it without a trap, its journal levels', the bonuses a failed try has put on
+    // it now (_activeFailBonuses), and what its trap's capability holds (HuntingTrapCapability.TrapBonuses, FailBonuses).
+    // Whether the stats hold them is read against the stats' own numbers in the same line.
+    void DevBonuses(ActiveHuntingAnimal a)
+    {
+        try
+        {
+            string trapBonuses = a.SelectedTrapBonuses == null ? "none" : string.Join("; ", a.SelectedTrapBonuses.Select(t => $"{t.Key?.Id}: {DevNative.Values(t.Value)}"));
+            string levels = a.AppliedLevelBonuses == null ? "none"
+                : string.Join("; ", a.AppliedLevelBonuses.Select(l => $"level {l.Key}: {string.Join(" + ", l.Value.Select(DevNative.Values))}"));
+            string fail;
+            try { fail = DevNative.ActiveFailBonuses(a) is { } f ? $"{f.Item1?.Id}: {DevNative.Values(f.Item2)}" : "none"; }
+            catch (Exception e) when (e is MissingMemberException or TypeLoadException) { fail = $"not read ({e.GetType().Name})"; }
+            string capability = a.SelectedTrap is { } trap && trap.Capabilities.TryGet(out HuntingTrapCapability? cap)
+                ? $"its trap's type {cap.TrapType?.Id}, trap bonuses {DevNative.Values(cap.TrapBonuses)}, fail bonuses {DevNative.Values(cap.FailBonuses)}" : "no trap selected, or no trap capability";
+            HuntingActionStats s = a.Stats;
+            DevLog($"game | the bonus sets of {a.Animal.Id}: its trap's [{trapBonuses}], bait {DevNative.Values(a.BaitBonuses)} (used {a.UseBait}), trapless {DevNative.Values(a.TraplessBonuses)} " +
+                $"(on {a.TraplessEnabled}), journal levels [{levels}], a failed try's now {fail}, {capability} | the stats now: trapping {R(s.TrappingSuccessChance.Value)} " +
+                $"(base {R(a.Animal.BaseTrapSuccessChance)}), tracking {R(s.TrackingSuccessChance.Value)} (base {R(a.Animal.BaseTrackSuccessChance)}), trap {s.TrappingInterval.Value} ms, " +
+                $"step {s.TrackingInterval.Value} ms, steps {s.TrackingSteps.Value}, survey {R(s.SurveyInterval.Value)} ms, rare {R(s.RareSpeciesChance.Value)}, XP {R(s.Experience.XpToAdd.Value)}");
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException or InvalidCastException)
+        {
+            DevLog($"game | the bonus sets of {a.Animal.Id} could not be read: {e.GetType().Name}: {e.Message}");
+        }
+    }
+
     // Every card of the page's list against its line, and the page's order of locations and animals against the window's.
     void DevCards()
     {
@@ -1441,15 +1146,15 @@ public partial class HuntingRatesMod
                 string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" : "NO LINE";
                 DevLog($"card | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered} | the card's name '{Native.NameOf(card)?.Text}', picture " +
                     $"{DevTexture(icon?.Texture)} shown {icon?.IsVisibleInTree()} modulate {icon?.Modulate}/{icon?.SelfModulate}, spider icon {icon?.IsArachnophobiaModeIcon}, " +
-                    $"tool '{DevNative.CardTool(card).Text}', trap '{DevNative.CardTrapType(card).Text}', XP '{(xp == null ? "-" : DevLabels(xp))}' multipliers " +
+                    $"tool {DevToolDrawn(card)} (the animal's tool {animal?.Animal.Tool?.Id ?? "none"}), trap '{DevNative.CardTrapType(card).Text}', XP '{(xp == null ? "-" : DevLabels(xp))}' multipliers " +
                     $"{(xp == null ? "-" : $"{R(Native.XpLow(xp))}..{R(Native.XpHigh(xp))}")}, unlocked part {DevNative.CardUnlocked(card).IsVisibleInTree()}, locked part " +
-                    $"{DevNative.CardLocked(card).IsVisibleInTree()}, button pressed {DevNative.CardButton(card).ButtonPressed} | {line}");
+                    $"{DevNative.CardLocked(card).IsVisibleInTree()}, its button {(Native.CardButton(card) is { } b ? $"pressed {b.ButtonPressed}, disabled {b.Disabled}" : "NOT FOUND")} | {line}");
             }
             var action = _hunting!.Action;
             string pageOrder = string.Join(", ", Native.Cards(_page!).Select(c => Native.AnimalOf(c)?.Animal.LocalId ?? "?"));
             string ourOrder = string.Join(", ", ReadAnimals().Where(a => ReferenceEquals(a.Active.Location, action.SelectedLocation)).Select(a => a.Animal.LocalId));
             DevLog($"order | the page's list of {action.SelectedLocation?.Location?.Id ?? "none"}: [{pageOrder}]; ours: [{ourOrder}]{(pageOrder == ourOrder ? "" : "  DIFFER")}");
-            if (Native.TrackingView(_page!) is { } view && Native.LocationSelect(view) is { } select && DevNative.LocationButtons(select) is { } buttons)
+            if (Native.TrackingView(_page!) is { } view && Native.LocationSelect(view) is { } select && Native.LocationButtons(select) is { } buttons)
             {
                 var shown = buttons.Where(b => GodotObject.IsInstanceValid(b.Value) && b.Value.IsVisibleInTree()).OrderBy(b => b.Value.GetIndex()).Select(b => b.Key.LocalId).ToList();
                 var listed = _hunting.Config.Locations.Where(l => action.Locations.TryGetValue(l, out var a) && AnimalRates.LocationListed(a)).Select(l => l.LocalId).ToList();
