@@ -121,6 +121,12 @@ public partial class HuntingRatesMod
     // The game's tooltip says it is shown, and not for another control (Tooltip.IsShown and CurrentTarget).
     static bool DevShownFor(Tooltip tooltip, Control aim, Vector2 at, out string said)
     {
+        // The game may free a tooltip and build a new one while the step waits for the player's hand (check-14).
+        if (!GodotObject.IsInstanceValid(tooltip) || !GodotObject.IsInstanceValid(aim))
+        {
+            said = "the tooltip or its part was freed by the game";
+            return false;
+        }
         try
         {
             bool shown = tooltip.IsShown || tooltip.IsVisibleInTree();
