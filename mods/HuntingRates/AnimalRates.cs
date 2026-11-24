@@ -27,6 +27,20 @@ enum SurveysPerHunt
     ChanceUpToMost,
 }
 
+/// <summary>Where the sizes a catch is counted with come from (<see cref="AnimalRates.Shares"/>).</summary>
+enum ShareFrom
+{
+    /// <summary>None: the XP and the output's hour are not counted.</summary>
+    None,
+    /// <summary>
+    /// The sizes the journal recorded for the animal's catches at its level now, kept in the mod's own file
+    /// (HuntingRatesMod.KeepSizes), this game's and earlier games'.
+    /// </summary>
+    Journal,
+    /// <summary>The card's range spread evenly, at an animal level the middle was measured at.</summary>
+    Middle,
+}
+
 /// <summary>
 /// How many tracking steps an escape adds to the steps still needed: which of the game's numbers it is. Every number
 /// the game's members give that is 4 on Yellowtail Bird (steps 4 to 8, its own 4 to 8 before bonuses), where 7 of 7
@@ -36,17 +50,6 @@ enum SurveysPerHunt
 /// added 1 (check-chicken-watch), which only <see cref="Fewest"/> gives. The rule is Fewest (AnimalRates.KnownHunt);
 /// the others stay here for the watch, which judges every escape against all of them.
 /// </summary>
-/// <summary>Where the sizes a catch is counted with come from (<see cref="AnimalRates.Shares"/>).</summary>
-enum ShareFrom
-{
-    /// <summary>None: the XP and the output's hour are not counted.</summary>
-    None,
-    /// <summary>The sizes the journal recorded for the animal's recent catches.</summary>
-    Journal,
-    /// <summary>The card's range spread evenly, at an animal level the middle was measured at.</summary>
-    Middle,
-}
-
 enum EscapeSteps
 {
     /// <summary>The fewest tracking steps of the animal, with your bonuses (the low end of HuntingActionStats.TrackingSteps).</summary>
@@ -164,6 +167,16 @@ sealed class AnimalRates
     public const int FewestSizes = 5;
 
     /// <summary>
+    /// How many of the sizes the journal records the mod keeps per animal, the last ones at the animal's level
+    /// (HuntingRatesMod.KeepSizes): the journal itself had none after a game start (check-11), though it had recorded 24
+    /// in the game before. 50 is about half an hour of hunting Wild Chicken (94.8 catches an hour), twice the 24 the size
+    /// rule was measured on. At Wild Chicken's spread of sizes (a standard deviation of 0.152 a catch), the average of 50
+    /// lies within 0.043 of the true one (twice its standard error), under 4% of the XP, against 0.062 with 24. More
+    /// would narrow it slowly (100 gives 0.030) and write a longer file on every catch.
+    /// </summary>
+    public const int KeptSizes = 50;
+
+    /// <summary>
     /// What the share of a catch was measured on where the journal's sizes are not used (review 11, point 2): a catch's
     /// XP is the animal's XP times the size the journal records for that catch (HuntingAnimalStatEntry.StatPercentage,
     /// the last of HuntingAnimalJournalEntry.RecentStatEntries), 24 of 24 Wild Chicken catches. At animal level 18
@@ -172,6 +185,12 @@ sealed class AnimalRates
     /// a size is drawn at a level (GenerateStatEntry draws it), so the middle is counted only at those levels.
     /// </summary>
     public static readonly (string Animal, int Level, int Catches, double Mean) XpLevelMeasured = ("Wild Chicken", 18, 24, 1.11);
+
+    /// <summary>
+    /// What the items' rule (<see cref="KnownOutput"/>: a product's quantity times the catch's size, rounded down, at
+    /// least one) was measured on: the catches it fits of all those watched. For the Gold tip.
+    /// </summary>
+    public static readonly (string Animal, int Fits, int Catches) ItemsMeasured = ("Wild Chicken", 23, 24);
 
     /// <summary>
     /// What the middle of the XP range was measured on (review 7, point 3): the animal, the animal levels it was at
@@ -414,17 +433,23 @@ sealed class AnimalRates
     /// <summary>The middle of the page's range of the XP, ours; null until the range is read.</summary>
     public double? XpMiddle => XpRange is { } r ? XpEach * (r.Low + r.High) / 2 : null;
     /// <summary>
-    /// The sizes a catch is counted with (review 11, point 2): the ones the journal recorded for this animal's recent
-    /// catches (<see cref="SharesFrom"/> Journal), when it holds <see cref="FewestSizes"/> or more; else, at an animal
-    /// level the middle was measured at (<see cref="XpMiddleMeasuredOn"/>), the card's range spread evenly, whose
-    /// average is its middle (Middle); else null, and the XP, the output's hour and the gold are "-".
+    /// The sizes a catch is counted with (review 11, point 2; review 12, point 1): the ones the journal recorded for this
+    /// animal's catches at its level now, kept in the mod's own file (<see cref="SharesFrom"/> Journal), when there are
+    /// <see cref="FewestSizes"/> or more; else, at an animal level the middle was measured at
+    /// (<see cref="XpMiddleMeasuredOn"/>), the card's range spread evenly, whose average is its middle (Middle); else
+    /// null, and the XP, the output's hour and the gold are "-". Null too while the animal's level is not known.
     /// </summary>
     public IReadOnlyList<double>? Shares { get; private set; }
     public ShareFrom SharesFrom { get; private set; }
     /// <summary>
-    /// How many sizes the journal holds for this animal (HuntingAnimalJournalEntry.RecentStatEntries).
+    /// How many sizes are kept for this animal at its level now (HuntingRatesMod.KeepSizes): the journal's records as they
+    /// came, in this game and earlier ones; 0 when the animal's level is not known.
     /// </summary>
     public int SizesRecorded { get; private set; }
+    /// <summary>How many of <see cref="SizesRecorded"/> were recorded in earlier games.</summary>
+    public int SizesEarlier { get; private set; }
+    /// <summary>How many sizes the journal itself holds now (HuntingAnimalJournalEntry.RecentStatEntries), for the log.</summary>
+    public int SizesInJournal { get; private set; }
     /// <summary>The average share of a catch's XP by <see cref="Shares"/>.</summary>
     public double? MeanShare => Shares is { Count: > 0 } shares ? shares.Average() : null;
     /// <summary>
@@ -513,11 +538,15 @@ sealed class AnimalRates
     /// an earlier game rather than read in this one (HuntingRatesMod.SurveysFor).
     /// </param>
     /// <param name="failBonuses">Whether a trap has bonuses after a failed try, null when they cannot be read (HuntingRatesMod.FailBonuses).</param>
+    /// <param name="kept">
+    /// The sizes kept for this animal (HuntingRatesMod.KeptSizesFor): the animal level they were recorded at, the last
+    /// <see cref="KeptSizes"/> of them, and how many came in this game; null when none are kept.
+    /// </param>
     /// <param name="hidden">The game's word for something not found yet, for a rare species never trapped and a collectable never found.</param>
     /// <param name="huntRuns">A hunt runs (<see cref="IsHunting"/>), read once for every line.</param>
     public static AnimalRates Read(ActiveHuntingAnimal active, HuntingEntity hunting, (string Name, Texture2D? Picture, Color Tint) look,
         ((double, double) Range, bool Remembered)? xpRange, (double Most, bool Remembered)? surveysMost, Func<Item, bool?> failBonuses, Func<Item, long> inBank,
-        string hidden, bool huntRuns)
+        (int Level, IReadOnlyList<double> Sizes, int ThisGame)? kept, string hidden, bool huntRuns)
     {
         HuntingAnimal animal = active.Animal;
         HuntingActionStats stats = active.Stats;
@@ -575,13 +604,23 @@ sealed class AnimalRates
         r.JournalTrackingXp = animal.BaseJournalTrackingExperience;
         r.JournalTrappingXp = animal.BaseJournalTrappingExperience;
         r.JournalLevel = active.JournalEntry?.Experience?.Level;
-        // The sizes a catch is counted with (Shares): the journal's for this animal's recent catches, else the card's
-        // range spread evenly at an animal level the middle was measured at, else none.
-        var sizes = active.JournalEntry?.RecentStatEntries?.Where(e => e != null).Select(e => e.StatPercentage).Where(v => double.IsFinite(v) && v > 0).ToList();
-        r.SizesRecorded = sizes?.Count ?? 0;
-        if (sizes is { Count: >= FewestSizes }) (r.Shares, r.SharesFrom) = (sizes, ShareFrom.Journal);
-        else if (r.XpRange is { } span && (r.JournalLevel ?? 1) <= XpMiddleMeasuredOn.ToLevel)
-            (r.Shares, r.SharesFrom) = (Enumerable.Range(0, EvenShares).Select(i => span.Low + (span.High - span.Low) * (i + 0.5) / EvenShares).ToList(), ShareFrom.Middle);
+        // The sizes a catch is counted with (Shares): the ones kept at the animal's level now, which the journal recorded
+        // in this game and earlier ones, when there are FewestSizes or more; else the card's range spread evenly at an
+        // animal level the middle was measured at; else none. An animal whose level is not known has none: no level is
+        // one the middle was measured at (code review 2, turns 11-12, fault 2), and no kept size is of a known level.
+        r.SizesInJournal = active.JournalEntry?.RecentStatEntries?.Count(e => e != null) ?? 0;
+        if (r.JournalLevel is { } level)
+        {
+            if (kept is { } mine && mine.Level == level)
+            {
+                var sizes = mine.Sizes.Where(v => double.IsFinite(v) && v > 0).TakeLast(KeptSizes).ToList();
+                r.SizesRecorded = sizes.Count;
+                r.SizesEarlier = Math.Max(0, sizes.Count - mine.ThisGame);
+                if (sizes.Count >= FewestSizes) (r.Shares, r.SharesFrom) = (sizes, ShareFrom.Journal);
+            }
+            if (r.Shares == null && r.XpRange is { } span && level <= XpMiddleMeasuredOn.ToLevel)
+                (r.Shares, r.SharesFrom) = (Enumerable.Range(0, EvenShares).Select(i => span.Low + (span.High - span.Low) * (i + 0.5) / EvenShares).ToList(), ShareFrom.Middle);
+        }
 
         r.Tool = animal.Tool?.DisplayName.Text;
         r.TrapType = animal.TrapType?.DisplayName.Text;
@@ -675,7 +714,10 @@ sealed class AnimalRates
         return new Drop(item, item.DisplayName.GetPluralText(2), chance, quantity, each, collectable, found, perHour, gold) { Average = average ?? quantity };
     }
 
-    // How many evenly spread shares stand for the card's range where the middle is counted (Shares, ShareFrom.Middle).
+    // How many evenly spread shares stand for the card's range where the middle is counted (Shares, ShareFrom.Middle):
+    // the window's own reading that sizes spread evenly over the range at animal levels 1 to 7, never measured (6 catches
+    // of Yellowtail Bird showed only their average). It decides nothing but how the items' rounding falls, which the middle
+    // alone would round once for every catch.
     const int EvenShares = 200;
 
     /// <summary>

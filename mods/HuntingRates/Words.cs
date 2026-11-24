@@ -93,11 +93,13 @@ static class Words
         var unknown = open.Select(Unknown).OfType<string>().Distinct().ToList();
         // XP and Gold alone: the sizes a catch is counted with (AnimalRates.Shares), from the journal's records, or the
         // range the animal's card writes at a level the middle was measured at.
-        if (open.Any(a => a.SecondsPerCatch != null && a.Shares == null && a.XpRange == null))
+        if (open.Any(a => a.SecondsPerCatch != null && a.Shares == null && a.JournalLevel != null && a.XpRange == null))
             unknown.Add("the XP range of a catch, which the animal's card writes on the Hunting page");
-        if (open.Any(a => a.SecondsPerCatch != null && a.Shares == null && a.XpRange != null))
-            unknown.Add($"a catch's average size above animal level {AnimalRates.XpMiddleMeasuredOn.ToLevel}, until the journal records " +
-                $"{AnimalRates.FewestSizes} catches");
+        if (open.Any(a => a.SecondsPerCatch != null && a.Shares == null && a.JournalLevel != null && a.XpRange != null))
+            unknown.Add($"a catch's average size above animal level {AnimalRates.XpMiddleMeasuredOn.ToLevel}, until the journal has recorded " +
+                $"{AnimalRates.FewestSizes} catches at the animal's level");
+        if (open.Any(a => a.SecondsPerCatch != null && a.Shares == null && a.JournalLevel == null))
+            unknown.Add("an animal's level");
         if (unknown.Count == 0) return "";
         string columns = dashes.Count == 1 ? dashes[0] + " shows" : string.Join(", ", dashes.Take(dashes.Count - 1)) + " and " + dashes[^1] + " show";
         string said = unknown.Count == 1 ? unknown[0] : string.Join(", ", unknown.Take(unknown.Count - 1)) + ", or " + unknown[^1];
@@ -105,7 +107,7 @@ static class Words
         // writes: the surveys come from the page's panel of the animal selected, and nowhere else, the XP range from
         // the animal's card or that panel; the window reads both whenever the page is on the screen and keeps them from
         // then on (HuntingRatesMod.ReadPage). Selecting the animal shows both.
-        bool fromPage = open.Any(a => Unknown(a) == SurveysUnknown || (a.SecondsPerCatch != null && a.Shares == null && a.XpRange == null));
+        bool fromPage = open.Any(a => Unknown(a) == SurveysUnknown || (a.SecondsPerCatch != null && a.Shares == null && a.JournalLevel != null && a.XpRange == null));
         string fill = fromPage ? " Select an animal once on the Hunting page and its line keeps what the page writes." : "";
         return $"{columns} - where the window does not know {said}.{fill} Hover a line for the game's own numbers of each step.";
     }
@@ -204,18 +206,21 @@ static class Words
     }
 
     // What the hour does not count, each in one line, the game's name of a chance where it has been read: the chance to
-    // skip a step (seen on 2 of 80 steps of Wild Chicken, where 4 were expected: not settled), the preservation chance
-    // (never seen to keep a trap or bait), what surveying finds (not settled), the XP and output at a level where the
-    // size of a catch is not known, and a hunt without a trap, which no watch has seen (review 6, point 9).
+    // skip a step (seen on 2 of the 142 steps watched: 2 of 80 frames with a step of Wild Chicken, where 4 were expected,
+    // and 0 of 62 steps of Yellowtail Bird; not settled), the preservation chance (never seen to keep a trap or bait),
+    // what surveying finds (not settled), the XP and output at a level where the size of a catch is not known or where the
+    // level itself is not, and a hunt without a trap, which no watch has seen (review 6, point 9).
     static IEnumerable<string> NotCounted(AnimalRates a, BonusNames names)
     {
-        if (a.SkipChance > 0) yield return $"Not counted: your {names.Of(BonusNames.Skip)} ({Percent(a.SkipChance)}): seen on 2 of 80 steps, too few to count it.";
+        if (a.SkipChance > 0) yield return $"Not counted: your {names.Of(BonusNames.Skip)} ({Percent(a.SkipChance)}): 2 of 142 steps watched, too few to count it.";
         if (a.Preservation > 0 && (a.TrapsPerHour is > 0 || a.BaitPerHour != null))
             yield return $"Not counted: your {names.Of(BonusNames.Preservation)} ({Percent(a.Preservation)}): no trap or bait was seen kept.";
         if (a.SurveyFinds.Count > 0 && AnimalRates.SurveyFindsRule == null)
             yield return $"Not counted: {string.Join(" and ", a.SurveyFinds.Select(d => $"{d.Name} ({Percent(d.Chance)})"))} from surveying: when it comes is not settled.";
-        if (a.Shares == null && a.XpRange != null && a.SecondsPerCatch != null)
-            yield return $"Not counted: XP and output at level {a.JournalLevel}, until the journal holds {AnimalRates.FewestSizes} sizes ({a.SizesRecorded} now).";
+        if (a.Shares == null && a.SecondsPerCatch != null && a.JournalLevel is { } level && a.XpRange != null)
+            yield return $"Not counted: XP and output at animal level {level} until {AnimalRates.FewestSizes} sizes are recorded at it ({a.SizesRecorded} now).";
+        if (a.Shares == null && a.SecondsPerCatch != null && a.JournalLevel == null)
+            yield return "Not counted: XP and output, as the animal's level is not known.";
         if (a.Trapless && a.SecondsPerCatch != null) yield return "Not watched: a hunt without a trap, counted as one with a trap.";
     }
 
@@ -235,14 +240,17 @@ static class Words
     const string LastWrote = "as the Hunting page last wrote it";
 
     // What the XP and the output of a catch rest on (AnimalRates.Shares): the sizes the journal recorded for the
-    // animal's recent catches, or the middle of the card's range at the animal levels it was measured at; null when
-    // neither.
+    // animal's last catches at its level now, how many, and how many of them the window kept from earlier games (the
+    // journal keeps none over a game start: review 12, point 1); or the middle of the card's range at the animal levels it
+    // was measured at; null when neither.
     static string? ShareLine(AnimalRates a)
     {
         if (a.Shares is not { Count: > 0 } shares || (a.XpPerCatch == null && !a.Products.Any(d => d.PerHour != null))) return null;
         var m = AnimalRates.XpMiddleMeasuredOn;
         return a.SharesFrom == ShareFrom.Journal
-            ? $"  By the sizes the journal recorded for your last {shares.Count} catches: {Number(shares.Average())} times its XP on average."
+            ? $"  By the sizes the journal recorded for your last {shares.Count} catches at animal level {a.JournalLevel}:\n" +
+              $"  {Number(shares.Average())} times its XP on average" +
+              (a.SizesEarlier > 0 ? $"; {a.SizesEarlier:N0} of them were kept from earlier games." : ".")
             : $"  The middle of its range: measured at animal level {m.FromLevel} to {m.ToLevel} ({m.Catches} catches of {m.Animal}).";
     }
 

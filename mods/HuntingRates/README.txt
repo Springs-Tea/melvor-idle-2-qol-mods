@@ -16,8 +16,9 @@ a character's own hunting, on Yellowtail Bird and Wild Chicken. An escape sends 
 tracking with the animal's fewest steps more to go. A line is "-" until the Hunting page has
 written how many surveys a hunt of that animal takes: select the animal there once. A
 catch's XP and output follow its size, as the Hunting journal records it: the window counts
-by the sizes it recorded for your last catches, or at animal level 1 to 7 by the middle of
-the range the card writes; above that, XP and Gold are "-" until the journal has 5 sizes.
+by the sizes it recorded for your last catches at the animal's level, or at animal level 1
+to 7 by the middle of the range the card writes; above that, XP and Gold are "-" until 5
+sizes are recorded. The journal forgets them when the game starts; the window keeps them.
 The window reads what the page writes whenever the page is on the screen, window open or
 not, and keeps it for each of your characters in readings.json, so a line keeps its numbers
 from one game to the next; the tooltip says "as the Hunting page last wrote it" for a number
@@ -52,8 +53,9 @@ Until you move it, the window opens at the corner of the Hunting page where the 
 its animals and locations stay in sight beside it. Drag the window to move it, drag its
 bottom right corner to resize it, fold it down to its title with the button beside the X.
 On another page it steps aside and comes back on the Hunting page. Its place, size, fold
-and sort order are kept in settings.json in the mod's folder, what the page wrote in
-readings.json; deleting that only brings back the "-" until the page shows the animals again.
+and sort order are kept in settings.json in the mod's folder, what the page wrote and the
+sizes of your catches in readings.json; deleting that only brings back the "-" until the
+page shows the animals again and 5 more catches are recorded.
 
 INSTALL
   Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),

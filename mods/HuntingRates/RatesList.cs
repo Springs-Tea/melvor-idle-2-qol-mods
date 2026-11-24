@@ -33,79 +33,46 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     /// mastery XP per action by the game's names (its Mastery Guild, HuntingEntity.MasteryGuild, counts ranks, points and
     /// tasks); an animal's journal XP, which the watch measured at its base values, is in the tooltip. Every column rests on
     /// how a hunt's links join (AnimalRates.HuntRule, measured), Traps also on what a try takes from the bank (UseRule,
-    /// measured), XP on when the XP comes (XpRule, measured) and the range the animal's card writes, Gold on when the output
-    /// comes (OutputRule, measured). Each tip line says which part is the game's words, which was measured and which is the
-    /// window's reading (review 6, point 4). What a column cannot count for an animal is "-", and the note under the list
-    /// says why, once. A tip's line is never longer than Fishing Rates' longest (82 characters): Godot's tooltip does not
-    /// wrap.
+    /// measured), XP on the size of a catch (XpRule, measured), Gold on how the items follow that size (OutputRule,
+    /// measured). A tip is a note of one to three lines, as Fishing Rates' and Woodcutting Rates' are (review 12, point 3):
+    /// what the number is, and what its column alone was measured on; a line's tooltip carries the rest, link by link.
+    /// What a column cannot count for an animal is "-", and the note under the list says why, once. A tip's line is never
+    /// longer than Fishing Rates' longest (82 characters): Godot's tooltip does not wrap.
     /// </summary>
-    public static List<RateColumn> For() =>
-    [
-        new("time", "Time", Lines(["Seconds for one catch: surveying, tracking and trapping, escapes too",
-                "The middle of the game's range of every time and of the steps", .. HuntTip()]), 58,
-            a => a.SecondsPerCatch, Words.Seconds, Better.Less),
-        new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
-        new("xp", "XP", Lines(["Hunting XP per hour: a catch gives the animal's XP times its size,",
-                .. Measured(AnimalRates.XpRule), .. SizeTip()]), 66,
-            a => a.XpPerHour, Words.Number, Better.More),
-        new("gold", "Gold", Lines(["What the output of an hour sells for, rare extras too but no collectable", .. Measured(AnimalRates.OutputRule),
-                "Each product: its quantity times the catch's size, rounded down, at least one", .. SizeTip(),
-                AnimalRates.SurveyFindsRule == null ? "Not counted: what surveying finds, which no watch has seen yet" : "",
-                "Not counted: the extras of a rare species still locked"]), 66,
-            a => a.GoldPerHour, Words.Number, Better.More),
-        // Every try uses one, so the fastest animal uses the most: that is no reason to call any the best.
-        new("traps", "Traps", Lines([.. UseTip(), "None for an animal hunted without a trap"]), 58,
-            a => a.TrapsPerHour, Words.Number, Better.Neither),
-    ];
+    public static List<RateColumn> For()
+    {
+        var xp = AnimalRates.XpLevelMeasured;
+        var items = AnimalRates.ItemsMeasured;
+        int middleTo = AnimalRates.XpMiddleMeasuredOn.ToLevel;
+        string unknown = $"\"-\" above animal level {middleTo} until {AnimalRates.FewestSizes} catches' sizes are recorded";
+        return
+        [
+            new("time", "Time", Lines(["Seconds for one catch: surveying, tracking and trapping, escapes too",
+                    AnimalRates.HuntRule != null ? "The middle of the game's ranges, joined by a rule measured in the game" : ""]), 58,
+                a => a.SecondsPerCatch, Words.Seconds, Better.Less),
+            new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
+            new("xp", "XP", Lines(["Hunting XP per hour: the animal's XP times each catch's size",
+                    AnimalRates.XpRule != null ? $"Measured: {xp.Catches} of {xp.Catches} catches of {xp.Animal}, sizes as the journal records them" : "",
+                    unknown]), 66,
+                a => a.XpPerHour, Words.Number, Better.More),
+            new("gold", "Gold", Lines(["What the output of an hour sells for, rare extras too, no collectable",
+                    AnimalRates.OutputRule != null ? "Each item: its quantity times the catch's size, rounded down, at least one" : "",
+                    AnimalRates.OutputRule != null ? $"Measured: {items.Fits} of {items.Catches} catches of {items.Animal}; \"-\" where XP is \"-\"" : ""]), 66,
+                a => a.GoldPerHour, Words.Number, Better.More),
+            // Every try uses one, so the fastest animal uses the most: that is no reason to call any the best.
+            new("traps", "Traps", Lines([.. UseTip(), "None for an animal hunted without a trap"]), 58,
+                a => a.TrapsPerHour, Words.Number, Better.Neither),
+        ];
+    }
 
     static string Lines(IEnumerable<string> lines) => string.Join("\n", lines.Where(l => l.Length > 0));
 
-    // How a hunt's links join, and what backs it: what the watch counted; the game's words for a failed try tried again,
-    // which is all they state; the escape, measured; the surveys of a hunt, as the page writes them for each animal.
-    static IEnumerable<string> HuntTip()
-    {
-        if (AnimalRates.HuntRule is not { } hunt) yield break;
-        yield return $"How the steps of a hunt join: {(hunt.Source == RuleSource.Measured ? "measured in the game" : "by the game's own words")}";
-        if (hunt.Seen.Length > 0) yield return "Measured: " + hunt.Seen;
-        if (hunt.Quote.Length > 0)
-        {
-            yield return "A failed try is tried again at the chance the game's words give:";
-            foreach (string line in hunt.Quote.Split('\n')) yield return $"\"{line}\"";
-            yield return "Otherwise the animal escapes back to tracking, adding its fewest steps:";
-            foreach (string line in AnimalRates.EscapeMeasured.Split('\n')) yield return line;
-        }
-        yield return "The surveys of a hunt: as the Hunting page last wrote them for that animal";
-    }
-
-    // What a try takes from the bank, as Fishing Rates says it of its bait now: one every try, preserved or not, measured;
-    // the preservation chance is named as not counted.
+    // What a try takes from the bank, as Fishing Rates says it of its bait now: one every try, preserved or not, measured.
     static IEnumerable<string> UseTip()
     {
         if (AnimalRates.UseRule is not { } use) yield break;
         yield return use.Reading.Kept ? "Traps taken from the bank per hour, less what is preserved" : "Traps taken from the bank per hour: one every try, preserved or not";
         if (use.Seen.Length > 0) yield return "Measured: " + use.Seen;
-        if (!use.Reading.Kept) yield return "Not counted: your Input Preservation Chance, which kept none of them";
-    }
-
-    // What the size of a catch is counted from (AnimalRates.Shares), and what was measured of it at which levels
-    // (review 11, point 2): the journal's recorded sizes, else the middle at the levels it held at, else "-".
-    static IEnumerable<string> SizeTip()
-    {
-        var m = AnimalRates.XpMiddleMeasuredOn;
-        var l = AnimalRates.XpLevelMeasured;
-        yield return "the size the Hunting journal records for that catch: measured,";
-        yield return $"{l.Catches} of {l.Catches} catches of {l.Animal}";
-        yield return $"Counted by the sizes the journal recorded for your last catches ({AnimalRates.FewestSizes} or more)";
-        yield return $"Else the middle of the card's range, at animal level {m.FromLevel} to {m.ToLevel} only:";
-        yield return $"{m.Catches} catches of {m.Animal} averaged it; at level {l.Level}, {l.Animal} {Words.Number(l.Mean)} times it";
-        yield return "\"-\" at a higher level until the journal has recorded enough catches";
-        if (AnimalRates.XpRule is { Quote.Length: > 0 } xp) yield return $"\"{xp.Quote}\"";
-    }
-
-    // What was measured for a rule, in one line ("" when nothing was).
-    static IEnumerable<string> Measured<T>(Settled<T>? rule)
-    {
-        if (rule is { Source: RuleSource.Measured, Seen.Length: > 0 }) yield return "Measured: " + rule.Seen;
     }
 }
 

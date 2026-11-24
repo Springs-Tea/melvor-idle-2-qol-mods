@@ -1053,7 +1053,7 @@ public partial class HuntingRatesMod
                       : double.IsFinite(shareTol) && Math.Abs(shareMean - share) <= shareTol ? ", AS THE SHARE THE WINDOW COUNTED" : ", NOT AS THE SHARE THE WINDOW COUNTED"),
             $"catches [{string.Join(", ", xps.Select(x => N(x.Xp, 1)))}], a catch's XP over the animal's {N(shareMean)} on average (twice its standard error {N(shareTol)}) against the " +
             $"middle of the page's multipliers {N(rangeMiddle)} and the share the window counted at the start {(counted.Share is { } c ? N(c) : "-")} (by " +
-            $"{(counted.From == ShareFrom.Journal ? $"the journal's {counted.Sizes} recorded sizes" : counted.From == ShareFrom.Middle ? "the middle" : "nothing")}); " +
+            $"{(counted.From == ShareFrom.Journal ? $"{counted.Sizes} recorded sizes kept at its level" : counted.From == ShareFrom.Middle ? "the middle" : "nothing")}); " +
             $"{seen.XpElsewhere} frames with XP outside a catch, {N(seen.XpElsewhereSum, 1)} XP");
         // The page says "Animal Levels increase the average Skill XP & Item quantity output.": the share of each catch beside
         // the animal's level and the size the journal recorded, so that a later turn can count what a level adds.

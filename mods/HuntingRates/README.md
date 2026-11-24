@@ -56,7 +56,9 @@ animals): the animal's picture, its name, its location, and:
   - It is `-` for a trap whose bonuses change the chance after a failed try.
   - XP and Gold are `-` until the window knows how big a catch is on average (see
     [What is counted](#what-is-counted)): by the sizes the Hunting journal recorded for your last catches of
-    that animal, or, at animal level 1 to 7, by the range its card writes (open its location once).
+    that animal at its level now, or, at animal level 1 to 7, by the range its card writes (open its location
+    once). The journal forgets those sizes when the game starts, so the window keeps them, the last 50 at the
+    animal's level, in `readings.json`.
   - The window reads what the page writes whenever the Hunting page is on the screen, with the window open
     or not, and keeps it in `readings.json` for each of your characters, so a line keeps its numbers from one
     game to the next. The tooltip says "as the Hunting page last wrote it" for a number kept from an earlier
@@ -110,14 +112,14 @@ is not counted. A line of the tooltip that would be longer than the screen allow
 | **An escape: back to tracking, with 4 more steps (its fewest), 1.15 escapes a catch.** | Where an escape takes you, how many steps it adds (the animal's fewest), and how many escapes a catch takes. |
 | **A catch every 2m 27s on average, worked out by a rule measured in the game: 24.5 an hour.** | The time of a catch and the catches of an hour; where they cannot be counted, what the window does not know. |
 | **Hunting XP: 11,433 an hour, 467 a catch on average, of 233 to 700 on its card.** | The XP of a catch on average, and of an hour, beside the range the animal's card writes. The range and the XP of a catch are rounded down, as the card writes them ("+233 - 700"). Kept from an earlier game, it adds "as the Hunting page last wrote it". Where the average is not known, the range alone. |
-| **By the sizes the journal recorded for your last 10 catches: 1.11 times its XP on average.** | What a catch's XP and output rest on: the sizes the Hunting journal recorded for your recent catches of that animal; or, without 5 of them, "The middle of its range" at animal level 1 to 7, where it was measured. |
+| **By the sizes the journal recorded for your last 31 catches at animal level 19: 1.11 times its XP on average; 24 of them were kept from earlier games.** | What a catch's XP and output rest on: the sizes the Hunting journal recorded for your last catches of that animal at its level now, up to 50, kept by the window from one game to the next; or, without 5 of them, "The middle of its range" at animal level 1 to 7, where it was measured. |
 | **Journal XP: 504 an hour, 1 a tracking step and 10 a catch.** | The animal's journal XP, and of an hour. |
 | **Every catch, a chance of:** | The animal's output with the chance of each item, how many it brings, and how many an hour. |
 | **The doubling chance (2%) is counted in the output.** | Your doubling chance, in the output of an hour and its gold. |
 | **A rare species on 1% of catches: ...** | Each species in one line, with its share of the rare ones, "(locked)" for one that cannot come yet, and what it brings besides. A species you have never trapped and a collectable you have never found are not named, as the journal does. |
 | **Trap:** and **Bait:** | The trap selected for the animal, or that you hunt it without one; its bait, and whether you use it. Each with an hour of it and how long what is in the bank lasts. |
 | **Gold: 1,497 an hour, what the output sells for.** | What an hour's output sells for in gold; where an hour cannot be counted, what one catch's output sells for. |
-| **Not counted: your Skip Tracking Step chance (5%): seen on 2 of 80 steps, too few to count it.** | What the hour leaves out, each in one line: the chance to skip a step, the preservation chance, what surveying can find, XP and output at a level where a catch's average size is not known, and a hunt without a trap. |
+| **Not counted: your Skip Tracking Step chance (5%): 2 of 142 steps watched, too few to count it.** | What the hour leaves out, each in one line: the chance to skip a step, the preservation chance, what surveying can find, XP and output at a level where a catch's average size is not known (or where the animal's level is not), and a hunt without a trap. |
 | **Click to open this animal on the Hunting page. Hunting is not started.** | What a click on the line does; on a locked animal, which location it opens; while you hunt, that it only shows. When a click cannot serve the line: why (a hunt runs, the page does not let the animal be selected, or the page has no room for its card beside the window), and when the page's panel of the animal selected lies under the window. |
 
 An animal not discovered yet has only its name, its location, what it needs, and what a click does.
@@ -149,7 +151,7 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 | The chances of a try count as they are now. A trap whose bonuses change the chance after a failed try is not counted. | The window's own: what those bonuses do is not known yet. |
 | Every try takes one trap and one bait from the bank, whether it catches or not, preserved or not. Your Input Preservation Chance is not counted. | Measured: 13 tries took 13 traps and 13 Seed Bait, and none was kept. Fishing Rates measured that a preserved bait is still taken from the bank. The bait of a hunt without a trap is not counted: it was not measured. |
 | Hunting XP comes with a catch only: the animal's XP times the catch's size, the size the Hunting journal records for that catch. | Measured: XP on 6 of 6 catches of Yellowtail Bird and with nothing else; on Wild Chicken a catch's XP was the animal's XP times the size the journal recorded on 24 of 24 catches. |
-| A catch is counted by the average of the sizes the journal recorded for your last catches of that animal, when it holds 5 or more. Otherwise, at animal level 1 to 7, by the middle of the range the animal's card writes; above that, XP and Gold show `-`. | The game's own words: "Animal Levels increase the average Skill XP & Item quantity output." No number of the game's says how a size is drawn at a level. Measured: Yellowtail Bird's 6 catches at an animal level from 1 to 7 averaged the middle (1.001); Wild Chicken's 24 at level 18 averaged 1.11 times the animal's XP, where the middle does not hold. |
+| A catch is counted by the average of the sizes the journal recorded for your last catches of that animal at its level now, when there are 5 or more. The journal forgets them when the game starts, so the window keeps the last 50 at the animal's level; a level-up starts them anew, and a catch that brought a level-up is left out. Otherwise, at animal level 1 to 7, by the middle of the range the animal's card writes; above that, or when the animal's level is not known, XP and Gold show `-`. | The game's own words: "Animal Levels increase the average Skill XP & Item quantity output." No number of the game's says how a size is drawn at a level. Measured: Yellowtail Bird's 6 catches at an animal level from 1 to 7 averaged the middle (1.001); Wild Chicken's 24 at level 18 averaged 1.11 times the animal's XP, where the middle does not hold. |
 | The journal XP is the animal's base: for every tracking step and for every catch. | Measured: 1 on each of 62 steps and 10 on each of 6 catches, the game's base values for Yellowtail Bird. |
 | The output comes with a catch, each item at its chance: its quantity times the catch's size, rounded down and at least one. The doubling chance doubles each item on its own, not the rare extras. | Measured: the output came on 6 of 6 catches of Yellowtail Bird and at no other time; on Wild Chicken each item followed the size so on 23 of 24 catches (one Raw Chicken of 17 is not explained), and items were doubled one at a time. The doubling is the window's reading of the game's words for it, "Your chance to double the output". |
 | What a survey can find is not counted. | When a find comes is not settled: none came in 10 surveys of Yellowtail Bird (1 expected); 5 came in 43 of Wild Chicken, which fits a chance on every survey and once a hunt alike. |
@@ -175,8 +177,9 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 - Hunting has no mastery XP in this game (its Mastery Guild counts tasks), so there is no column for it. An
   animal's journal XP is in the tooltip.
 - Gold is not profit: traps and bait are not taken off.
-- `readings.json` holds only what the Hunting page wrote, never anything of your save. Deleting it only
-  brings back the `-` until the page shows those animals again.
+- `readings.json` holds only what the Hunting page wrote and the sizes the journal recorded for your catches,
+  never anything of your save. Deleting it only brings back the `-` until the page shows those animals again,
+  and until 5 more catches of an animal above level 7 are recorded.
 - The window starts nothing. While you are not hunting, a click on a line changes which location and animal
   the Hunting page selects, through the page's own buttons; while you hunt, it selects nothing. It also shows
   the hunt instead of the journal. Hunting, traps, bait and hunting without a trap are left as they are.
@@ -187,7 +190,7 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 | --- | --- |
 | No round button on the Hunting page | It comes a moment after the page opens. If it never comes, look for `[HuntingRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
 | `-` on most lines | The Hunting page has not written how many surveys a hunt of those animals takes yet: select each animal there once. The note under the list says so. |
-| `-` for XP and Gold only, with "a catch's average size" in the note | The animal is above level 7 and the journal has recorded fewer than 5 of its catches: hunt it a little, and the window counts by the sizes the journal records. |
+| `-` for XP and Gold only, with "a catch's average size" in the note | The animal is above level 7 and fewer than 5 of its catches at its level have been recorded while the mod was installed: hunt it a little, and the window counts by the sizes the journal records, and keeps them for the next game. |
 | `-` on a line, with "how many surveys a hunt takes" in the note | Select that animal on the Hunting page once: its panel writes how many surveys a hunt takes, which the window reads and keeps. |
 | "before the range its card writes, not shown on the page yet" | Open that animal's location on the Hunting page once: the window reads the range on its card and keeps it. |
 | "as the Hunting page last wrote it" | The number was read in an earlier game and kept in `readings.json`. The window reads it again whenever the page shows that animal; if your bonuses changed since, select the animal once. |

@@ -63,6 +63,13 @@ public partial class HuntingRatesMod : IMod
         public double? XpHigh { get; set; }
         /// <summary>The colour the card drew its picture in (red, green, blue, alpha), as last drawn.</summary>
         public float[]? Tint { get; set; }
+        /// <summary>The animal level <see cref="Sizes"/> were recorded at (the journal entry's Experience.Level).</summary>
+        public int? SizesLevel { get; set; }
+        /// <summary>
+        /// The sizes the journal recorded for the animal's catches at <see cref="SizesLevel"/>, oldest first, the last
+        /// AnimalRates.KeptSizes of them (KeepSizes). The journal itself keeps none over a game start.
+        /// </summary>
+        public List<double>? Sizes { get; set; }
     }
 
     sealed class Readings
@@ -73,7 +80,7 @@ public partial class HuntingRatesMod : IMod
         public Dictionary<string, Dictionary<string, Reading?>>? Characters { get; set; } = new();
     }
 
-    readonly Tempo _tick = new(500), _search = new(1000), _readingsWrite = new(5000);
+    readonly Tempo _tick = new(500), _search = new(1000), _readingsWrite = new(5000), _sizesLook = new(2000);
     readonly HashSet<string> _reported = new();
     ModContext _ctx = null!;
     Settings _settings = new();
@@ -129,8 +136,12 @@ public partial class HuntingRatesMod : IMod
     Dictionary<string, Reading?> _remembered = new();
     string? _rememberedOf;
     bool _readingsUnsaved;
+    // The sizes the journal holds for each animal at the last look (KeepSizes), with the animal's level then, so that
+    // a size recorded since is told from the ones before; and how many sizes were kept for each animal in this game.
+    readonly Dictionary<ActiveHuntingAnimal, (int? Level, HashSet<HuntingAnimalStatEntry> Seen)> _sizesSeen = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<ActiveHuntingAnimal, int> _sizesThisGame = new(ReferenceEqualityComparer.Instance);
     // A trap's bonuses after a failed try could not be read once: said in one line, and no catch is counted with a trap
-    // that has them from then on (FailBonuses). _countOff: the journal's count of catches could not be read once
+    // that has them from then on (FailBonuses). _countOff: the journal gave no count of catches once
     // (TrappedCount).
     bool _failBonusesOff, _countOff;
     // The tool as each card writes it (HuntingAnimalTrackingView.TrackingTool), for the tooltip (review 1, fault 10).
@@ -201,6 +212,8 @@ public partial class HuntingRatesMod : IMod
                 UpdateStripButton();
                 Sync();
             }
+            // The sizes the journal records, kept on every screen: a catch is made wherever the player is.
+            if (!GameAccess.IsComputingOffline && _sizesLook.Due()) KeepSizes();
             if (_readingsUnsaved && _readingsWrite.Due()) WriteReadings();
 #if DEVTOOLS
             DevRequest();
@@ -596,6 +609,52 @@ public partial class HuntingRatesMod : IMod
         ModFiles.WriteJson(ReadingsFile, file, _ctx.Log);
     }
 
+    // The size of every catch the journal records (HuntingAnimalJournalEntry.RecentStatEntries, each entry's
+    // StatPercentage), kept in the mod's own file with the animal's level (review 12, point 1): the journal had none
+    // after a game start, though it had recorded 24 in the game before (check-11). Every two seconds, so that no entry
+    // comes and goes between two looks (a catch takes far longer). An entry is new when it was not in the list at the
+    // last look. It is kept only when the animal's level is known and the same as at that look: a catch that brought a
+    // level up may have been drawn at either level, so it is left out, and a level-up starts the kept sizes anew. The
+    // entries already there at the first look in a game are not kept: their level is not known, and an earlier game of
+    // the mod has kept them as they came.
+    void KeepSizes()
+    {
+        foreach (ActiveHuntingAnimal animal in _hunting!.Action.Animals.Values)
+        {
+            if (animal?.JournalEntry is not { } entry) continue;
+            int? level = entry.Experience?.Level;
+            var now = new HashSet<HuntingAnimalStatEntry>(ReferenceEqualityComparer.Instance);
+            foreach (HuntingAnimalStatEntry recorded in entry.RecentStatEntries ?? [])
+                if (recorded != null && now.Add(recorded) && level is { } same &&
+                    _sizesSeen.TryGetValue(animal, out var before) && before.Level == same && !before.Seen.Contains(recorded))
+                    KeepSize(animal, same, recorded.StatPercentage);
+            _sizesSeen[animal] = (level, now);
+        }
+    }
+
+    // One size more for an animal at its level; sizes of another level are let go first, and only the last
+    // AnimalRates.KeptSizes stay.
+    void KeepSize(ActiveHuntingAnimal animal, int level, double size)
+    {
+        if (!double.IsFinite(size) || size <= 0) return;
+        Reading kept = RememberedFor(animal);
+        if (kept.SizesLevel != level || kept.Sizes == null)
+        {
+            kept.SizesLevel = level;
+            kept.Sizes = new();
+            _sizesThisGame.Remove(animal);
+        }
+        kept.Sizes.Add(size);
+        if (kept.Sizes.Count > AnimalRates.KeptSizes) kept.Sizes.RemoveRange(0, kept.Sizes.Count - AnimalRates.KeptSizes);
+        _sizesThisGame[animal] = _sizesThisGame.GetValueOrDefault(animal) + 1;
+        _readingsUnsaved = true;
+    }
+
+    // The sizes kept for an animal, with the level they are of and how many came in this game; null when none are.
+    (int Level, IReadOnlyList<double> Sizes, int ThisGame)? KeptSizesFor(ActiveHuntingAnimal animal) =>
+        Kept(animal) is { SizesLevel: { } level, Sizes: { Count: > 0 } sizes }
+            ? (level, sizes, Math.Min(sizes.Count, _sizesThisGame.GetValueOrDefault(animal))) : null;
+
     // What is remembered for this character's animal, or null.
     Reading? Kept(ActiveHuntingAnimal animal) => _remembered.GetValueOrDefault(animal.Animal.Id);
 
@@ -692,7 +751,7 @@ public partial class HuntingRatesMod : IMod
     // in colour: 7 of 7 cards. check-6's two black cards, Green Butterfly and Wild Boar, agree, and a locked card's
     // hidden picture carried the same black with 0 (Green Toad in check-9).
     // HuntingAnimalJournalEntry.TimesTrapped, the turn 7 reading, is not it: it was 0 for animals the page drew in
-    // colour (check-8). When the count cannot be read, the picture is drawn as it is, as before turn 7, with one line
+    // colour (check-8). When the game gives no count, the picture is drawn as it is, as before turn 7, with one line
     // in the log (TrappedCount). A colour kept from an earlier game may be out of date for an animal trapped for the
     // first time since, until the page shows its card again.
     (string Name, Texture2D? Picture, Color Tint) Look(ActiveHuntingAnimal active)
@@ -707,8 +766,10 @@ public partial class HuntingRatesMod : IMod
         return (animal.DisplayName.Text, picture, tint);
     }
 
-    // The journal's count of an animal's catches (HuntingJournalComponent.AnimalTrapped), or null when it cannot be
-    // read: said once in the log, and from then on every picture the page has not drawn is shown as it is.
+    // The journal's count of an animal's catches (HuntingJournalComponent.AnimalTrapped), or null when the game gives
+    // none: no journal or no count, or the animal not in it. That is said once in the log, and from then on every picture
+    // the page has not drawn is shown as it is. A member gone after an update is not caught here: this method then
+    // fails before it runs, at its call in Look, and the mod stops with its one line (Stop), as for every other member.
     double? TrappedCount(ActiveHuntingAnimal active)
     {
         if (_countOff) return null;
@@ -716,15 +777,16 @@ public partial class HuntingRatesMod : IMod
         {
             if (_hunting!.Journal?.AnimalTrapped is { } count) return count.GetValue(active.Animal);
         }
-        catch (Exception e) when (e is MissingMemberException or TypeLoadException or KeyNotFoundException or NullReferenceException) { }
+        catch (Exception e) when (e is KeyNotFoundException or NullReferenceException) { }
         _countOff = true;
-        Report("The Hunting journal's count of catches could not be read (the game was updated?): an animal's picture is shown as it is until the Hunting page has drawn it.");
+        Report("The Hunting journal gave no count of catches for an animal: an animal's picture is shown as it is until the Hunting page has drawn it.");
         return null;
     }
 
     // An animal's hour, with what the list reads from the page for it.
     AnimalRates ReadAnimal(ActiveHuntingAnimal animal) =>
-        AnimalRates.Read(animal, _hunting!, Look(animal), XpRangeFor(animal), SurveysFor(animal), FailBonuses, InBank, _hiddenWord ?? NotFound, HuntRuns());
+        AnimalRates.Read(animal, _hunting!, Look(animal), XpRangeFor(animal), SurveysFor(animal), FailBonuses, InBank, KeptSizesFor(animal),
+            _hiddenWord ?? NotFound, HuntRuns());
 
     // A hunt runs, by the one test the window and the development request share (AnimalRates.IsHunting).
     bool HuntRuns() => AnimalRates.IsHunting(_hunting!, _game);
@@ -1139,6 +1201,8 @@ public partial class HuntingRatesMod : IMod
         _panelSince = 0;
         _tints.Clear();
         _toolWords.Clear();
+        _sizesSeen.Clear();
+        _sizesThisGame.Clear();
         _spiderPicture = null;
     }
 
