@@ -238,7 +238,7 @@ static class Words
     // says so (review 7, point 1).
     static string SurveyLine(AnimalRates a)
     {
-        if (a.SurveysMost is not { } most) return $"Surveying: {Seconds(a.SurveySeconds)} a survey; how many, the page writes when its panel shows it.";
+        if (a.SurveysMost is not { } most) return $"Surveying: {Seconds(a.SurveySeconds)} a survey; select it once on the Hunting page to see how many.";
         string upTo = Math.Abs(most - Math.Round(most)) < 0.01 ? $"{Math.Round(most):N0}" : Number(most);
         string line = most < 1.005 ? $"Surveying: {Seconds(a.SurveySeconds)}, one survey until the tracks are found"
             : $"Surveying: {Seconds(a.SurveySeconds)} a survey, 1 to {upTo} until the tracks are found";

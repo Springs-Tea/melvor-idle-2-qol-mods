@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: fifteen quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
+  <img src="docs/img/art/banner.svg" alt="Melvor Idle 2 Mods: sixteen quality-of-life mods in the game's own look. Separate downloads. Your save is never touched." width="900">
 </h1>
 
 <p align="center">
@@ -110,6 +110,12 @@ Take the ones you want. Each has a page of its own with pictures and details.
       Every log and lantern side by side, from a round button on the Firemaking page: the time of a fire, and
       what an hour burns, gives in Firemaking XP, costs and brings in gold, the best of each column in gold.
       Hover a line for the whole hour; click it to open that log on the page while nothing burns.
+    <td><a href="mods/HuntingRates"><img src="docs/img/hunting-rates.png" alt="Hunting Rates"></a></td>
+    <td>
+      <h3><a href="mods/HuntingRates">Hunting Rates</a></h3>
+      Every animal side by side, from a round button on the Hunting page: the time of a catch, and catches,
+      Hunting XP, gold and traps per hour, with surveying, tracking, trapping and escapes as measured in the
+      game, the best of each column in gold. Hover a line for the whole hour; click it to open that animal.
     </td>
   </tr>
   <tr>
@@ -273,9 +279,10 @@ flowchart TB
         M13["MiningRates"]
         M14["WoodcuttingRates"]
         M15["FiremakingRates"]
+        M16["HuntingRates"]
     end
-    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14 & M15
-    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14 & M15 -->|"one DLL each"| L
+    S --> M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14 & M15 & M16
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 & M8 & M9 & M10 & M11 & M12 & M13 & M14 & M15 & M16 -->|"one DLL each"| L
 ```
 
 - **They look like the game because they use the game.** `mods/Shared/GameStyle.cs` loads the game's own

@@ -169,8 +169,8 @@ sealed class AnimalRates
     /// <summary>
     /// How many of the sizes the journal records the mod keeps per animal, the last ones at the animal's level
     /// (HuntingRatesMod.KeepSizes): the journal itself had none in check-11, after a game start and a level-up of the
-    /// animal, though it had recorded 24 in the game before; which of the two emptied it no watch has told apart. 50 is about half an hour of hunting Wild Chicken (94.8 catches an hour), twice the 24 the size
-    /// rule was measured on. At Wild Chicken's spread of sizes (a standard deviation of 0.152 a catch), the average of 50
+    /// animal, though it had recorded 24 in the game before; which of the two emptied it no watch has told apart. 50
+    /// is about half an hour of hunting Wild Chicken (94.8 catches an hour), twice the 24 the size rule was measured on. At Wild Chicken's spread of sizes (a standard deviation of 0.152 a catch), the average of 50
     /// lies within 0.043 of the true one (twice its standard error), under 4% of the XP, against 0.062 with 24. More
     /// would narrow it slowly (100 gives 0.030) and write a longer file on every catch.
     /// </summary>

@@ -581,18 +581,26 @@ public partial class HuntingRatesMod : IMod
     // (Native.WriteSurveying), and the panel works it out from the animal it is given when it writes its surveying range.
     // So the panel's own method writes the range for each such animal in turn, the range is read as ReadSurveyRange reads
     // the selected animal's, and the method then writes it once more for the panel's own animal, in the same call: nothing
-    // is drawn in between, and a range that still differs from what it showed before is set back to it. Only while the
-    // panel shows its own animal's range (its low end that animal's time of a survey), so that there is a range to go back
-    // to. A member gone after an update ends it with one line; the surveys are then read only as the panel shows them.
+    // is drawn in between. Only while the panel is on the screen and shows its own animal's range (its low end that
+    // animal's time of a survey), so that there is a range to go back to.
+    // Whatever fails (a member gone after an update, or the game's method throwing for one animal), the range the panel
+    // showed before is set back by hand, without counting on the panel's own write-back, which may fail the same way; and
+    // only the asking turns off, with one line: the surveys are then read only as the panel shows them, and the rest of
+    // the mod goes on (the code review of turn 14, fault 1).
     void AskSurveys(HuntingSelectedRecipeContainer panel)
     {
         if (_askOff) return;
         var asked = _hunting!.Action.Animals.Values.Where(a => a != null && !_surveysAsked.Contains(a) && !_surveysMost.ContainsKey(a)).ToList();
         if (asked.Count == 0) return;
+        GamesByMalcs.Melvor2.StatDisplays.IntervalRangeDisplay? survey = null;
+        double low = 0, high = 0;
+        Exception? failed = null;
         try
         {
-            if (Native.PanelAnimal(panel) is not { } own || Native.SurveyOf(panel) is not { } survey) return;
-            double low = survey.MinSeconds, high = survey.MaxSeconds;
+            if (!panel.IsVisibleInTree() || Native.PanelAnimal(panel) is not { } own || Native.SurveyOf(panel) is not { } shown) return;
+            survey = shown;
+            low = survey.MinSeconds;
+            high = survey.MaxSeconds;
             if (!double.IsFinite(low) || !double.IsFinite(high) || Math.Abs(low - own.Stats.SurveyInterval.Value / 1000) > 0.005) return;
             try
             {
@@ -603,22 +611,35 @@ public partial class HuntingRatesMod : IMod
                     ReadSurveyRange(survey, animal);
                 }
             }
-            finally
+            catch (Exception e) { failed = e; }
+            try { Native.WriteSurveying(panel, own); }
+            catch (Exception e) { failed ??= e; }
+        }
+        catch (Exception e) { failed = e; }
+        bool setBack = true;
+        if (survey != null)
+        {
+            try
             {
-                Native.WriteSurveying(panel, own);
                 if (survey.MinSeconds != low || survey.MaxSeconds != high)
                 {
                     survey.MinSeconds = low;
                     survey.MaxSeconds = high;
                 }
             }
+            catch (Exception e)
+            {
+                failed ??= e;
+                setBack = false;
+            }
         }
-        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException)
-        {
-            _askOff = true;
-            Report("The Hunting page's panel could not write the surveys of a hunt for every animal (the game was updated?): " +
-                $"an animal's surveys are read only while the panel shows it. {e.Message}");
-        }
+        if (failed == null) return;
+        _askOff = true;
+        Report("The Hunting page's panel could not write the surveys of a hunt for every animal (the game was updated?): " +
+            "from now on an animal's surveys are read only while the panel shows it" +
+            (survey == null ? ". " : setBack ? "; the panel shows its own animal's surveying again. "
+                : ", and the panel may show another animal's surveying until an animal is selected. ") +
+            $"{failed.GetType().Name}: {failed.Message}");
     }
 
     // The most surveys a hunt takes for an animal, as the page wrote it for that animal in this game, else as it last

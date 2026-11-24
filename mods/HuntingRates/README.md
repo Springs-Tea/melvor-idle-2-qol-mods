@@ -1,6 +1,14 @@
-# Hunting Rates
+<h1 align="center"><img src="../../docs/img/art/h-hunting-rates.svg" alt="Hunting Rates" width="720"></h1>
+
+<p align="center">
+  <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
+  &nbsp;
+  <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+</p>
 
 > Where do I hunt for the most XP, catches or gold per hour?
+
+![Every animal with its location, the time of a catch, and catches, Hunting XP, gold and traps per hour, the best of each column in gold](../../docs/img/hunting-rates.png)
 
 Every animal has its own hunt: surveying until its tracks are found, a number of tracking steps, and a trap
 that may fail and let the animal escape. Each step has its own time and chance, and the animal has its own
@@ -52,7 +60,7 @@ animals): the animal's picture, its name, its location, and:
 - **A column shows `-` where the window cannot count it for that animal yet**, and a note under the list
   says why.
   - How many surveys a hunt takes is in no number of the game's: the Hunting page's panel works it out when it
-    writes the surveying time of the animal selected. As soon as the Hunting page is on the screen, the window
+    writes the surveying time of the animal selected. As soon as the Hunting page shows that panel, the window
     has the panel write it for every animal in turn, reads it, and has the panel write its own animal's again
     at once. Where that cannot be done (after a game update, or before any animal was ever selected there),
     every column is `-` until the panel has shown that animal: select it there once.
@@ -83,6 +91,9 @@ animals): the animal's picture, its name, its location, and:
 - **While you hunt, a click selects nothing**, since selecting another animal might change the hunt in
   progress. It only shows: the hunt instead of the journal, and the animal's card when the page shows its
   location. The tooltip of a line a click cannot serve then says so.
+
+![After a click on a line: the Hunting page with that animal's location open and the animal selected, its card in sight beside the window](../../docs/img/hunting-rates-clicked.png)
+
 - **An animal you cannot hunt yet is greyed**, with the Hunting level it needs (`Lv 40`), or `Locked` when it
   needs something else. A click on it opens its location only, and shows its card, where the page says what it
   needs; nothing while the location itself is locked. When the page keeps an animal's card from being
@@ -127,6 +138,8 @@ is not counted. A line of the tooltip that would be longer than the screen allow
 | **Click to open this animal on the Hunting page. Hunting is not started.** | What a click on the line does; on a locked animal, which location it opens; while you hunt, that it only shows. When a click cannot serve the line: why (a hunt runs, the page does not let the animal be selected, or the page has no room for its card beside the window), and when the page's panel of the animal selected lies under the window. |
 
 An animal not discovered yet has only its name, its location, what it needs, and what a click does.
+
+![The tooltip of a line: the surveys, tracking steps and trap tries of a hunt, the time of a catch, the XP, the output, the trap and bait, and what is not counted](../../docs/img/hunting-rates-tooltip.png)
 
 ## What is counted
 
@@ -193,7 +206,7 @@ trap was never watched: it is counted as one with a trap, and its tooltip says s
 | You see | What it means |
 | --- | --- |
 | No round button on the Hunting page | It comes a moment after the page opens. If it never comes, look for `[HuntingRates]` in `MelvorModLoader.log`: "the widget strip was not found" means a game update changed the screen. |
-| `-` on most lines | The window could not have the Hunting page's panel write how many surveys a hunt takes (the log says why in one line): select each animal there once. The note under the list says so. |
+| `-` on most lines | The window could not have the Hunting page's panel write how many surveys a hunt takes yet. Select any animal on the Hunting page: the window then has the panel write it for the others. If the `-` stays, the game was updated and `MelvorModLoader.log` has one `[HuntingRates]` line about the panel; select each animal there once instead. |
 | `-` for XP and Gold only, with "a catch's average size" in the note | The animal is above level 7 and fewer than 5 of its catches at its level have been recorded while the mod was installed: hunt it a little, and the window counts by the sizes the journal records, and keeps them for the next game. |
 | `-` on a line, with "how many surveys a hunt takes" in the note | Select that animal on the Hunting page once: its panel writes how many surveys a hunt takes, which the window reads and keeps. |
 | "before the range its card writes, not shown on the page yet", or "until its card shows its XP range" | Open that animal's location on the Hunting page once: the window reads the range on its card and keeps it. |
