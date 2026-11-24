@@ -38,14 +38,18 @@ namespace HuntingRates;
 // (NOT PUT BACK for what the request owned). The check is meant to run while the character is not hunting; run while he
 // hunts, it only proves that a click on a line selects nothing and leaves the hunt alone.
 // What it presses: the mod's own controls; the Hunting page's own journal button, location buttons and cards' buttons,
-// with the pointer as a player would (DevPress: the pointer is put on the control, a later step presses only when the game
-// says the pointer is on it; nothing while somebody is at the mouse, waiting until the real pointer has been still for
-// 5 s, and ending the request after 90 s, which puts everything back). The put-backs press the same controls by their own
-// signal or event, as the window's click does. The buttons that start or stop a hunt and the trap, bait and trapless
-// controls are never named or pressed; every animal's trap, bait and trapless choice is watched throughout (CHOICES
-// CHANGED). The game's methods it calls besides the window's own: GameView.SetCurrentPage (to open the Hunting page) and
-// the read-only ones the window calls. The pictures go into the mod's folder (shot-hunting-*.png, crop-hunting-*.png),
-// each two drawn frames after what it shows, with its pixels read back (DevChanged).
+// with the pointer as a player would (DevPress: the pointer is put on the control, a later step presses only when the
+// game says the pointer is on it; nothing while somebody is at the mouse, waiting until the real pointer has been still
+// for 5 s, and ending the request after 90 s, which puts everything back). Lesson 57 (review 8): no step waits for his
+// hand while a part of the page is the request's. The two presses made then (the line's click after the request's
+// journal, the comparison's card press after its location) are given up instead when somebody is at the mouse, or when
+// the pointer is not on their control within CardPressMost, and the put-back right after them runs; any other wait then
+// fails the request, which puts the page back at once (DevHandAtMouse). The put-backs press the same controls by their
+// own signal or event, as the window's click does. The buttons that start or stop a hunt and the trap, bait and
+// trapless controls are never named or pressed; every animal's trap, bait and trapless choice is watched throughout
+// (CHOICES CHANGED). The game's methods it calls besides the window's own: GameView.SetCurrentPage (to open the Hunting
+// page) and the read-only ones the window calls. The pictures go into the mod's folder (shot-hunting-*.png,
+// crop-hunting-*.png), each two drawn frames after what it shows, with its pixels read back (DevChanged).
 //  1. Remembers the page on the screen, whether the window was open and folded, the round button, settings.json as it
 //     is on disk, the page's location and animal selected, whether it shows the journal, the scroll of its list of
 //     animals, the hunt in progress (IsStarted, CurrentAnimal, its State, CurrentStep, RequiredSteps, Tracks,
@@ -69,21 +73,24 @@ namespace HuntingRates;
 //     tool as drawn with its colour, its button), "order", "words", "spiders", "hidden", "discovery", "lit", "tips",
 //     "heads" (every name's whole tip), "wrap" (every tooltip line longer than Fishing Rates' longest, WRAPPED), "size",
 //     "room". "Dev: cut" over every label of the picture; crop-hunting-window.png and, when the list scrolls,
-//     crop-hunting-window-end.png.
+//     crop-hunting-window-end.png. Then the page put back from the counted line's click (AddPageBack, as after the
+//     click of step 8), before any step that waits for his hand (lesson 57). The counted line stays counted: its
+//     surveys and XP range are kept.
 //  6. The tooltip of a line whose hour is counted, when there is one (shot-hunting-tooltip.png), and the tooltip of the
 //     name with the longest tip (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and
-//     crop-hunting-sorted.png. Then the page put back from the counted line's click, by the same put-back as after the
-//     click of step 8 (AddPageBack).
+//     crop-hunting-sorted.png.
 //  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the click
 //     after has to show the hunt again by the page's own button.
-//  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's, which
-//     the click opens and selects through the page's own controls; read back: the location, the animal, the view and both
-//     view buttons as drawn, the panel's name, the lit line, the window, the game's events during the click itself, and
-//     the hunt guard over the click's window. NOT OPENED, THE HUNT IS NOT SHOWN, THE PAGE SHOWS ANOTHER ANIMAL, THE
-//     WINDOW CLOSED and the guard's marks are what must not happen. While a hunt runs: a line of another location, which
-//     must select nothing (THE CLICK SELECTED WHILE A HUNT RUNS). shot-hunting-clicked.png. Puts the page back, then,
-//     while no hunt runs and the player has changed nothing, presses the page's own location button and the card's
-//     button for the same animal with the pointer, compares (DIFFER, EVENTS DIFFER), and puts the page back again.
+//  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's,
+//     which the click opens and selects through the page's own controls; read back: the location, the animal, the view
+//     and both view buttons as drawn, the panel's name, the lit line, the window, the game's events during the click
+//     itself, and the hunt guard over the click's window. NOT OPENED, THE HUNT IS NOT SHOWN, THE PAGE SHOWS ANOTHER
+//     ANIMAL, THE WINDOW CLOSED and the guard's marks are what must not happen. While a hunt runs: a line of another
+//     location, which must select nothing (THE CLICK SELECTED WHILE A HUNT RUNS). While the request's journal stands on
+//     his page, the click does not wait for his hand: with somebody at the mouse it is NOT MADE (lesson 57).
+//     shot-hunting-clicked.png. Puts the page back, then, while no hunt runs and the player has changed nothing,
+//     presses the page's own location button and the card's button for the same animal with the pointer, compares
+//     (DIFFER, EVENTS DIFFER), and puts the page back again.
 //  9. "Dev: size": the window at its smallest and at its largest size (crop-hunting-smallest.png,
 //     crop-hunting-largest.png), and "Dev: cut" at both. Closes the window with its X: shot-hunting-closed.png.
 // 10. Puts back settings.json byte for byte from the copy read in step 1, the window as it was, and the page's parts, each
@@ -104,7 +111,8 @@ public partial class HuntingRatesMod
     // step waits for that before the request ends.
     const ulong StillFor = 5000, GiveUpAfter = 90000, StepTime = 6000, PointerStepTime = GiveUpAfter + 10000;
     const ulong TipWait = 20000;
-    // The comparison's card press, once the request's location stands on his page: given up after this long without it.
+    // A press made while a part of the page is the request's (the comparison's card press after its location, the
+    // line's click after its journal): given up after this long without it, as it never waits for his hand (lesson 57).
     const ulong CardPressMost = 5000;
     // Fishing Rates' longest tip of a column's name, line by line, and the longest line of its tooltips, in characters.
     const int FishingTipMost = 82, FishingTooltipMost = 94;
@@ -452,8 +460,9 @@ public partial class HuntingRatesMod
         // cards of his own location first (point 4: a never-trapped card and a trapped one, where his location has
         // them), since the click opens the counted animal's location. The line is the first one of an animal whose
         // escape the window counts, open, discovered and selectable from its line (Yellowtail Bird on his character),
-        // clicked through the window's own click as a player clicks it; the page is put back after the pictures
-        // (AddPageBack, "the page back after the counted line").
+        // clicked through the window's own click as a player clicks it. The page is put back right after the steps that
+        // need no hand ("numbers" and the pictures of the list), before the tooltips and the sort, which wait for his
+        // hand (lesson 57, review 8): AddPageBack, "the page back after the counted line".
         AnimalRates? counted = null;
         ActiveHuntingAnimal? countedAnimal = null;
         ulong countedSince = 0;
@@ -557,6 +566,9 @@ public partial class HuntingRatesMod
             scroll.ScrollVertical = 0;
             return true;
         });
+        // The page put back from the counted line's click, by the put-back of the click below, before the first step
+        // that waits for his hand (lesson 57, review 8). The line stays counted: its surveys and XP range are kept.
+        AddPageBack("the page back after the counted line", () => !DevOwnsAny, "counted | the page put back:");
         Button? target = null, header = null;
         Image? beforeTip = null, beforeHeader = null;
         Add("point at a line", () =>
@@ -618,8 +630,6 @@ public partial class HuntingRatesMod
             Shot("sorted", crop: true);
             return true;
         });
-        // The page put back from the counted line's click, by the put-back of the click below (review 7, point 2).
-        AddPageBack("the page back after the counted line", () => !DevOwnsAny, "counted | the page put back:");
 
         // The journal by the page's own button, then a click on a line, then (while no hunt runs) the page's own location
         // and card buttons for the same animal, to compare. The page is put back after each, by the rule of DevPage.cs.
@@ -629,6 +639,7 @@ public partial class HuntingRatesMod
         Button? journalButton = null;
         string huntBefore = "", choicesBefore = "", ours = "", ourEvents = "";
         bool huntingAtClick = false, compareSkipped = false;
+        ulong clickSince = 0;
         bool Waiting() => DevSettling || _devSettledTick >= _devTick;
 
         // The put-back of the page's parts in steps, each part on its own and in its own try, each step after the page has
@@ -767,6 +778,23 @@ public partial class HuntingRatesMod
         Add("click the line", () =>
         {
             if (clicked == null) return true;
+            // Lesson 57 (review 8): while a part of the page is the request's (its journal, pressed in the step
+            // before), the click does not wait for his hand. With somebody at the mouse, or the pointer not on the line
+            // within CardPressMost, it is not made, and "the page back after the click" puts the view back right after.
+            if (clickSince == 0) clickSince = Time.GetTicksMsec();
+            if (DevOwnsAny && (DevHandNow() || Time.GetTicksMsec() - clickSince > CardPressMost))
+            {
+                string why = $"the click on the line of {clicked.Animal.Id} NOT MADE: " +
+                    (DevHandNow() ? "somebody is at the mouse" : $"the pointer was not on the line within {CardPressMost / 1000} s") +
+                    $" while the request's {DevOursWords()} stands on his page (lesson 57); it is put back next";
+                DevLog("click | " + why);
+                _devOnTheWay.Add(why);
+                if (_devAim != null) { _devAim = null; DevPointerBack(); }
+                events?.Dispose();
+                events = null;
+                clicked = null;
+                return true;
+            }
             events ??= new DevClickEvents(_hunting!.Action, () => _devInClick, DevLog);
             AnimalRates line = clicked;
             // "A hunt runs" is read at the press itself, not when the line was chosen: the press waits for his hand, and he
@@ -1630,6 +1658,10 @@ public partial class HuntingRatesMod
             _devGuardSince = 0;
             return false;
         }
+        // Lesson 57 (review 8): never wait for his hand while a part of the page is the request's. The steps that press
+        // then give up before they get here; one that gets here fails the request, whose put-back runs at once.
+        if (DevOursWords() is { Length: > 0 } ours)
+            throw new InvalidOperationException($"LESSON 57: {what} would wait for his hand while the request's {ours} stands on his page: not made, and put back now");
         if (_devGuardSince == 0)
         {
             _devGuardSince = now;

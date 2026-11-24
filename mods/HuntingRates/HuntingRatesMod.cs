@@ -496,10 +496,14 @@ public partial class HuntingRatesMod : IMod
                             icon.IsVisibleInTree() ? icon.Texture : null, icon.Modulate * icon.SelfModulate);
                     else _looks.Remove(animal);
                     // The colour the card draws the picture in, with whether the animal had been trapped then (Look).
+                    // It is kept in the file only once the card draws it steadily, near the same at two reads in a row:
+                    // a card still fading in or out would otherwise mark the file on every read (the code review of
+                    // turn 8, smaller point 1).
                     Color tint = icon.Modulate * icon.SelfModulate;
                     bool never = NeverTrapped(animal);
+                    bool steady = _tints.TryGetValue(animal, out var before) && before.NeverTrapped == never && Near(before.Tint, tint);
                     _tints[animal] = (tint, never);
-                    RememberTint(animal, tint, never);
+                    if (steady) RememberTint(animal, tint, never);
                     // The picture the game's own control shows for a spider with the setting on: the one this list shows.
                     if (animal.Animal.IsScarySpider && SpiderSetting() && icon.Texture != null && !ReferenceEquals(icon.Texture, animal.Animal.Icon))
                         _spiderPicture = icon.Texture;
@@ -601,15 +605,21 @@ public partial class HuntingRatesMod : IMod
         return made;
     }
 
+    // A colour the card draws steadily, kept when it is new, or differs from the kept one by more than Near allows.
     void RememberTint(ActiveHuntingAnimal animal, Color tint, bool never)
     {
-        float[] rgba = [tint.R, tint.G, tint.B, tint.A];
         Reading kept = RememberedFor(animal);
-        if (kept.Tint is { } was && was.SequenceEqual(rgba) && kept.NeverTrapped == never) return;
-        kept.Tint = rgba;
+        if (kept.Tint is [var r, var g, var b, var a] && Near(new Color(r, g, b, a), tint) && kept.NeverTrapped == never) return;
+        kept.Tint = [tint.R, tint.G, tint.B, tint.A];
         kept.NeverTrapped = never;
         _readingsUnsaved = true;
     }
+
+    // Two colours the same to the eye: every channel within 1% of its whole range, under three steps of an 8-bit
+    // colour. The colours the window tells apart are a black shape and the picture as it is, the whole range apart.
+    const float TintNear = 0.01f;
+    static bool Near(Color x, Color y) =>
+        Math.Abs(x.R - y.R) <= TintNear && Math.Abs(x.G - y.G) <= TintNear && Math.Abs(x.B - y.B) <= TintNear && Math.Abs(x.A - y.A) <= TintNear;
 
     // Whether a trap has bonuses after a failed try (Native.FailTemplate, HasValues); when their values cannot be read, one
     // line in the log (AGENTS.md rule 4) and null from then on for a trap that has such a template, which counts no catch

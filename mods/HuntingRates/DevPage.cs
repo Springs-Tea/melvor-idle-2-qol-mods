@@ -83,6 +83,18 @@ public partial class HuntingRatesMod
 
     bool DevOwnsAny => _devOwnLocation != null || _devOwnAnimal != null || _devOwnJournal != null || _devOwnScroll != null;
 
+    // The parts of the page that are the request's now, or a press of its own still settling, in words; "" for none.
+    string DevOursWords()
+    {
+        var parts = new List<string>();
+        if (_devOwnLocation != null) parts.Add("location");
+        if (_devOwnAnimal != null) parts.Add("animal");
+        if (_devOwnJournal != null) parts.Add("view");
+        if (_devOwnScroll != null) parts.Add("scroll");
+        if (_devSettle != null) parts.Add("press settling");
+        return string.Join(", ", parts);
+    }
+
     // A hunt runs, by the window's own test (AnimalRates.IsHunting): read again right before every press that selects and
     // every put-back of a selection (lesson 56).
     bool DevHuntRuns => HuntRuns();
