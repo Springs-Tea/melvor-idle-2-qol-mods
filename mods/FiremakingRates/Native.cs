@@ -11,6 +11,7 @@ using GamesByMalcs.Melvor2.Entities.Firemaking;
 using GamesByMalcs.Melvor2.InfoIcons;
 using GamesByMalcs.Melvor2.InfoLabels;
 using GamesByMalcs.Melvor2.InfoTables;
+using GamesByMalcs.Melvor2.Localization;
 using GamesByMalcs.Melvor2.Utils;
 using Godot;
 
