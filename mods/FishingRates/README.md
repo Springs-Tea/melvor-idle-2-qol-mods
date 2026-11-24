@@ -8,7 +8,7 @@
 
 > Where do I fish for the most XP, fish or gold per hour?
 
-![Every fishing spot you can see with the fish it gives, its time per catch, and catches, XP, gold and bait per hour: one bait a catch](../../docs/img/fishing-rates.png)
+![Every fishing spot you can see with the fish it gives, its time per catch, and catches, XP, gold and bait per hour](../../docs/img/fishing-rates.png)
 
 Every fishing spot has its own catch time, its own XP and its own fish, some with a chance at something
 rarer. To compare them you would open the spots one by one and work out the hour in your head. Fishing Rates
@@ -49,10 +49,10 @@ spot gives, the spot, its location, and per hour:
 | **Catches** | Catches per hour, fish and junk together. |
 | **XP** | Fishing XP per hour. |
 | **Gold** | What the catches of an hour sell for. |
-| **Bait** | The bait selected on the Fishing page, taken from your bank per hour: one every catch, also when your chance to preserve bait comes up, as measured in the game. Only there while a bait is selected. |
+| **Bait** | The bait selected on the Fishing page, used per hour. Only there while a bait is selected. |
 
 - **The best number of each column is gold**: the shortest time, the most catches, XP and gold. Bait has no
-  best: it is the same number as Catches, since every catch takes one bait.
+  best, since the fastest spot always uses the most.
 - **Click a column's name to sort by it.** The first click puts the best spots on top, the next turns the
   order around. "Fishing spot" goes back to the order of the page. The name the list is sorted by is gold,
   with the game's small arrow after it.
@@ -62,18 +62,13 @@ spot gives, the spot, its location, and per hour:
 - **Click a line to go to that spot**: the Fishing page opens its location and selects the spot, as your own
   two clicks there would. Fishing is not started or stopped, and the window stays open. The pointer turns into
   a hand over a line a click takes somewhere.
-- **While you fish, a line at the location you fish at selects no spot**: a click only opens that location,
-  when the page shows another, and does nothing when it shows it already. What selecting another spot where
-  you fish would do to your fishing is not known, so the window never does it. Lines at other locations open
-  and select their spot as always: that was seen in the game to leave your fishing as it is. The line's
-  tooltip says what a click does.
 - **A spot you cannot fish yet is greyed**, with the Fishing level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its pictures stay, its numbers come from the game's own values for it like the
   others, and it is never marked best. In a list sorted by a number, the locked spots come last. A click on
   it opens its location only, and nothing while the location itself is locked.
 - Spots and locations the game keeps hidden from you are not listed until the game shows them.
 
-![Sorted by Time, the shortest first, with the bait each spot takes in an hour: one a catch, as many as Catches](../../docs/img/fishing-rates-sorted.png)
+![Sorted by Time, the shortest first: the spots you can fish, then a locked one with the level it needs](../../docs/img/fishing-rates-sorted.png)
 
 ## The tooltip of a line
 
@@ -90,24 +85,20 @@ Put the pointer on a line for the whole hour at that spot:
 | **Special items, rolled on every catch** | The rarer items a catch can bring on top of its fish or junk, with their chance per catch. |
 | **The doubling chance (5%) is counted in the fish and special items.** | Only when you have one. |
 | **Gold: 24,150 an hour, what the catches sell for; 3,946 of it from special items.** | What all of it sells for, and how much of that is special items: a rare item worth a fortune counts for a lot on average, but it comes seldom. |
-| **Mackerel Bait: 350 an hour, one a catch; what is in the bank lasts 7h 7m.** | The bait, one for every catch, and how long what is in your bank lasts at that pace, in whole minutes. |
-| **Not counted: your 12% chance to preserve bait. Measured in the game, it saved none.** | Only when you have such a chance. When it comes up, the bank still loses the bait: see [What is counted](#what-is-counted). |
+| **Worm Bait: 753 an hour, 10% preserved; what is in the bank lasts 1h 35m.** | The bait, and how long what is in your bank lasts at that pace, in whole minutes. |
 | **Not counted: your ...** | A bonus of yours the window does not count, by the name the Fishing page gives it in its list of bonuses. |
 | **Click to open this spot on the Fishing page. Fishing is not started.** | What a click on the line does; on a locked spot, which location it opens. Not there when a click changes nothing: on the spot the page shows, on a locked spot of the location the page shows, and on a spot whose location is locked. |
-| **Click to open Windy Coastline on the Fishing page. While you fish there, no spot is selected.** | Instead, on two lines, on a spot of the location you fish at while you fish, when the page shows another location. |
-| **While you fish at Windy Coastline, a click selects no spot there.** | Instead, on a spot of the location you fish at while you fish, when the page shows that location already. |
-| **While you fish, a click selects no spot.** | Instead, on every line of a spot you can fish (not greyed), when you fish and the game does not say where: then a click selects no spot anywhere ("While you fish, no spot is selected." under "Click to open ..." when the page shows another location). |
 
-![The tooltip of Quiet Bend: the catch time, the XP, the fish, the junk, the special item, the gold, the bait one a catch, and the chance to preserve bait, not counted](../../docs/img/fishing-rates-tooltip.png)
+![The tooltip of Gusty Cliffside: the catch time, the XP, the fish, the junk, the special item, the gold, the bait and what a click does](../../docs/img/fishing-rates-tooltip.png)
 
 ## What is counted
 
 The numbers start from the game's own values for each spot, the ones its list of spots shows: the catch time,
 the XP of a catch, the chance of a fish and of junk, the spot's fish and the chance of each, its special
-items and the doubling chance. Whatever changes the game's numbers changes the window's too.
+items, the doubling chance and the bait's preservation chance. Whatever changes the game's numbers changes the
+window's too.
 
-On top of them, the window does a little arithmetic of its own, and takes the bait by a rule measured in
-the game:
+On top of them, the window does a little arithmetic of its own:
 
 - A catch takes the middle of the game's catch time. The game picks the time of each catch within it.
 - Every catch, fish or junk, gives the XP of the spot. The Fishing page's XP tag shows it as a whole number
@@ -115,10 +106,7 @@ the game:
 - Chances count as their long-run average. A fish that comes 1 to 3 at a time counts as 2.
 - Special items come on top of a catch: the Fishing page says each one is rolled on every catch attempt.
 - The doubling chance doubles fish and special items, not junk.
-- Every catch takes one bait from the bank, also when your chance to preserve bait comes up. Measured in the
-  game, on 29 catches at Rapid Runs with Mackerel Bait: the bank lost one bait on every catch, the 3 on
-  which the chance came up included (2,521 before, 2,492 after). So that chance is not counted; the tooltip
-  names it.
+- Every catch uses one bait, unless the bait is preserved.
 
 ## Questions it answers
 
@@ -137,12 +125,9 @@ the game:
 - Bonuses that turn junk into gold, reroll junk or bring a second special item are not counted. The tooltip
   says so when you have one, by the name the Fishing page gives it.
 - Fishing has no mastery XP in this game (its Mastery Guild counts tasks), so there is no column for it.
-- That the bank loses the bait even when your chance to preserve it comes up was measured on one
-  character's fishing, with one bait, in game version 0.11.6-alpha.1. A game update may change it.
 - Gold is not profit: the bait is not taken off.
-- The window starts nothing. A click on a line only changes which location and spot the Fishing page shows,
-  and while you fish it never selects a spot at the location you fish at; fishing, the bait and the priority
-  fish are left as they are.
+- The window starts nothing. A click on a line only changes which location and spot the Fishing page shows;
+  fishing, the bait and the priority fish are left as they are.
 
 ## When something is off
 

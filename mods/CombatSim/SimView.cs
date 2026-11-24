@@ -177,15 +177,19 @@ sealed partial class SimState
         return pool.GroupBy(r => r.Target.FightKey).Select(g => g.OrderByDescending(r => r.Failed ? -1 : Xp(r)).First()).ToList();
     }
 
-    public string SetupKey => KeyWith(Overrides);
-    /// <summary>The key of this loadout, spell and stance with these changes: a pick in a slot's picker (Find upgrades tries them).</summary>
-    public string KeyWith(IReadOnlyDictionary<string, string> overrides) => GearKey(overrides) + StanceKey(ChosenStance);
-    // Without the stance: what SimSetup.BaseKey keeps, the tab on show adding the stance (KeyOf).
-    string GearKey(IReadOnlyDictionary<string, string> overrides) =>
-        LoadoutId + ";" + string.Join(",", overrides.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => o.Key + "=" + o.Value))
-        + (SpellId == "" ? "" : ";spell=" + SpellId);
-    // A stance chosen makes a setup of its own, as a spell does; "As the game has it" keeps the key it always had.
-    static string StanceKey((string Id, string Name)? stance) => stance is { } chosen ? ";stance=" + chosen.Id : "";
+    // Keep a scan with the items it measured. An edit to the worn loadout can change every
+    // unmodified slot without changing either its name or the simulator picks.
+    public string EquipmentCode = "", EquipmentNotice = "";
+    public string? DefaultStance, DefaultSpell;
+    public static string CodeOf(IReadOnlyDictionary<string, string> shown) =>
+        CardSetup.Code(string.Join("; ", shown.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Key + "=" + p.Value)));
+
+    public string SetupKey => KeyWith(EquipmentCode);
+    public string KeyWith(string equipment) => GearKey(equipment) + StanceKey(ChosenStance, DefaultStance);
+    string GearKey(string equipment) => LoadoutId + ";" + equipment +
+        (SpellId != "" ? ";spell=" + SpellId : DefaultSpell != null ? ";defaultSpell=" + DefaultSpell : "");
+    string StanceKey((string Id, string Name)? stance, string? asNow) => stance is { } chosen ? ";stance=" + chosen.Id
+        : !BestMode && asNow != null ? ";defaultStance=" + asNow : "";
 
     /// <summary>
     /// The stance a run of Fights fights the setup on the left in (issue #51): the one chosen in its Stance box. Null with
@@ -270,8 +274,11 @@ sealed partial class SimView
     readonly List<Button> _headers = new();
     string _tableSignature = "", _detailsSignature = "", _recentSignature = "";
 
+    readonly bool _choosingEquipment;
+    const string ChooseFirst = "Choose which equipment to use in Setup first.";
+
     public SimView(GameWindow window, SimState state, ISimLookup lookup, Action simulate, Action cancel, Action changed, Action gearChanged, Action rebuild,
-        Action<SimTarget> fight, Action clearHistory)
+        Action<SimTarget> fight, Action clearHistory, Action<bool>? chooseGear, string wornNow = "", string choices = "")
     {
         _fight = fight;
         _clearHistory = clearHistory;
@@ -279,12 +286,49 @@ sealed partial class SimView
         _simulate = simulate; _cancel = cancel; _changed = changed; _gearChanged = gearChanged; _rebuild = rebuild;
 
         var columns = _s.Spaced(new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Pass, CustomMinimumSize = new Vector2(0, _s.Px(640)) }, 10);
-        columns.AddChild(BuildSetup());
+        _choosingEquipment = chooseGear != null;
+        Control setup = BuildSetup();
+        columns.AddChild(setup);
+        if (chooseGear != null)
+        {
+            setup.Visible = false;
+            Control choice = _s.Column("Setup", out VBoxContainer body, SetupWidth);
+            var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, FollowFocus = true,
+                HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+            var prompt = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            prompt.AddThemeConstantOverride("separation", body.GetThemeConstant("separation"));
+            body.AddChild(scroll);
+            scroll.AddChild(prompt);
+            Label PromptWords(string words) => Wrapped(words, 0, GameStyle.TextGrey, 12);
+            prompt.AddChild(_s.Section("Worn now"));
+            Label note = PromptWords(wornNow);
+            prompt.AddChild(note);
+            prompt.AddChild(_s.Section("Simulator choices"));
+            Label picks = PromptWords(choices);
+            prompt.AddChild(picks);
+            prompt.AddChild(PromptWords(_state.Compare ? "Other slots follow each loadout. Using worn equipment leaves Compare."
+                : "Other slots follow your loadout."));
+            if (_state.EquipmentNotice != "")
+                prompt.AddChild(PromptWords(_state.EquipmentNotice));
+            Button worn = _s.GameButton("Use worn equipment", "TexturedActionButtonGreen8x", 14);
+            worn.Pressed += () => chooseGear(false);
+            prompt.AddChild(worn);
+            Button keep = _s.GameButton("Keep my choices", "TexturedButton4x", 12);
+            keep.Pressed += () => chooseGear(true);
+            prompt.AddChild(keep);
+            columns.AddChild(choice);
+#if DEVTOOLS
+            DevWornNotice = note;
+            DevChoiceList = picks;
+            _devGearChoice = prompt;
+            _devSetup = (choice, body);
+#endif
+        }
         columns.AddChild(BuildResults());
         columns.AddChild(BuildDetails());
         window.Body.AddChild(columns);
-        window.Moved += _ => ClosePicker();   // the picker does not travel with the window
         Refresh();
+        window.Moved += _ => ClosePicker();   // the picker does not travel with the window
     }
 
     // ---- left: what to simulate, and with what -------------------------------------------------------------
@@ -1144,6 +1188,9 @@ sealed partial class SimView
         ownedOnly.Toggled += _ => Filter();
 
         PlacePicker(anchor, width, height);
+#if DEVTOOLS
+        if (DevGearProbe) return;   // the request's item picker must not take the player's keyboard focus
+#endif
         search.GrabFocus();
     }
 
@@ -1335,6 +1382,7 @@ sealed partial class SimView
             ShowWords(new ShownPart(_state.PerStance ? $"Best stance for each fight, with: {_state.SetupLabel}" : "With: " + _state.SetupName));
             _showing.TooltipText = "";
         }
+        if (_choosingEquipment && !any && _state.Viewing == null) _empty.Text = ChooseFirst;
         // Its colour only when it changes: a colour set raises ThemeChanged, which lays the line out again (FitShowing).
         Color colour = _state.Viewing != null ? GameStyle.TextGold : GameStyle.TextGrey;
         if (_showing.GetThemeColor("font_color") != colour) _showing.AddThemeColorOverride("font_color", colour);
@@ -1497,6 +1545,15 @@ sealed partial class SimView
                 worn && _state.SpellId != "" ? $"Selects {_state.Spells.FirstOrDefault(s => s.Id == _state.SpellId)?.Name ?? "the spell"}." : "",
             }.Where(t => t != ""));
             _fightNote.Visible = _fightNote.Text != "";
+        }
+        if (_choosingEquipment)
+        {
+            _fightButton.Disabled = _upgradeButton.Disabled = true;
+            _fightButton.TooltipText = _upgradeButton.TooltipText = ChooseFirst;
+            _fightNote.Text = ChooseFirst;
+            _wearBox.Visible = _wearReport.Visible = false;
+            _upgradeButton.Visible = _fightNote.Visible = _fightTarget != null;
+            return;
         }
         FillWear();
         FillUpgradeButton();   // for the same fight (SimViewUpgrades.cs)
@@ -1803,6 +1860,7 @@ sealed partial class SimView
         _progress.Value = _state.Total > 0 ? (double)_state.Done / _state.Total : 0;
         _progress.Modulate = _state.Running || _state.Done > 0 ? Colors.White : new Color(1, 1, 1, 0.35f);
         _status.Text = _state.Message != "" ? _state.Message
+            : !_state.Running && _state.EquipmentNotice != "" ? _state.EquipmentNotice
             : _state.Running && _state.Current != "" ? $"{_state.ScanStatus}  ·  {_state.Current}" : _state.ScanStatus;
         _status.AddThemeColorOverride("font_color", _state.Message != "" ? Bad : GameStyle.TextGrey);
         RefreshPair(hours);   // compare mode: the fights of A and B, and the Compare, A and B buttons (SimViewCompare.cs)

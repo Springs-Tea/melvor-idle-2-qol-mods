@@ -49,9 +49,7 @@ static class Words
 
     /// <summary>
     /// The whole hour at a spot: what is caught, with its chance and number, the bait, the gold. nameOf gives the
-    /// game's name of a bonus that is not counted, when it has been read (BonusNames). No line is longer than 94
-    /// characters, the limit the other rate windows hold their tooltips to (this bait line at its longest before issue
-    /// #64; now it and the line under it are 91 at most): Godot's tooltip does not wrap.
+    /// game's name of a bonus that is not counted, when it has been read (BonusNames).
     /// </summary>
     public static string Tooltip(SpotRates s, Func<string, string?> nameOf)
     {
@@ -101,19 +99,14 @@ static class Words
                 ?$"Gold: {Number(gold)} an hour, what the catches sell for; {Number(rare)} of it from special items."
                 : $"Gold: {Number(gold)} an hour, what the catches sell for.");
         }
-        // How long the bank's bait lasts, never how many there are: that number changes with every catch. A catch takes
-        // one bait from the bank, a preserved one too, as measured (SpotRates.PreservedBaitStays): the chance to preserve
-        // it is named as not counted, so that the line never promises bait the bank does not keep.
+        // How long the bank's bait lasts, never how many there are: that number changes with every catch.
         if (s.Bait != null && s.BaitPerHour is { } bait)
         {
-            string each = !SpotRates.PreservedBaitStays ? ", one a catch"
-                : s.BaitPreservation > 0 ? $", {Percent(s.BaitPreservation)} preserved" : "";
+            string kept = s.BaitKept > 0 ? $", {Percent(s.BaitKept)} preserved" : "";
             string stock = s.BaitInBank <= 0 ? "none is in the bank" : bait <= 0 ? "none is used up"
                 : s.BaitInBank / bait * 3600 < 60 ? "what is in the bank lasts less than a minute"
                 : $"what is in the bank lasts {Whole(s.BaitInBank / bait * 3600)}";
-            lines.Add($"{s.Bait}: {Number(bait)} an hour{each}; {stock}.");
-            if (!SpotRates.PreservedBaitStays && s.BaitPreservation > 0)
-                lines.Add($"Not counted: your {Percent(s.BaitPreservation)} chance to preserve bait. Measured in the game, it saved none.");
+            lines.Add($"{s.Bait}: {Number(bait)} an hour{kept}; {stock}.");
         }
         // The game's own names, as the Fishing page lists them among your bonuses.
         foreach (SpotRates.Bonus bonus in s.NotCounted)
@@ -122,23 +115,10 @@ static class Words
         return string.Join("\n", lines);
     }
 
-    // What a click on the line does, when it changes what the Fishing page shows. While you fish at the spot's location a
-    // click selects no spot there (SpotRates.ClickOpens): it opens the location, when the page shows another, and the
-    // tooltip says so, as Firemaking Rates' lines say what a click does while a log burns. A spot that cannot be fished
-    // yet keeps its own sentence: its click never selects it anyway.
-    static string? Click(SpotRates s)
-    {
-        // When the game does not say where you fish, every location counts as yours, and the words name none.
-        if (s.FishingHere && !s.Locked && s.FishingWhereUnknown)
-            return s.Clickable ? $"Click to open {s.Location} on the Fishing page.\nWhile you fish, no spot is selected."
-                : "While you fish, a click selects no spot.";
-        if (s.FishingHere && !s.Locked)
-            return s.Clickable ? $"Click to open {s.Location} on the Fishing page.\nWhile you fish there, no spot is selected."
-                : $"While you fish at {s.Location}, a click selects no spot there.";
-        return !s.Clickable ? null : s.Click == SpotRates.Opens.Spot
-            ? "Click to open this spot on the Fishing page. Fishing is not started."
-            : $"Click to open {s.Location} on the Fishing page. Fishing is not started.";
-    }
+    // What a click on the line does, when it changes what the Fishing page shows.
+    static string? Click(SpotRates s) => !s.Clickable ? null : s.Click == SpotRates.Opens.Spot
+        ? "Click to open this spot on the Fishing page. Fishing is not started."
+        : $"Click to open {s.Location} on the Fishing page. Fishing is not started.";
 
     // "  Raw Shrimp, 48% of catches: 401", with the number a catch gives when it is not one.
     static string Item(SpotRates.Catch c)

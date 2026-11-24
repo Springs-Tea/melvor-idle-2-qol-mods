@@ -26,6 +26,212 @@ public partial class CombatSimMod
     List<EquipmentSlot> _gearSlots = new();
     readonly FilledLook _filledLook = new();
 
+    // The card's equipment IDs omit quantities, so spending an arrow leaves the setup alone.
+    sealed record Worn(string Loadout, string Equipment, string WeaponType, string Stance, string Spell);
+    Worn? _lastWorn;
+    const int WaitMilliseconds = 5000;
+    (string Loadout, SimTarget Target, ulong Until)? _fightSwap;
+    const string WaitingForLoadout = "The game is still changing loadouts. Wait for the new setup.";
+    const string LoadoutTimedOut = "\"Wear this setup first\" timed out waiting for the loadout change. Check your equipment.";
+    // Until the player answers, reapply the original picks to each new worn setup.
+    (SimSetup Left, SimSetup Other, string WornLoadout)? _pendingEquipment;
+    bool _chooseGear => _pendingEquipment.HasValue;
+    bool _cannotReadWorn;
+    string _wornDescription = "", _keepDescription = "";
+
+    // A saved loadout can have results before the player first wears it. Its initial default uses
+    // the same key as that unread default. Returning to any observed default brings its rows back.
+    sealed record LoadoutDefault(string First, string Current)
+    {
+        public string? ChangedTo => Current == First ? null : Current;
+    }
+    readonly Dictionary<(string Loadout, string Weapon), LoadoutDefault> _loadoutStances = new();
+    readonly Dictionary<string, LoadoutDefault> _loadoutSpells = new();
+    static void Remember<T>(Dictionary<T, LoadoutDefault> defaults, T key, string value) where T : notnull =>
+        defaults[key] = defaults.TryGetValue(key, out var seen) ? seen with { Current = value } : new(value, value);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    Worn WornSetup()
+    {
+        var kind = WornWeaponKind();
+        return new(_combat!.Loadouts.CurrentLoadout?.Data.Id ?? "", string.Join("; ", CardSetup.Equipment(_game!, _combat)),
+            kind?.Id ?? "", kind == null ? "" : SelectedStance(_combat, kind)?.Id ?? "",
+            _combat.MagicSpells.SelectedSpell?.Data.Id ?? "");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    string DescribeWorn()
+    {
+        var loadout = _combat!.Loadouts.CurrentLoadout;
+        string name = string.IsNullOrWhiteSpace(loadout?.Name) ? loadout?.Data.DisplayName.Text ?? "Current equipment" : loadout.Name;
+        var weapon = _combat.Equipment.CurrentWeapon ?? _combat.Equipment.DefaultWeapon;
+        return string.Join(", ", new[] { name, weapon?.Item?.DisplayName.GetPluralText(1),
+            weapon?.Weapon?.Type is { } type ? SelectedStance(_combat, type)?.DisplayName.Text : null }
+            .Where(w => !string.IsNullOrEmpty(w)));
+    }
+
+    bool CheckWorn(bool fromFight = false)
+    {
+        if (_game == null || _combat == null || _cannotReadWorn) return false;
+        try { return FollowWorn(fromFight); }
+        catch (Exception e)
+        {
+            _cannotReadWorn = true;
+            _fightSwap = null;
+            if (_state.Message == WaitingForLoadout) _state.Message = "";
+            _pendingEquipment = null;
+            _ctx.Log($"Automatic equipment following is off for this character: {e.GetType().Name}: {e.Message}");
+            return true;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    bool FollowWorn(bool fromFight)
+    {
+        var swap = _fightSwap;
+        bool clearWait = swap != null && _state.Message == WaitingForLoadout;
+        if (swap is { } pending)
+        {
+            if (IsSwappingLoadout(_combat!.Equipment))
+            {
+                if (Time.GetTicksMsec() < pending.Until) return false;
+                _fightSwap = null;
+                _state.Message = LoadoutTimedOut;
+                _ctx.Log($"{_state.Message} Waited {WaitMilliseconds} ms for {pending.Loadout}.");
+                return true;
+            }
+            fromFight = _combat.Loadouts.CurrentLoadout?.Data.Id == pending.Loadout;
+            _fightSwap = null;
+            if (clearWait) _state.Message = "";
+        }
+        Worn now = WornSetup();
+        Worn? before = _lastWorn;
+        if (before == now) return clearWait;
+        _wornDescription = DescribeWorn();
+        Remember(_loadoutStances, (now.Loadout, now.WeaponType), now.Stance);
+        Remember(_loadoutSpells, now.Loadout, now.Spell);
+        if (before == null) { _lastWorn = now; return false; }
+
+        // A side that used the worn loadout follows it. Only an independently chosen loadout
+        // stays fixed. BuildGear applies the side's own picks to that base and checks the stance and spell.
+        var choices = _pendingEquipment ?? (_state.OnLeft, _state.Other, before.Loadout);
+        var (left, other, wornBefore) = choices;
+        string oldKey = _state.SetupKey;
+        string oldOtherKey = _state.KeyOf(_state.Other);
+        bool showedUpgrades = _state.ShowingUpgrades;
+        if (other.BaseKey != "")
+        {
+            try
+            {
+                FollowSide(other, wornBefore, now.Loadout);
+                _state.Other = _state.OnLeft;
+            }
+            catch
+            {
+                _state.PutOnLeft(left);
+                throw;
+            }
+        }
+        FollowSide(left, wornBefore, now.Loadout);
+        var worn = SimGear.Live(_combat!.Equipment, _gearSlots, _ctx.Log).OwnItems();
+        string mine = DescribeChoices(_state.OnLeft, now, worn);
+        string theirs = _state.Compare ? DescribeChoices(_state.Other, now, worn) : "";
+        _pendingEquipment = !fromFight && (mine != "" || theirs != "") ? choices : null;
+        if (_chooseGear && _state.Compare)
+        {
+            string a = _state.ShowingB ? theirs : mine, b = _state.ShowingB ? mine : theirs;
+            _keepDescription = $"A: {(a == "" ? "worn setup" : a)}\nB: {(b == "" ? "worn setup" : b)}";
+        }
+        else _keepDescription = mine;
+        if ((_run != null || _state.Results.Count != 0 || _state.Upgrades != null) &&
+            (oldKey != _state.SetupKey || (_state.Compare && oldOtherKey != _state.KeyOf(_state.Other))))
+            _state.EquipmentNotice = EquipmentNotice(showedUpgrades);
+        _lastWorn = now;
+        if (fromFight && swap is { } done && _state.FightReport != "")
+            _state.FightReportKey = SimView.ReportKey(_state, done.Target);
+#if DEVTOOLS
+        _ctx.Log($"Dev: worn setup changed from {before} to {now}. " +
+            (_chooseGear ? "Waiting for the player's setup choice." : "Following the worn setup."));
+#endif
+        return true;
+    }
+
+    string DescribeChoices(SimSetup side, Worn now, IReadOnlyDictionary<string, string> worn)
+    {
+        var words = new List<string>();
+        if (side.LoadoutId != now.Loadout)
+            words.Add(_state.Loadouts.FirstOrDefault(l => l.Id == side.LoadoutId).Name ?? side.LoadoutId);
+        var items = _game!.Data.GetDataRegistryOutput<Item>();
+        string NameOf(string? id) => id == null ? "empty"
+            : items.TryGetObjectById(id, out Item? item) ? item.DisplayName.GetPluralText(1) : id;
+        foreach (var slot in _gearSlots)
+        {
+            string? before = worn.GetValueOrDefault(slot.Id);
+            string? after = side.Shown?.GetValueOrDefault(slot.Id);
+            if (before != after) words.Add($"{slot.DisplayName.Text}: {NameOf(before)} to {NameOf(after)}");
+        }
+        if (side.StanceId != "" && side.StanceId != now.Stance)
+            words.Add(side.Stances.First(s => s.Id == side.StanceId).Name + " stance");
+        if (side.SpellId != "" && side.SpellId != now.Spell)
+            words.Add(_combat!.MagicSpells.ActiveSpells.Keys.FirstOrDefault(s => s.Id == side.SpellId)?.DisplayName.Text ?? side.SpellId);
+        return string.Join("\n", words);
+    }
+
+    void FollowSide(SimSetup side, string before, string now)
+    {
+        _state.PutOnLeft(side);
+        foreach (string slot in side.Displaced) _state.Overrides.Remove(slot);
+        if (side.LoadoutId == before) _state.LoadoutId = now;
+        BuildGear();
+    }
+
+    void ChooseGear(bool keep)
+    {
+        if (CheckWorn()) { RebuildVisible(); return; } // The player must see the choices this click answers.
+        if (!_chooseGear) return;
+        _pendingEquipment = null;
+        if (!keep)
+        {
+            bool showedUpgrades = _state.ShowingUpgrades;
+            _state.PutOnLeft(SimSetup.None);
+            if (_state.Compare) _state.ForgetCompare();
+            BuildGear();
+            if (_run != null || _state.Results.Count != 0 || _state.Upgrades != null)
+                _state.EquipmentNotice = EquipmentNotice(showedUpgrades);
+        }
+        RebuildVisible();
+    }
+
+    string EquipmentNotice(bool showedUpgrades) => showedUpgrades && !_state.ShowingUpgrades
+        ? "The upgrade search used the previous setup."
+        : "Setup changed. Earlier scans are in History.";
+
+    void RebuildVisible()
+    {
+        Build();
+        _window!.Visible = true;
+    }
+
+    bool ReadyForSetup(string? action = null)
+    {
+        bool changed = CheckWorn();
+        if (_fightSwap != null)
+        {
+            _state.Message = WaitingForLoadout;
+            _view?.Refresh();
+            return false;
+        }
+        if (changed && _state.Message == LoadoutTimedOut)
+        {
+            RebuildVisible();
+            return false;
+        }
+        if (changed && action != null)
+            _state.Message = $"Setup was refreshed. Check the equipment before you press {action} again.";
+        if (changed) RebuildVisible();
+        return !_chooseGear && !(action != null && changed);
+    }
+
     /// <summary>
     /// Fills SimState.Gear with the loadout's items (<paramref name="saved"/>: as that loadout was stored, else what is
     /// worn) and the changes on top, and returns the weapon of that setup. The changes are put into their one shape on
@@ -54,6 +260,18 @@ public partial class CombatSimMod
         _gearWorn = worn;
         // What the setup on the left shows, kept with it when it leaves the left in compare mode (SimSetup.Shown).
         _state.ShownSlots = worn.OwnItems();
+        _state.EquipmentCode = SimState.CodeOf(_state.ShownSlots);
+        // Picking a shield can remove a two-handed weapon. That removal was a consequence of the
+        // pick, not a request to empty the Weapon slot if a one-handed sword is worn later.
+        _state.Displaced = Array.Empty<string>();
+        if (overrides.ContainsValue("") && overrides.Values.Any(id => id != ""))
+        {
+            var picks = overrides.Where(o => o.Value != "").ToDictionary();
+            var withPicks = SimGear.Resolve(loadout, picks, _gearSlots,
+                id => items.TryGetObjectById(id, out Item? item) ? item : null, _ctx.Log);
+            _state.Displaced = overrides.Where(o => o.Value == "" && withPicks[o.Key] is not { FilledFrom: null })
+                .Select(o => o.Key).ToArray();
+        }
 #if DEVTOOLS
         _state.DevSlots = DevGearText();
 #endif
@@ -205,7 +423,7 @@ public partial class CombatSimMod
                 _ctx.Log($"Dev: gear: {piece.Item.DisplayName.GetPluralText(1)} ({piece.Item.Id}) in {slot} also fills {string.Join(", ", fills)}; its OccupiesSlots {SimGear.DevOccupies(piece.Item)}");
         }
         _ctx.Log($"Dev: gear: the loadout's own: {SimGear.Describe(_gearLoadout, _gearSlots)}");
-        _ctx.Log($"Dev: gear: what the character wears now: {SimGear.Describe(SimGear.Live(_combat.Equipment, _gearSlots, _ctx.Log), _gearSlots)}; " +
+        _ctx.Log($"Dev: gear: what the character wears now: {SimGear.Describe(SimGear.Live(_combat!.Equipment, _gearSlots, _ctx.Log), _gearSlots)}; " +
                  $"slots the game marks occupied: {string.Join(", ", _gearSlots.Where(s => _combat.Equipment.TryGetActiveSlot(s, out IActiveEquipmentSlot? a) && a != null && SimGear.IsFilled(a)).Select(s => s.Id)).Or("none")}");
         if (saved != null)
             _ctx.Log($"Dev: gear: the saved loadout's slots the game marks occupied: {string.Join(", ", saved.Slots.Where(s => s.Value?.IsOccupied == true).Select(s => s.Key.Id)).Or("none")}");
@@ -220,7 +438,7 @@ public partial class CombatSimMod
         _ctx.Log($"Dev: gear: pick {slot.Id} = {what}. Before: {SimGear.Describe(_gearWorn, _gearSlots)}. After: {SimGear.Describe(after, _gearSlots)}. " +
                  $"Out of their slot: {string.Join(", ", gone).Or("nothing")}");
         if (itemId is null or "" || _combat == null || !_game!.Data.GetDataRegistryOutput<Item>().TryGetObjectById(itemId, out Item? item)) return;
-        string wearing = SimGear.Describe(SimGear.Live(_combat.Equipment, _gearSlots, _ctx.Log), _gearSlots);
+        string wearing = SimGear.Describe(SimGear.Live(_combat!.Equipment, _gearSlots, _ctx.Log), _gearSlots);
         if (wearing != SimGear.Describe(_gearWorn, _gearSlots))
         {
             _ctx.Log("Dev: gear: not compared with the game: the slots on the left before the pick are not what the character wears.");

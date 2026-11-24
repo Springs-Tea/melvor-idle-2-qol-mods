@@ -286,6 +286,21 @@ fights you have ticked: an area is one fight per enemy in it, a dungeon is one f
 another, simulate again: Details compares the two. To run two setups at once and see every fight with both,
 tick Compare: see [Comparing two setups](#comparing-two-setups).
 
+**When your worn setup changes.** The simulator follows your worn loadout, equipment and stance.
+If your simulator choices still differ, Setup shows what you wear now and which choices you can keep.
+**Keep my choices** keeps a loadout you picked and applies your item, stance and spell choices where they
+still fit. Slots you left alone follow the loadout. **Use worn equipment** clears the choices on the left.
+With Compare on, it also leaves Compare and clears the other setup.
+If **Wear this setup first** needs to change loadouts and the change takes too long, Setup asks you to
+check your equipment.
+
+<p align="center">
+  <img src="../../docs/img/combat-simulator-worn-choice.png" alt="Setup after the worn equipment changed: Worn now, the simulator choices that differ, Use worn equipment and Keep my choices" width="238">
+</p>
+
+Results stay with the equipment they were simulated with. Changing stance keeps the Best for rows for
+that equipment. A scan already running finishes with its starting setup and stays in History.
+
 **Single items.** Click any slot to open every item of the game that fits it, the ones you own first. Type
 to search; "Only items I own" hides the rest. A slot you changed gets a gold frame, and "Undo changes"
 brings the loadout's own items back. An item you do not own is handed to the copy so you can see what it
@@ -397,8 +412,8 @@ equipment. The text above Fight starts with *Fight is for setup A, the one on th
 press B first. When the setup on the left has no result for the selected fight yet, the text says so where
 the button would be.
 
-A and B are kept until you close the game or open another character; Compare starts unticked then. A scan of
-two setups goes into History as **A against B: ...**, with both setups named.
+A and B are kept until you choose **Use worn equipment** with Compare on, close the game or open another
+character. A scan of two setups goes into History as **A against B: ...**, with both setups named.
 
 ### The same dice
 
@@ -777,7 +792,8 @@ Everything is in `mods\CombatSim`:
 | --- | --- |
 | A fight is missing from the table after Cancel | A fight that was cut short is dropped; the finished ones are kept. |
 | "... could not be equipped (requirements not met?)" | The copy follows the game's rules: you do not meet that item's requirements. |
-| "The copy did not wear what the slots on the left show: ..." | The game put the equipment on differently from the slots on the left, and the numbers are for what the copy wore: the line names what it fought without, or with. If your equipment changed while the window was open, open it again; otherwise report it with the log. |
+| "The copy did not wear what the slots on the left show: ..." | The line names what the copy fought with or without. Check the slots and any equipment requirements in Details. If they still disagree, report it with the log. |
+| Ranged XP is zero with a bow | Check the bow and arrows in Setup. In Details, read the stance, Ranged XP and arrows used. Include those readings and the log when reporting the result. |
 | The Offhand of a two-handed weapon is as faint as an empty slot | The game's look for it could not be read from its combat screen: `MelvorModLoader.log` has a line `[CombatSim] The game's tint for a slot that a two-handed weapon fills`, and a game update changed that screen. Once you have opened the game's own equipment screen, the simulator takes the look from there. |
 | A two-handed weapon fills only the Weapon slot | Look for `[CombatSim] Two-handed weapons cannot be read` in `MelvorModLoader.log`: a game update changed what the simulator reads. Every slot works on its own, as before, the result says so when the copy wears something else, and Wear this setup first is off. |
 | "Ran out of ... after ..." | From bank: that supply was used up. Without arrows or runes the fight ended there; without food it went on. |
@@ -802,7 +818,7 @@ Everything is in `mods\CombatSim`:
 | `...` under Comes from | The game's data is still being read, once a character: it fills in a moment later. `-` means it could not be read: `MelvorModLoader.log` has a line `[CombatSim] Where items come from could not be read`. |
 | "The stance ... is not available with this weapon" on a line of Find upgrades | That item's weapon has other stances than the one asked for (the stance of the line you selected in Best for, or the one chosen in the Stance box): it was fought in the stance the game chose for it, which its tooltip and Details name. |
 | "The stance ... is not available with this weapon" on a fight | The copy could not wear the weapon the slots show (the note before it says why), and the weapon it wore has other stances: it fought in the one the game chose, which Details names under the setup. |
-| Find upgrades greyed | An earlier scan is on show, or a scan is running. Put the pointer on it for why. |
+| Find upgrades greyed | Choose which equipment to use if Setup asks. An earlier scan on show or a scan in progress also greys the button. Put the pointer on it for the reason. |
 | No Find upgrades button under Details | No fight is selected, or a game update changed what it reads: `MelvorModLoader.log` then has a line `[CombatSim] Find upgrades is switched off`. The rest of the simulator works as before. |
 | "Your equipment or bank changed after the words above Fight were written" | Something changed between the text and your click. Nothing was put on and no fight was started: read the new text, then press Fight again. |
 | "Wear this setup first" looks greyed | It puts nothing on for this fight; put the pointer on it for why. An earlier scan is on show; there is nothing to put on (you wear the setup already, or every changed item is skipped); that loadout is no longer there; your bank has no room for what the change of loadout takes off; Fight could not work out what to put on (`MelvorModLoader.log` says why); or a game update changed how equipment is put on (then `MelvorModLoader.log` has a line `Wear this setup first is switched off`). Fight then does what it does unticked. |

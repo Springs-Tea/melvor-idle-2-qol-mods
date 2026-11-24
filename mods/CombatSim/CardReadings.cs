@@ -287,12 +287,16 @@ sealed class CardReadings : IDisposable
 /// </summary>
 static class CardSetup
 {
-    public static string Describe(Game game, CombatEntity combat)
+    public static IEnumerable<string> Equipment(Game game, CombatEntity combat)
     {
-        var parts = new List<string>();
         foreach (EquipmentSlot slot in game.Data.GetDataRegistryOutput<EquipmentSlot>().GetAllObjects().OrderBy(s => s.Id, StringComparer.Ordinal))
             if (combat.Equipment.TryGetActiveSlot(slot, out var active) && active?.Equipped?.Item is { } item)
-                parts.Add(slot.Id + "=" + item.Id);
+                yield return slot.Id + "=" + item.Id;
+    }
+
+    public static string Describe(Game game, CombatEntity combat)
+    {
+        var parts = Equipment(game, combat).ToList();
         foreach (ToolbeltSlot slot in game.Data.GetDataRegistryOutput<ToolbeltSlot>().GetAllObjects().OrderBy(s => s.Id, StringComparer.Ordinal))
             if (combat.Toolbelt.TryGetActiveSlot(slot, out var active) && active?.Equipped?.Item is { } item)
                 parts.Add("toolbelt " + slot.Id + "=" + item.Id);

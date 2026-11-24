@@ -34,6 +34,7 @@ sealed partial class SimView
 
     void OpenUpgradeChoice(SimTarget target)
     {
+        if (_choosingEquipment) return;
         bool wasOpen = _pickerKind == UpgradePanel;
         ClosePicker();
         if (wasOpen || Finder is not { } finder) return;   // the button is a switch, as History's is

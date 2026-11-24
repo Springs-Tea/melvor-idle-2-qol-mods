@@ -65,7 +65,7 @@ sealed class SimOptions
     /// The dice of the fight are set from this key instead of the result's own, and kept in step with it all fight
     /// (SimDice.InStep). Find upgrades (issue #4) gives every fight of a search the key of the setup as it is, so every
     /// item is fought with the same luck as the setup. Compare (issue #57) gives A's and B's fights of an enemy the key of
-    /// that fight (CombatSimMod.CompareDice), so A and B meet the same dice. Null: the result's own key, set once when the
+    /// that fight (CombatSimMod.CompareDice), so A and B meet the same dice. Null: the dice of the choices for this fight (FightDice), set once when the
     /// copy is loaded. Fights with the same dice are paired by their <see cref="Side"/>.
     /// </summary>
     public string? Dice;
@@ -88,6 +88,17 @@ sealed class SimOptions
     /// <summary>Development: the one change is put on as the game takes it by itself, as before issue #46 (raw=).</summary>
     public bool DevRaw;
 #endif
+
+    // The original dice for an ordinary fight depend on the choices the player made. Observing
+    // another worn stance changes which results the window shows, never the seed of a repeat run.
+    public string FightDice(SimTarget target)
+    {
+        if (Dice != null) return Dice;
+        string picks = string.Join(",", Overrides.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Key + "=" + p.Value));
+        string setup = LoadoutId + ";" + picks + (SpellId == null ? "" : ";spell=" + SpellId)
+            + (StanceId == null ? "" : ";stance=" + StanceId);
+        return SimResult.MakeKey(setup, target.Key);
+    }
 
     /// <summary>
     /// The same options with the dice of <paramref name="dice"/> (<see cref="Dice"/>) for one <paramref name="side"/>

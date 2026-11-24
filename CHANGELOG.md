@@ -4,12 +4,9 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
-- **Fishing Rates**: the Bait column counts one bait for every catch, as the game really takes them from your
-  bank: measured in the game, a catch whose bait is preserved still takes one. The tooltip's "what is in the bank
-  lasts" is shorter to match, and it says your chance to preserve bait is not counted.
-- **Fishing Rates**: while you fish, a click on a line at the location you fish at no longer selects its spot on
-  the Fishing page: it only opens that location, and the line's tooltip says so. Lines at other locations open and
-  select their spot as before.
+- **Combat Simulator**: the simulator follows the loadout, equipment and stance you wear. When your choices on the
+  left differ from what you now wear, Setup shows both and asks: **Use worn equipment** or **Keep my choices**.
+  Results stay with the equipment they were simulated with, and nothing is cleared without a word.
 - **Firemaking Rates**, a new mod: on the Firemaking page, a round button opens one line per log and lantern, with
   its picture, its category, the time of a fire, and what an hour burns, gives in Firemaking XP (the same number the
   page writes on each log), costs and brings in gold from the ash, charcoal and other items a fire gives. The best of

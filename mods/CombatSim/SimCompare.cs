@@ -18,6 +18,8 @@ sealed record SimSetup(string LoadoutId, IReadOnlyDictionary<string, string> Ove
 
     /// <summary>The stance chosen in its Stance box (issue #51); "" is "As the game has it".</summary>
     public string StanceId { get; init; } = "";
+    public string? DefaultStance { get; init; }
+    public IReadOnlyList<string> Displaced { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// What its slots showed when it was last on the left, each item in its own slot (<see cref="SimState.ShownSlots"/>):
@@ -51,16 +53,19 @@ sealed partial class SimState
     /// the slots, and replaced, never changed, when they are made again. Null while there are none.
     /// </summary>
     public IReadOnlyDictionary<string, string>? ShownSlots;
+    public IReadOnlyList<string> Displaced = Array.Empty<string>();
 #if DEVTOOLS
     /// <summary>Development: the same in words (SimGear.Describe).</summary>
     public string DevSlots = "";
 #endif
 
     /// <summary>The setup on the left, as it is now, with what its slots show.</summary>
-    public SimSetup OnLeft => new(LoadoutId, new Dictionary<string, string>(Overrides), SpellId, GearKey(Overrides), SetupLabel, Stances.ToList())
+    public SimSetup OnLeft => new(LoadoutId, new Dictionary<string, string>(Overrides), SpellId, GearKey(EquipmentCode), SetupLabel, Stances.ToList())
     {
         StanceId = StanceId,
+        DefaultStance = DefaultStance,
         Shown = ShownSlots,
+        Displaced = Displaced,
 #if DEVTOOLS
         DevSlots = DevSlots,
 #endif
@@ -75,7 +80,7 @@ sealed partial class SimState
     /// <summary>The stance a run of the tab on show fights this setup in: the one chosen in Fights, as <see cref="ChosenStance"/> is for the left.</summary>
     public (string Id, string Name)? ChosenOf(SimSetup setup) => ChosenOf(setup.StanceId, setup.Stances);
     /// <summary>The key of a setup's results in the tab on show: its loadout, changes and spell, and in Fights the stance chosen.</summary>
-    public string KeyOf(SimSetup setup) => setup.BaseKey + StanceKey(ChosenOf(setup));
+    public string KeyOf(SimSetup setup) => setup.BaseKey + StanceKey(ChosenOf(setup), setup.DefaultStance);
     /// <summary>A setup's name in the tab on show, as <see cref="SetupName"/> is the left's.</summary>
     public string NameOf(SimSetup setup) => SimText.WithStance(setup.BaseLabel, ChosenOf(setup)?.Name ?? "");
 

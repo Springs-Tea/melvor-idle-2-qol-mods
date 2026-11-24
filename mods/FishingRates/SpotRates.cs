@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GamesByMalcs.Melvor2;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Conditions;
 using GamesByMalcs.Melvor2.Data.Items;
@@ -18,8 +17,7 @@ namespace FishingRates;
 /// game keeps for every spot (ActiveFishingRecipe.Stats, a FishingActionStats), the very ones its spot list
 /// shows. Whatever changes those (level, equipment, potions, the Mastery Guild, the selected bait) changes the
 /// hour too. What is the mod's own: the middle of the game's catch time range as the time of a catch, and every
-/// chance counted as its long-run average, the way Recipe Rates counts them (mods/RecipeRates/Rates.cs). What was
-/// measured in the game: a catch takes one bait from the bank, a preserved one too (<see cref="PreservedBaitStays"/>).
+/// chance counted as its long-run average, the way Recipe Rates counts them (mods/RecipeRates/Rates.cs).
 /// </summary>
 sealed class SpotRates
 {
@@ -70,51 +68,14 @@ sealed class SpotRates
     /// <summary>A click on the line changes what the Fishing page shows.</summary>
     public bool Clickable => Click == Opens.Spot ? !OnPage : Click == Opens.Location && !LocationOnPage;
 
-    /// <summary>The character fishes at the spot's location now (<see cref="FishesAt"/>): a click selects no spot there.</summary>
-    public bool FishingHere { get; private set; }
-    /// <summary>
-    /// He fishes and the game does not say where (no FishingActionComponent.CurrentRecipe): every location counts as his,
-    /// and the tooltip names none.
-    /// </summary>
-    public bool FishingWhereUnknown { get; private set; }
-
-    /// <summary>Whether the character fishes now, and the location of the spot he fishes (null when the game does not say).</summary>
-    public readonly record struct Fished(bool Now, FishingLocation? At);
-
-    /// <summary>
-    /// Whether the character fishes now, by the widest test the game's members allow (Firemaking Rates' LogRates.IsBurning):
-    /// Fishing's action is started (FishingActionComponent.IsStarted), or it is among the game's running actions
-    /// (Game.ActionManager.ActiveActions); and the location of the spot it fishes (FishingActionComponent.CurrentRecipe).
-    /// Read on every tick for the lines, and again at the moment of a click (FishingRatesMod.OpenOnPage).
-    /// </summary>
-    public static Fished FishingNow(FishingEntity fishing, Game? game)
-    {
-        bool now = fishing.Action.IsStarted || game?.ActionManager.ActiveActions.Any(a => ReferenceEquals(a.Entity, fishing)) == true;
-        return new(now, now ? fishing.Action.CurrentRecipe?.Location : null);
-    }
-
-    /// <summary>
-    /// The character fishes at this spot's location now; while he fishes and the game does not say where, at every location,
-    /// so that nothing is selected anywhere then.
-    /// </summary>
-    public static bool FishesAt(ActiveFishingRecipe active, Fished fished) =>
-        fished.Now && (fished.At == null || ReferenceEquals(fished.At, active.Location));
-
     /// <summary>
     /// What a click on a spot's line opens: the spot; only its location while the spot is locked; nothing while its
     /// location is locked, since the player cannot open that one either (the location's own requirements, which the
-    /// page's location buttons show as locked). While the character fishes at the spot's location (<paramref name="fished"/>,
-    /// read at the moment of the click), only that location too: no spot is selected where he fishes (lesson 56: select
-    /// only while the skill is idle). What has been seen in the game (check-2 of the job fishing-bait, its log's lines 175 to
-    /// 191, 23 Nov 2026): while he fished at Rocky Shores (Shallow Shores), opening Windy Coastline and selecting Windswept
-    /// Shores there, pressing that spot's own button, and opening Glowing Depths each left his fishing as it was ("fishing:
-    /// started True, active True, the spot fished MelvorBase:RockyShores" after each). Selecting another spot at the
-    /// location he fishes at has never been seen: the game may switch or stop his fishing then, so the click never does it.
+    /// page's location buttons show as locked).
     /// </summary>
-    public static Opens ClickOpens(ActiveFishingRecipe active, Fished fished) =>
+    public static Opens ClickOpens(ActiveFishingRecipe active) =>
         active.Location.Requirements?.AreMet == false ? Opens.Nothing
         : active.Recipe.Requirements?.AreMet == false ? Opens.Location
-        : FishesAt(active, fished) ? Opens.Location
         : Opens.Spot;
 
     /// <summary>The game's catch time range, in seconds.</summary>
@@ -148,29 +109,9 @@ sealed class SpotRates
     /// <summary>Bonuses of the character that change the hour in a way the mod does not count.</summary>
     public List<Bonus> NotCounted { get; } = new();
 
-    /// <summary>
-    /// Whether a bait the game preserves stays in the bank, and what backs it: set here, in this one place. Measured by
-    /// the development watch (baitwatch.request, DevBaitWatch.cs) on the maintainer's fishing at Rapid Runs with Mackerel
-    /// Bait (check-4 of the job fishing-bait, 24 Nov 2026, issue #64): 29 catches, each with the game's "bait used" event
-    /// (FishingBaitComponent.BaitConsumed) and 3 of them also with its "bait preserved" one (BaitPreserved); the bank's
-    /// Mackerel Bait went from 2,521 to 2,492, down by one on every catch, the 3 preserved ones included ("PRESERVED BAIT
-    /// IS USED UP ANYWAY"). So every catch takes one bait from the bank, and the game's chance to preserve it
-    /// (FishingBaitStats.PreservationChance) saves none in this game version. A game update may change that: the same
-    /// watch tells it ("PRESERVED BAIT STAYS IN THE BANK"), and then this, <see cref="BaitSeen"/> and the guides change.
-    /// </summary>
-    public static readonly bool PreservedBaitStays = false;
-
-    /// <summary>What the watch counted, as the Bait column's tip says it after "Measured: " (Woodcutting Rates' rules).</summary>
-    public const string BaitSeen = "the bank lost one bait on 29 of 29 catches, the 3 preserved ones too";
-
     /// <summary>The bait selected on the Fishing page, or null.</summary>
     public string? Bait { get; private set; }
-    /// <summary>
-    /// The game's chance to preserve the bait (FishingBaitStats.PreservationChance): taken off the bait of an hour only
-    /// while <see cref="PreservedBaitStays"/>; otherwise only named in the tooltip, as not counted.
-    /// </summary>
-    public double BaitPreservation { get; private set; }
-    /// <summary>The bait an hour takes from the bank.</summary>
+    public double BaitKept { get; private set; }
     public double? BaitPerHour { get; private set; }
     public long BaitInBank { get; private set; }
 
@@ -187,9 +128,8 @@ sealed class SpotRates
     public static ActiveFishingRecipe? ShownOnPage(FishingEntity fishing) => fishing.Action.CurrentLocation?.SelectedRecipe;
 
     /// <param name="shown">A picture of the game as the list shows it: null for the grey stand-in (GamePictures.Shown).</param>
-    /// <param name="fished">Whether the character fishes, and where (<see cref="FishingNow"/>), read once for every line.</param>
     public static SpotRates Read(ActiveFishingRecipe active, FishingEntity fishing, BankEntity? bank, ActiveFishingRecipe? onPage,
-        Func<Texture2D?, Texture2D?> shown, Fished fished)
+        Func<Texture2D?, Texture2D?> shown)
     {
         FishingRecipe recipe = active.Recipe;
         FishingLocation location = active.Location;
@@ -203,9 +143,7 @@ sealed class SpotRates
             LocationOnPage = ReferenceEquals(fishing.Action.CurrentLocation?.Location, location),
         };
         r.ReadLock(recipe.Requirements, location.Requirements, fishing.Experience);
-        r.FishingHere = FishesAt(active, fished);
-        r.FishingWhereUnknown = fished.Now && fished.At == null;
-        r.Click = ClickOpens(active, fished);
+        r.Click = ClickOpens(active);
 
         var (min, max) = stats.Interval.Value;
         r.MinSeconds = min / Ms;
@@ -246,14 +184,13 @@ sealed class SpotRates
         foreach (var (key, nodes) in new[] { (JunkToGold, stats.JunkToGP), (JunkReroll, stats.JunkRerollChance), (SecondSpecial, stats.SecondSpecialItemChance) })
             if (nodes != null && Chance(nodes) > 0) r.NotCounted.Add(new Bonus(key, nodes));
 
-        // One bait from the bank for every catch, a preserved one too, as measured (PreservedBaitStays); the bait is the
-        // skill's, the same at every spot.
+        // One bait for every catch, unless it is preserved; the bait is the skill's, the same at every spot.
         FishingBaitComponent baits = fishing.BaitComponent;
         if (baits.SelectedBait is { } bait)
         {
             r.Bait = bait.DisplayName.GetPluralText(2);
-            r.BaitPreservation = Chance(baits.Stats?.PreservationChance);
-            r.BaitPerHour = perHour * (PreservedBaitStays ? 1 - r.BaitPreservation : 1);
+            r.BaitKept = Chance(baits.Stats?.PreservationChance);
+            r.BaitPerHour = perHour * (1 - r.BaitKept);
             r.BaitInBank = bank?.Inventory.GetQuantity(bait) ?? 0;
         }
         return r;
