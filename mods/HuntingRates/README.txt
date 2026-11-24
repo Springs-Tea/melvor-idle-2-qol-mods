@@ -8,23 +8,26 @@ its picture, its location, and:
   - Time: how long one catch takes, surveying, tracking and trapping, escapes included.
   - Catches: animals caught per hour.
   - XP: Hunting XP per hour.
-  - Gold: what the output, the rare extras and the finds of an hour sell for.
-  - Traps: traps used per hour, less what is preserved.
+  - Gold: what the output of an hour sells for, rare extras too but no collectable.
+  - Traps: traps taken from the bank per hour, one every try, preserved or not.
 
 How the steps of a hunt join into a catch is in no number of the game's: it was measured on
 a character's own hunting. An escape sends you back to tracking with more steps to go, and
 how many is known only where every reading of it gives the same number; elsewhere a column
-shows "-", and a note under the list says why. For now that is most animals.
+shows "-", and a note under the list says why. For now that is most animals. A line is
+also "-" until the Hunting page has written how many surveys a hunt of that animal takes:
+select the animal there once.
 
-Hover a line for the whole hour of that animal, grouped as the Hunting page's panel groups
-its numbers: the surveys of a hunt, the steps of tracking and the time of one, the time and
-chance of a try of the trap, the chance to try again, what an escape costs, the time of a
-catch, the Hunting XP and the journal XP, the tool, the output with the chance of each item,
-the rare species with their extra products, what a survey can find, the trap and the bait
-with how long the bank's last, and the gold. A rare species you have never trapped and a
-collectable you have never found are not named, as the journal does. An animal you have not
-discovered yet gives nothing away: only its name as the page writes it, its location and
-what it needs.
+Hover a line for the whole hour of that animal: the surveys of a hunt, the steps of tracking
+and the time of one, the time and chance of a try of the trap, the chance to try again, what
+an escape costs, the time of a catch, the Hunting XP and the journal XP, the output with the
+chance of each item, the rare species in one line, the trap and the bait with how long the
+bank's last, the gold, and what is not counted: the chance to skip a step, the preservation
+chance, what surveying finds, and what the animal's level adds to the average. A rare
+species you have never trapped and a collectable you have never found are not named, as the
+journal does. An animal you have not discovered yet gives nothing away: only its name as the
+page writes it, its location and what it needs. An animal you have never trapped is a black
+shape, as its card on the page draws it.
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. An animal you cannot hunt yet is greyed, with the level it needs.

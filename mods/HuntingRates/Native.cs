@@ -110,23 +110,20 @@ internal static class Native
     // are internal: ModifierTemplate._baseValues).
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_baseValues")]
     static extern ref List<ComponentModifierValue>? TemplateValues(ModifierTemplate template);
-    static bool _failValuesOff;
+
+    /// <summary>The bonuses a failed try with a trap puts on the animal (HuntingTrapCapability.FailBonuses), or null for none.</summary>
+    internal static ModifierTemplate? FailTemplate(Item trap) =>
+        trap.Capabilities.TryGet(out HuntingTrapCapability? capability) ? capability?.FailBonuses : null;
 
     /// <summary>
-    /// A trap has bonuses that a failed try with it puts on the animal (HuntingTrapCapability.FailBonuses with values in
-    /// it), so that the next try's chance is not the one now. When its values cannot be read (the game was updated?), a
-    /// trap with such bonuses at all counts as having them: no catch is counted rather than a wrong one.
+    /// A template of bonuses holds values, so that a failed try with its trap changes the next try's chance. Null when its
+    /// values cannot be read (the game was updated?): the caller says so in one line and counts no catch with that trap
+    /// (HuntingRatesMod.FailBonuses).
     /// </summary>
-    internal static bool HasFailBonuses(Item trap)
+    internal static bool? HasValues(ModifierTemplate template)
     {
-        if (!trap.Capabilities.TryGet(out HuntingTrapCapability? capability) || capability?.FailBonuses is not { } fail) return false;
-        if (_failValuesOff) return true;
-        try { return TemplateValues(fail) is { Count: > 0 }; }
-        catch (Exception e) when (e is MissingMemberException or TypeLoadException)
-        {
-            _failValuesOff = true;
-            return true;
-        }
+        try { return TemplateValues(template) is { Count: > 0 }; }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException) { return null; }
     }
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_orConditions")]

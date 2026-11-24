@@ -1100,7 +1100,7 @@ public partial class HuntingRatesMod
                 $"rare {R(s.RareSpeciesChance.Value)} (base {R(h.BaseRareSpeciesChance)}), doubling {R(s.DoublingChance?.Total.Value ?? double.NaN)}, " +
                 $"preservation {R(s.PreservationChance?.Total.Value ?? double.NaN)}, XP {R(s.Experience.XpToAdd.Value)} (base {h.BaseExperience}), insights {R(a.Active.Location?.Location?.BaseInsightsChance ?? double.NaN)}, " +
                 $"survey XP base {a.Active.Location?.Location?.BaseSurveyingExperience}, journal {h.BaseJournalTrackingExperience}/{h.BaseJournalTrappingExperience} at level {a.JournalLevel}, " +
-                $"the page's surveys 1 to {R(a.SurveysMost)}{(a.SurveysReadFor.Length > 0 ? $" (read for {a.SurveysReadFor})" : "")}, base fewest steps {h.BaseMinTrackingSteps}, " +
+                $"the page's surveys 1 to {R(a.SurveysMost)}, base steps {h.BaseMinTrackingSteps}..{h.BaseMaxTrackingSteps}, " +
                 $"its trap's bonuses after a failed try {a.TrapFailBonuses}, " +
                 $"products [{Items(s.Products)}], survey finds [{Items(s.SurveyingProducts)}], tool {h.Tool?.Id ?? "none"}, trap type {h.TrapType?.Id ?? "none"}, " +
                 $"its trap {a.Trap?.Id ?? "none"} ({a.TrapsInBank} in the bank), trapless {a.Trapless} (enabled by the game {h.EnableTrapless}), bait {h.PreferredBait?.Id ?? "none"} " +
@@ -1183,7 +1183,7 @@ public partial class HuntingRatesMod
                 $"'{DevLabels(survey)}' against ours {R(ours.SurveySeconds)}{Same(survey.MinSeconds, ours.SurveySeconds, 0.005)}, the most surveys " +
                 $"{(survey.MinSeconds > 0 ? R(Math.Round(survey.MaxSeconds / survey.MinSeconds, 4)) : "-")} against ours {R(ours.SurveysMost)}" +
                 $"{(survey.MinSeconds > 0 && ours.SurveysMost is { } most ? Same(survey.MaxSeconds / survey.MinSeconds, most, 0.001) : "  NOT READ")}" +
-                $"{(ours.SurveysReadFor.Length > 0 ? $" (READ FOR {ours.SurveysReadFor})" : "")} | tracking {R(track.MinSeconds)}..{R(track.MaxSeconds)} s " +
+                $" | tracking {R(track.MinSeconds)}..{R(track.MaxSeconds)} s " +
                 $"'{DevLabels(track)}' against ours {R(ours.StepMinSeconds)}..{R(ours.StepMaxSeconds)}{Same(track.MinSeconds, ours.StepMinSeconds, 0.005)}{Same(track.MaxSeconds, ours.StepMaxSeconds, 0.005)} | " +
                 $"trapping {R(trap.MinSeconds)}..{R(trap.MaxSeconds)} s '{DevLabels(trap)}' against ours {R(ours.TrapMinSeconds)}..{R(ours.TrapMaxSeconds)}" +
                 $"{Same(trap.MinSeconds, ours.TrapMinSeconds, 0.005)}{Same(trap.MaxSeconds, ours.TrapMaxSeconds, 0.005)} | trapping chance '{chance.Text}' (value {R(chance.Value)}) against ours " +
@@ -1265,8 +1265,14 @@ public partial class HuntingRatesMod
                 ActiveHuntingAnimal? animal = Native.AnimalOf(card);
                 SettingsIcon? icon = Native.IconOf(card);
                 var xp = Native.XpViewOf(card);
-                string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" : "NO LINE";
-                DevLog($"card | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered} | the card's name '{Native.NameOf(card)?.Text}', picture " +
+                // The line's colour against the card's: a black shape on the page is one on the line too (HuntingRatesMod.Look),
+                // and the journal's count of catches beside it, which the window reads it from where no card was drawn.
+                Color cardTint = icon != null ? icon.Modulate * icon.SelfModulate : Colors.White;
+                string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" +
+                    (l.Animal.PictureTint.IsEqualApprox(cardTint) ? "" : "  CARD AND LINE DIFFER") : "NO LINE";
+                DevLog($"card | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times" +
+                    $"{(animal?.JournalEntry is { IsDiscovered: true } entry && (entry.TimesTrapped == 0) != (cardTint.R + cardTint.G + cardTint.B < 0.05f) ? "  NOT AS THE READING (BLACK WHILE NEVER TRAPPED)" : "")}" +
+                    $" | the card's name '{Native.NameOf(card)?.Text}', picture " +
                     $"{DevTexture(icon?.Texture)} shown {icon?.IsVisibleInTree()} modulate {icon?.Modulate}/{icon?.SelfModulate}, spider icon {icon?.IsArachnophobiaModeIcon}, " +
                     $"tool {DevToolDrawn(card)} (the animal's tool {animal?.Animal.Tool?.Id ?? "none"}), trap '{DevNative.CardTrapType(card).Text}', XP '{(xp == null ? "-" : DevLabels(xp))}' multipliers " +
                     $"{(xp == null ? "-" : $"{R(Native.XpLow(xp))}..{R(Native.XpHigh(xp))}")}, unlocked part {DevNative.CardUnlocked(card).IsVisibleInTree()}, locked part " +

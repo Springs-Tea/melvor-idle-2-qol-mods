@@ -28,19 +28,33 @@ enum SurveysPerHunt
 }
 
 /// <summary>
-/// How many tracking steps an escape adds to the steps still needed: which of the game's numbers it is. On Yellowtail
-/// Bird all of these are 4, and 7 of 7 escapes added 4 (check-3-watch); on most other animals they differ, so the window
-/// counts an escape there only once a watch on such an animal has ruled out all but one (<see cref="HuntRule.Escape"/>).
+/// How many tracking steps an escape adds to the steps still needed: which of the game's numbers it is. Every number the
+/// game's members give that is 4 on Yellowtail Bird (steps 4 to 8, its own 4 to 8 before bonuses), where 7 of 7 escapes
+/// added 4 (check-3-watch), is a reading: the fewest, the width and half the most, each with your bonuses
+/// (HuntingActionStats.TrackingSteps) and before them (HuntingAnimal.BaseMinTrackingSteps, BaseMaxTrackingSteps). The
+/// readings that 4 rules out (the most, the middle, the steps a hunt needs at its start) are not here. On most other
+/// animals the readings differ, so the window counts an escape there only where every reading still open gives one number
+/// (<see cref="HuntRule.Escape"/>); the watch on such an animal rules readings out.
 /// </summary>
 enum EscapeSteps
 {
     /// <summary>The fewest tracking steps of the animal, with your bonuses (the low end of HuntingActionStats.TrackingSteps).</summary>
     Fewest,
-    /// <summary>The most tracking steps less the fewest (the width of HuntingActionStats.TrackingSteps).</summary>
+    /// <summary>The most tracking steps less the fewest, with your bonuses (the width of HuntingActionStats.TrackingSteps).</summary>
     Width,
+    /// <summary>Half the most tracking steps with your bonuses, rounded down.</summary>
+    HalfMost,
     /// <summary>The animal's own fewest steps, before your bonuses (HuntingAnimal.BaseMinTrackingSteps).</summary>
     BaseFewest,
-    /// <summary>4 on every animal: the number measured on Yellowtail Bird, as no member of the game's.</summary>
+    /// <summary>The animal's own most steps less its own fewest, before your bonuses (BaseMaxTrackingSteps - BaseMinTrackingSteps).</summary>
+    BaseWidth,
+    /// <summary>Half the animal's own most steps before your bonuses (HuntingAnimal.BaseMaxTrackingSteps), rounded down.</summary>
+    HalfBaseMost,
+    /// <summary>
+    /// 4 on every animal, no member of the game's: a fixed number of steps is a rule only once it is measured on at least
+    /// two animals whose step ranges differ (the orchestrator's decision, review 6), so this reading alone never counts an
+    /// escape (<see cref="AnimalRates.FourMeasuredOn"/>).
+    /// </summary>
     Four,
 }
 
@@ -56,8 +70,10 @@ enum EscapeSteps
 sealed record HuntRule(SurveysPerHunt Surveys, EscapeSteps[] Escape);
 
 /// <summary>
-/// What a try of the trap uses up: one trap and one bait, whether it catches or not (measured), less what the
-/// preservation chance keeps when <see cref="Kept"/> (the game's words for it, "Your chance to preserve the input").
+/// What a try of the trap takes from the bank: one trap and one bait, whether it catches or not (measured), and less what
+/// the preservation chance keeps only when <see cref="Kept"/>. Kept is false: no try was seen to keep one, and Fishing
+/// Rates measured that a preserved bait is taken from the bank all the same (issue #64), so the chance is named as not
+/// counted.
 /// </summary>
 sealed record UseRule(bool Kept);
 
@@ -103,8 +119,9 @@ sealed record Settled<T>(T Reading, RuleSource Source, string Quote, string Seen
 /// the trap (TrappingInterval, the middle of its range, at TrappingSuccessChance), and escapes that add steps
 /// (TrappingReattemptChance keeps a failed try from being one). Every number of a link is the game's; how the links join
 /// was measured by the silent watch. Where a number the chain needs is not known for an animal (how many steps an escape
-/// adds there, how many surveys the page writes, what a trap's bonuses after a failed try do), what rests on it is null
-/// and the window shows "-", never a number of the mod's own (the review of pull request #61, and review 5 of this job).
+/// adds there, how many surveys the page writes for it, what a trap's bonuses after a failed try do), what rests on it is
+/// null and the window shows "-", never a number of the mod's own or another animal's (the review of pull request #61,
+/// reviews 5 and 6 of this job). An animal not discovered yet has no hour at all: its line gives nothing away.
 /// </summary>
 sealed class AnimalRates
 {
@@ -116,31 +133,48 @@ sealed class AnimalRates
     /// an escape back to tracking, never to surveying, each adding exactly 4 steps (6 to 10 to 14 to 18, 8 to 12, 4 to 8,
     /// 4 to 8, 8 to 12); a catch started the next hunt with surveying. No failed try was tried again: 0.4 were expected at
     /// the reattempt chance of 6%, whose own words state the rule ("The chance to reattempt a trapping action when it
-    /// fails", the panel's bonus tooltip, check-5). Which number of the game an escape's 4 is, is open: every reading of
-    /// <see cref="EscapeSteps"/> gives 4 on Yellowtail Bird.
+    /// fails", the panel's bonus tooltip, check-5): the words state the reattempt, the escape was measured. Which number
+    /// of the game an escape's 4 is, is open: every reading of <see cref="EscapeSteps"/> gives 4 on Yellowtail Bird.
     /// </summary>
     static readonly Settled<HuntRule>? KnownHunt = new(new HuntRule(SurveysPerHunt.Middle, Enum.GetValues<EscapeSteps>()), RuleSource.Measured,
         "The chance to reattempt a trapping action when it fails",
         "62 steps, 13 tries, 7 escapes and 6 catches of Yellowtail Bird");
 
     /// <summary>
-    /// What a try uses up, and what backs it: set here, in this one place. Measured by the same watch: 13 tries used 13
-    /// traps and 13 Seed Bait, one of each on every try, caught or escaped, by the bank's counts. What the preservation chance
-    /// keeps is the game's words for it, "Your chance to preserve the input" (the panel's bonus tooltip, check-5), and the
-    /// game gives better traps a preservation chance of their own (a Reinforced Small Bird Catcher 20%, a Fortified one 40%,
-    /// check-5 "Dev: game"): the window counts it, as Fishing Rates counts its bait's. Nothing was kept in those 26 uses at
-    /// 2%, about 0.5 expected; the watch counts what is kept.
+    /// The animals a fixed number of steps for an escape (<see cref="EscapeSteps.Four"/>) was measured on. It becomes a
+    /// rule only when the list holds two animals whose step ranges differ; until then a line whose escape rests on it alone
+    /// is "-" (review 6, the orchestrator's decision). Yellowtail Bird: 7 of 7 escapes added 4 (check-3-watch).
     /// </summary>
-    static readonly Settled<UseRule>? KnownUse = new(new UseRule(true), RuleSource.Measured, "Your chance to preserve the input",
+    public static readonly string[] FourMeasuredOn = ["Yellowtail Bird"];
+
+    /// <summary>
+    /// What a try takes from the bank, and what backs it: set here, in this one place. Measured by the same watch: 13 tries
+    /// took 13 traps and 13 Seed Bait, one of each on every try, caught or escaped, by the bank's counts, and none was kept.
+    /// The preservation chance (2% there; a Reinforced trap brings 20% of its own, a Fortified one 40%, check-5 "Dev:
+    /// game") is not counted: what it keeps was never measured here, and Fishing Rates measured that a preserved bait is
+    /// taken from the bank all the same (issue #64). Its tip says "preserved or not", as Fishing Rates' does now.
+    /// </summary>
+    static readonly Settled<UseRule>? KnownUse = new(new UseRule(false), RuleSource.Measured, "",
         "13 traps and 13 bait on 13 tries of Yellowtail Bird");
 
     /// <summary>
     /// When the XP comes, and what backs it: set here, in this one place. Measured by the same watch: Hunting XP on 6 of 6
-    /// catches and on none of the 75 other frames with an event of a hunt (no XP for a survey, a step or a failed try).
-    /// The XP of a catch lies within the range the page writes (359.6 to 589.7 against 233.6 to 700.9), 467.7 on average
-    /// against the middle of the range, 467.25: the window counts the middle (<see cref="XpMiddle"/>).
+    /// catches and in none of the 75 other frames with an event of a hunt (no XP for a survey, a step or a failed try).
+    /// The XP of a catch lies within the range the animal's card writes (359.6 to 589.7 against 233.6 to 700.9), 467.7 on
+    /// average against the middle of the range, 467.25: the window counts the middle (<see cref="XpMiddle"/>). The page
+    /// says "Animal Levels increase the average Skill XP & Item quantity output." (its panel, check-6), and Yellowtail
+    /// Bird went from level 1 (check-5) to 7 (check-6) around that watch: how much a level raises the average is not
+    /// known, which the XP tip says.
     /// </summary>
-    static readonly Settled<XpWith>? KnownXp = new(XpWith.Catch, RuleSource.Measured, "", "XP on 6 of 6 catches and on none of 75 other events");
+    static readonly Settled<XpWith>? KnownXp = new(XpWith.Catch, RuleSource.Measured, "Animal Levels increase the average Skill XP & Item quantity output.",
+        "XP on 6 of 6 catches and in none of 75 other frames");
+
+    /// <summary>
+    /// What surveying finds (HuntingActionStats.SurveyingProducts), and what backs it: not counted. No find came in the
+    /// watch's 10 surveys (a 10% chance each: 1 expected), and the game has a switch by its name that may turn them off
+    /// (HuntingActionComponent._allowSurveyingProducts, private). Null until a watch decides it ("the survey finds").
+    /// </summary>
+    public static readonly Settled<bool>? SurveyFindsRule = null;
 
     /// <summary>
     /// When the output comes, and what backs it: set here, in this one place. Measured by the same watch: the animal's
@@ -233,13 +267,13 @@ sealed class AnimalRates
     /// <summary>One survey, in seconds (HuntingActionStats.SurveyInterval, kept in milliseconds).</summary>
     public double SurveySeconds { get; private set; }
     /// <summary>
-    /// The most surveys a hunt takes as the Hunting page writes it: the high end of its surveying range over the low end
-    /// (HuntingSelectedRecipeContainer.SurveyingInterval, an IntervalRangeDisplay, read by HuntingRatesMod.ReadSurveyRange);
-    /// null until the page's panel has shown it for an animal.
+    /// The most surveys a hunt takes as the Hunting page writes it for this animal: the high end of its surveying range
+    /// over the low end (HuntingSelectedRecipeContainer.SurveyingInterval, an IntervalRangeDisplay, read by
+    /// HuntingRatesMod.ReadSurveyRange while the page's panel shows this animal); null until it has. No member of the game's
+    /// gives it (ApiDump: HuntingActionStats, HuntingAnimal, HuntingLocation and ActiveHuntingLocation have only the time of
+    /// one survey), and another animal's is never taken for it (review 6).
     /// </summary>
     public double? SurveysMost { get; private set; }
-    /// <summary>The animal the page wrote <see cref="SurveysMost"/> for, when it is not this one ("" when it is).</summary>
-    public string SurveysReadFor { get; private set; } = "";
     /// <summary>
     /// The location's chance by the name of insights (HuntingLocation.BaseInsightsChance): logged, and no reading of a
     /// survey any more (the watch saw 1.7 surveys a hunt, not 200).
@@ -253,8 +287,12 @@ sealed class AnimalRates
     /// <summary>The steps of tracking, the game's range (HuntingActionStats.TrackingSteps).</summary>
     public int StepsMin { get; private set; }
     public int StepsMax { get; private set; }
-    /// <summary>The animal's own fewest steps before bonuses (HuntingAnimal.BaseMinTrackingSteps), for a reading of an escape.</summary>
+    /// <summary>
+    /// The animal's own fewest and most steps before bonuses (HuntingAnimal.BaseMinTrackingSteps, BaseMaxTrackingSteps), for
+    /// the readings of an escape.
+    /// </summary>
     public int BaseStepsMin { get; private set; }
+    public int BaseStepsMax { get; private set; }
     /// <summary>Ours: every number of steps in the game's range as likely, so its middle.</summary>
     public double StepsMiddle => (StepsMin + StepsMax) / 2.0;
     /// <summary>One tracking step, in seconds, the game's range (HuntingActionStats.TrackingInterval).</summary>
@@ -280,9 +318,10 @@ sealed class AnimalRates
     public double Preservation { get; private set; }
     /// <summary>
     /// The trap selected for the animal has bonuses that a failed try puts on it (HuntingTrapCapability.FailBonuses): the
-    /// chance of the next try is not the one now, and the window does not count a catch.
+    /// chance of the next try is not the one now, and the window does not count a catch. Null when they could not be read
+    /// (Native.HasFailBonuses, one line in the log): no catch is counted then either.
     /// </summary>
-    public bool TrapFailBonuses { get; private set; }
+    public bool? TrapFailBonuses { get; private set; }
 
     /// <summary>The game gives a time for every link: without them there is nothing to count.</summary>
     public bool HasTime => SurveySeconds > 0.01 && StepMaxSeconds > 0.01 && TrapMaxSeconds > 0.01 &&
@@ -290,19 +329,35 @@ sealed class AnimalRates
 
     /// <summary>
     /// The steps an escape adds here by every reading no watch has ruled out (<see cref="HuntRule.Escape"/>), and the one
-    /// number when they all agree; null when they do not, or nothing is settled.
+    /// number when they all agree; null when they do not, or nothing is settled. A fixed 4 left alone counts only once it
+    /// is measured on two animals whose step ranges differ (<see cref="FourMeasuredOn"/>).
     /// </summary>
-    public int? EscapeAdds => EscapeReadings is { Count: > 0 } readings && readings.All(n => n == readings[0]) ? readings[0] : null;
+    public int? EscapeAdds
+    {
+        get
+        {
+            if (HuntRule is not { } hunt || EscapeReadings is not { Count: > 0 } readings || readings.Any(n => n != readings[0])) return null;
+            bool fourAlone = hunt.Reading.Escape.All(r => r == EscapeSteps.Four);
+            return fourAlone && FourMeasuredOn.Length < 2 ? null : readings[0];
+        }
+    }
 
     /// <summary>The steps an escape adds by each reading still open, in the order of <see cref="EscapeSteps"/>.</summary>
     public List<int>? EscapeReadings => HuntRule is { } hunt ? hunt.Reading.Escape.Select(reading => EscapeStepsBy(reading, this)).ToList() : null;
 
-    /// <summary>The steps an escape adds by one reading.</summary>
-    public static int EscapeStepsBy(EscapeSteps reading, AnimalRates a) => reading switch
+    /// <summary>The steps an escape adds by one reading, from this animal's own numbers.</summary>
+    public static int EscapeStepsBy(EscapeSteps reading, AnimalRates a) =>
+        EscapeStepsBy(reading, a.StepsMin, a.StepsMax, a.BaseStepsMin, a.BaseStepsMax);
+
+    /// <summary>The steps an escape adds by one reading: the steps with your bonuses, and the animal's own before them.</summary>
+    public static int EscapeStepsBy(EscapeSteps reading, int fewest, int most, int baseFewest, int baseMost) => reading switch
     {
-        EscapeSteps.Fewest => a.StepsMin,
-        EscapeSteps.Width => a.StepsMax - a.StepsMin,
-        EscapeSteps.BaseFewest => a.BaseStepsMin,
+        EscapeSteps.Fewest => fewest,
+        EscapeSteps.Width => most - fewest,
+        EscapeSteps.HalfMost => most / 2,
+        EscapeSteps.BaseFewest => baseFewest,
+        EscapeSteps.BaseWidth => baseMost - baseFewest,
+        EscapeSteps.HalfBaseMost => baseMost / 2,
         _ => 4,
     };
 
@@ -361,11 +416,13 @@ sealed class AnimalRates
     public double? JournalXpPerHour => CatchesPerHour is { } c && PerCatch is { } k ? c * (k.Steps * JournalTrackingXp + JournalTrappingXp) : null;
     /// <summary>What the products and rare extras of a catch sell for in gold (collectables apart).</summary>
     public double CatchGold { get; private set; }
+    /// <summary>What a survey's finds would sell for: not in the gold while <see cref="SurveyFindsRule"/> is not settled.</summary>
     public double SurveyGold { get; private set; }
-    public double? GoldPerHour => CatchesPerHour is { } c && OutputRule != null ? c * CatchGold + c * (SurveysPerCatch ?? 0) * SurveyGold : null;
-    /// <summary>Traps of an hour: one a try, less what is preserved; none for an animal hunted without a trap.</summary>
+    public double? GoldPerHour => CatchesPerHour is { } c && OutputRule != null
+        ? c * CatchGold + (SurveyFindsRule != null ? c * (SurveysPerCatch ?? 0) * SurveyGold : 0) : null;
+    /// <summary>Traps of an hour: one a try, preserved or not (<see cref="UseRule"/>); none for an animal hunted without a trap.</summary>
     public double? TrapsPerHour { get; private set; }
-    /// <summary>Bait of an hour: one a try while it is switched on, less what is preserved; null when not counted.</summary>
+    /// <summary>Bait of an hour: one a try while it is switched on, preserved or not; null when not counted.</summary>
     public double? BaitPerHour { get; private set; }
 
     // The game keeps intervals in milliseconds (Fishing Rates' catch times matched the game's to the hundredth this way,
@@ -396,14 +453,12 @@ sealed class AnimalRates
         location?.Location is { } l && l.DisplayRequirements?.AreMet != false && (!l.OnlyShowWhenRecipesAvailable || location.UnlockedRecipeCount > 0);
 
     /// <param name="look">The name, picture and its colour the list shows (HuntingRatesMod.Look).</param>
-    /// <param name="surveys">
-    /// The most surveys a hunt takes as the page writes it, and the animal it was read for: this one's when the page has
-    /// shown it, otherwise the last one read (HuntingRatesMod.SurveysFor).
-    /// </param>
+    /// <param name="surveysMost">The most surveys a hunt takes as the page wrote it for this animal, or null (HuntingRatesMod.SurveysFor).</param>
+    /// <param name="failBonuses">Whether a trap has bonuses after a failed try, null when they cannot be read (HuntingRatesMod.FailBonuses).</param>
     /// <param name="hidden">The game's word for something not found yet, for a rare species never trapped and a collectable never found.</param>
     /// <param name="huntRuns">A hunt runs (<see cref="IsHunting"/>), read once for every line.</param>
     public static AnimalRates Read(ActiveHuntingAnimal active, HuntingEntity hunting, (string Name, Texture2D? Picture, Color Tint) look,
-        (double, double)? xpRange, (double Most, string ReadFor)? surveys, Func<Item, long> inBank, string hidden, bool huntRuns)
+        (double, double)? xpRange, double? surveysMost, Func<Item, bool?> failBonuses, Func<Item, long> inBank, string hidden, bool huntRuns)
     {
         HuntingAnimal animal = active.Animal;
         HuntingActionStats stats = active.Stats;
@@ -430,17 +485,14 @@ sealed class AnimalRates
         r.Click = ClickOpens(active);
 
         r.SurveySeconds = stats.SurveyInterval.Value / Ms;
-        if (surveys is { Most: var most, ReadFor: var readFor } && double.IsFinite(most) && most >= 1)
-        {
-            r.SurveysMost = most;
-            r.SurveysReadFor = readFor;
-        }
+        if (surveysMost is { } most && double.IsFinite(most) && most >= 1) r.SurveysMost = most;
         r.Insights = Fraction(location?.BaseInsightsChance ?? 0);
         r.SurveyXpBase = location?.BaseSurveyingExperience ?? 0;
         var (stepsMin, stepsMax) = stats.TrackingSteps.Value;
         r.StepsMin = Math.Max(0, stepsMin);
         r.StepsMax = Math.Max(r.StepsMin, stepsMax);
         r.BaseStepsMin = animal.BaseMinTrackingSteps;
+        r.BaseStepsMax = Math.Max(r.BaseStepsMin, animal.BaseMaxTrackingSteps);
         var (stepMin, stepMax) = stats.TrackingInterval.Value;
         r.StepMinSeconds = stepMin / Ms;
         r.StepMaxSeconds = Math.Max(stepMin, stepMax) / Ms;
@@ -465,16 +517,17 @@ sealed class AnimalRates
         r.Trapless = active.TraplessEnabled;
         r.Trap = active.SelectedTrap;
         r.TrapsInBank = r.Trap != null ? inBank(r.Trap) : 0;
-        r.TrapFailBonuses = !r.Trapless && r.Trap != null && Native.HasFailBonuses(r.Trap);
+        r.TrapFailBonuses = r.Trapless || r.Trap == null ? false : failBonuses(r.Trap);
         r.Bait = animal.PreferredBait;
         r.UseBait = active.UseBait && r.Bait != null;
         r.BaitInBank = r.Bait != null ? inBank(r.Bait) : 0;
 
-        // The chain by the settled rule, where everything it needs is known for this animal.
-        if (HuntRule is { } hunt && !r.TrapFailBonuses && r.EscapeAdds is { } escape)
+        // The chain by the settled rule, where everything it needs is known for this animal. An animal not discovered yet
+        // gives nothing away: no hour at all (review 6, fault 8), as its tooltip shows nothing of its hunt either.
+        if (HuntRule is { } hunt && r.Discovered && r.TrapFailBonuses == false && r.EscapeAdds is { } escape)
             r.PerCatch = Chain(r, hunt.Reading.Surveys, escape);
-        // One trap and one bait a try, less what is preserved (UseRule); none of either is counted without the chain.
-        if (r.Trapless) r.TrapsPerHour = 0;
+        // One trap and one bait a try, preserved or not (UseRule); none of either is counted without the chain.
+        if (r.Trapless && r.Discovered) r.TrapsPerHour = 0;
         if (UseRule is { } use && r.CatchesPerHour is { } perHour && r.PerCatch is { } k)
         {
             double each = k.Tries * (use.Reading.Kept ? 1 - r.Preservation : 1) * perHour;
@@ -494,38 +547,42 @@ sealed class AnimalRates
         foreach (var node in stats.Products?.Values ?? [])
             if (node?.Value is { Item: { } item } product && product.Quantity > 0)
                 r.Products.Add(Line(item, Fraction(product.Chance), product.Quantity, 1 + r.Doubling, false, false, catches));
-        r.SurveyFinds.AddRange(SurveyDrops(stats, r, catches));
+        // What surveying finds is not counted until a watch has seen it (SurveyFindsRule): listed, with no hour.
+        r.SurveyFinds.AddRange(SurveyDrops(stats, r, SurveyFindsRule != null ? catches : null));
         // A rare species comes with the game's chance, which one by the table's weights (Item Sources reads a weighted table
         // so: mods/Shared/ItemIndex.cs, AddTable), with its extra products at their own chances. A collectable found once
         // is named as found and its gold is never counted: the journal keeps it (HuntingJournalComponent.CollectablesFound).
         // As the journal shows them, a species never trapped (its species list follows HuntingJournalComponent
         // .SpeciesTrapped) and a collectable never found (its list of HiddenItemIcon follows what was found) are not named:
-        // the game's own word for something not found yet stands for them (AnimalSpeciesView.HiddenText).
+        // the game's own word for something not found yet stands for them (AnimalSpeciesView.HiddenText). A species still
+        // locked (its own requirements) cannot be caught yet, by its lock: its extras are listed and not counted.
         var trapped = hunting.Journal?.SpeciesTrapped;
         if (animal.RareSpecies is { } table)
             foreach (WeightedHuntingAnimalSpecies weighted in table.Items ?? Enumerable.Empty<WeightedHuntingAnimalSpecies>())
             {
                 if (weighted?.Species is not { } species) continue;
                 double share = Fraction(table.GetItemChance(weighted));
+                bool open = species.Requirements?.AreMet != false;
                 var extras = new List<Drop>();
                 foreach (HuntingAnimalSpeciesProduct extra in species.ExtraProducts ?? Enumerable.Empty<HuntingAnimalSpeciesProduct>())
                     if (extra?.Item is { } item && extra.Quantity > 0)
                     {
                         bool got = extra.IsCollectable && found != null && found.TryGetValue(item, out bool f) && f;
-                        Drop drop = Line(item, r.RareChance * share * Fraction(extra.Chance), extra.Quantity, 1, extra.IsCollectable, got, catches);
+                        Drop drop = Line(item, r.RareChance * share * Fraction(extra.Chance), extra.Quantity, 1, extra.IsCollectable, got, open ? catches : null);
                         extras.Add(extra.IsCollectable && !got ? drop with { Name = hidden } : drop);
                     }
-                string locked = species.Requirements?.AreMet == false ? Native.Needs([species.Requirements]) : "";
+                string locked = open ? "" : Native.Needs([species.Requirements]);
                 bool seen = trapped == null || trapped.GetValue(species) > 0;
                 r.Rare.Add(new Species(seen ? species.DisplayName.Text : hidden, share, locked, extras));
             }
-        r.CatchGold = r.Products.Concat(r.Rare.SelectMany(s => s.Extras)).Where(d => !d.Collectable).Sum(d => GoldOf(d.Item) is { } price ? d.Chance * d.Each * price : 0);
+        r.CatchGold = r.Products.Concat(r.Rare.Where(s => s.Locked.Length == 0).SelectMany(s => s.Extras)).Where(d => !d.Collectable)
+            .Sum(d => GoldOf(d.Item) is { } price ? d.Chance * d.Each * price : 0);
         r.SurveyGold = r.SurveyFinds.Sum(d => GoldOf(d.Item) is { } price ? d.Chance * d.Each * price : 0);
         return r;
     }
 
-    // What a survey can bring, an hour of it by the surveys of an hour where those are counted. Not doubled: the window
-    // does not know whether the doubling chance reaches a survey (said in the tooltip).
+    // What a survey can bring, an hour of it by the surveys of an hour where those are counted (not while SurveyFindsRule
+    // is not settled). Not doubled: the window does not know whether the doubling chance reaches a survey.
     static IEnumerable<Drop> SurveyDrops(HuntingActionStats stats, AnimalRates r, double? catches)
     {
         double? surveys = catches * r.SurveysPerCatch;

@@ -81,17 +81,23 @@ public partial class HuntingRatesMod : IMod
     // Where the window was put when it opened without a place of the player's (FirstPlace), or null.
     Vector2? _firstPlace;
 
-    // What the list reads from the page's own cards, kept per character: how the page draws an animal not discovered yet
-    // (its name and picture as the card shows them), the range the page writes each animal's XP in (the multipliers its
-    // XP view is bound with), and the picture the page shows for a spider while the game's spider setting is on. Read
-    // while the page shows the cards (the animals of the location it shows); _looksOff once a member is gone.
+    // What the list reads from the page's own cards, kept per character, for as long as the window's mod runs: how the page
+    // draws an animal not discovered yet (its name and picture as the card shows them), the colour every card draws its
+    // picture in (an animal never trapped is a black shape on the page), the range each card writes its animal's XP in
+    // (the multipliers its XP view is bound with: the game keeps them in no member an animal has, only in the view,
+    // ExperienceStatsXPView.Bind), and the picture the page shows for a spider while the game's spider setting is on.
+    // Read while the page shows the cards (the animals of the location it shows); _looksOff once a member is gone.
     readonly Dictionary<ActiveHuntingAnimal, (string Name, Texture2D? Picture, Color Tint)> _looks = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<ActiveHuntingAnimal, (Color Tint, bool NeverTrapped)> _tints = new(ReferenceEqualityComparer.Instance);
     readonly Dictionary<ActiveHuntingAnimal, (double Low, double High)> _xpRanges = new(ReferenceEqualityComparer.Instance);
     // The most surveys a hunt takes as the page's panel writes it for an animal (its surveying range, high end over low
-    // end), kept per animal; the panel shows it only for the animal selected, so the last one read stands for the others,
-    // named in their tooltips (AnimalRates.SurveysReadFor).
+    // end), kept per animal and only ever used for that animal (review 6, fault 2). _panelAnimal: the animal selected at
+    // the last read, so a range is taken only once the same animal has stayed selected from one read to the next.
     readonly Dictionary<ActiveHuntingAnimal, double> _surveysMost = new(ReferenceEqualityComparer.Instance);
-    (double Most, string ReadFor)? _surveysLast;
+    ActiveHuntingAnimal? _panelAnimal;
+    // A trap's bonuses after a failed try could not be read once: said in one line, and no catch is counted with a trap
+    // that has them from then on (FailBonuses).
+    bool _failBonusesOff;
     // The tool as each card writes it (HuntingAnimalTrackingView.TrackingTool), for the tooltip (review 1, fault 10).
     readonly Dictionary<ActiveHuntingAnimal, string> _toolWords = new(ReferenceEqualityComparer.Instance);
     Texture2D? _spiderPicture;
@@ -442,6 +448,8 @@ public partial class HuntingRatesMod : IMod
                         _looks[animal] = (Native.NameOf(card)?.Text is { Length: > 0 } name ? name : _hiddenWord ?? NotFound,
                             icon.IsVisibleInTree() ? icon.Texture : null, icon.Modulate * icon.SelfModulate);
                     else _looks.Remove(animal);
+                    // The colour the card draws the picture in, with whether the animal had been trapped then (Look).
+                    _tints[animal] = (icon.Modulate * icon.SelfModulate, NeverTrapped(animal));
                     // The picture the game's own control shows for a spider with the setting on: the one this list shows.
                     if (animal.Animal.IsScarySpider && SpiderSetting() && icon.Texture != null && !ReferenceEquals(icon.Texture, animal.Animal.Icon))
                         _spiderPicture = icon.Texture;
@@ -451,11 +459,16 @@ public partial class HuntingRatesMod : IMod
                 if (Native.XpViewOf(card) is { } xp) ReadXpRange(xp, animal);
                 if (Native.ToolOf(card)?.Text is { Length: > 0 } tool) _toolWords[animal] = StringUtils.StripBBCode(tool).Trim();
             }
-            if (Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() && _hunting!.Action.SelectedAnimal is { } selected)
+            ActiveHuntingAnimal? selected = _hunting!.Action.SelectedAnimal;
+            if (Native.TrackingView(_page!) is { } view && Native.Panel(view) is { } panel && panel.IsVisibleInTree() && selected != null)
             {
                 if (Native.XpViewOf(panel) is { } panelXp) ReadXpRange(panelXp, selected);
-                if (Native.SurveyOf(panel) is { } survey) ReadSurveyRange(survey, selected);
+                // Only once the same animal has stayed selected since the read before (half a second): the panel has been
+                // drawn for it by then. Its low end being this animal's survey time cannot tell animals apart, since all
+                // of them survey alike, so it only guards against a panel not filled in.
+                if (ReferenceEquals(selected, _panelAnimal) && Native.SurveyOf(panel) is { } survey) ReadSurveyRange(survey, selected);
             }
+            _panelAnimal = selected;
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
         {
@@ -465,20 +478,39 @@ public partial class HuntingRatesMod : IMod
         }
     }
 
-    // The panel's surveying range, kept for the animal it shows: only when its low end is that animal's time of a survey,
-    // so a panel not yet drawn for a newly selected animal is never taken for it.
+    // The panel's surveying range, kept for the animal it shows (ReadPage reads it only once that animal has stayed
+    // selected from one read to the next), when its low end is that animal's time of a survey and the range is whole.
     void ReadSurveyRange(GamesByMalcs.Melvor2.StatDisplays.IntervalRangeDisplay survey, ActiveHuntingAnimal animal)
     {
         double low = survey.MinSeconds, high = survey.MaxSeconds, one = animal.Stats.SurveyInterval.Value / 1000;
         if (!double.IsFinite(low) || !double.IsFinite(high) || low <= 0.01 || high < low || Math.Abs(low - one) > 0.005) return;
         _surveysMost[animal] = high / low;
-        // Named as the list names it, so that an animal not discovered yet is never named in another line's tooltip.
-        _surveysLast = (high / low, Look(animal).Name);
     }
 
-    // The most surveys a hunt takes for an animal: as the page wrote it for that animal, or else the last one it wrote.
-    (double Most, string ReadFor)? SurveysFor(ActiveHuntingAnimal animal) =>
-        _surveysMost.TryGetValue(animal, out double most) ? (most, "") : _surveysLast;
+    // The most surveys a hunt takes for an animal, as the page wrote it for that animal; null when it has not (review 6:
+    // another animal's never stands for it, and no member of the game's gives it).
+    double? SurveysFor(ActiveHuntingAnimal animal) => _surveysMost.TryGetValue(animal, out double most) ? most : null;
+
+    // Whether a trap has bonuses after a failed try (Native.FailTemplate, HasValues); when their values cannot be read, one
+    // line in the log (AGENTS.md rule 4) and null from then on for a trap that has such a template, which counts no catch
+    // with it. A trap without one is read as before.
+    bool? FailBonuses(Item trap)
+    {
+        if (Native.FailTemplate(trap) is not { } fail) return false;
+        if (_failBonusesOff) return null;
+        bool? has = Native.HasValues(fail);
+        if (has == null)
+        {
+            _failBonusesOff = true;
+            Report("A trap's bonuses after a failed try could not be read (the game was updated?): no catch is counted with a trap that has them.");
+        }
+        return has;
+    }
+
+    // An animal the journal counts no catch of (HuntingAnimalJournalEntry.TimesTrapped 0). The page's cards drew Green Butterfly
+    // and Wild Boar as black shapes in check-6, both discovered: the window's reading is that this is why, and the list draws
+    // such an animal so until the page has drawn its card (Look). The light check logs every card's colour beside it.
+    static bool NeverTrapped(ActiveHuntingAnimal animal) => animal.JournalEntry is { TimesTrapped: 0 };
 
     // The multipliers an XP view of the page is bound with, kept for the animal whose stats it shows.
     void ReadXpRange(GamesByMalcs.Melvor2.Components.Experience.ExperienceStatsXPView view, ActiveHuntingAnimal animal)
@@ -517,20 +549,25 @@ public partial class HuntingRatesMod : IMod
     // The name and picture a line shows, and the colour the picture is drawn in. An animal not discovered yet is named
     // and pictured as the page's own card draws it, once the page has shown that card; before, by the game's own word for
     // something not found yet (the journal's, AnimalSpeciesView.HiddenText) and no picture. A spider, while the game's
-    // spider setting is on, has the picture the page shows instead, or none: the list never shows a spider then.
+    // spider setting is on, has the picture the page shows instead, or none: the list never shows a spider then. A
+    // discovered animal's picture is drawn in the colour its card drew it in, as long as it has not been trapped since (a
+    // black shape for one never trapped); before the page has drawn its card, black while it has never been trapped
+    // (NeverTrapped), otherwise as it is.
     (string Name, Texture2D? Picture, Color Tint) Look(ActiveHuntingAnimal active)
     {
         if (active.JournalEntry?.IsDiscovered == false)
             return _looks.TryGetValue(active, out var seen) ? (seen.Name, Shown(seen.Picture), seen.Tint) : (_hiddenWord ?? NotFound, null, Colors.White);
         HuntingAnimal animal = active.Animal;
         Texture2D? picture = animal.IsScarySpider && SpiderSetting() ? Shown(_spiderPicture) : Shown(animal.Icon);
-        return (animal.DisplayName.Text, picture, Colors.White);
+        bool never = NeverTrapped(active);
+        Color tint = _tints.TryGetValue(active, out var drawn) && drawn.NeverTrapped == never ? drawn.Tint : never ? Colors.Black : Colors.White;
+        return (animal.DisplayName.Text, picture, tint);
     }
 
     // An animal's hour, with what the list reads from the page for it.
     AnimalRates ReadAnimal(ActiveHuntingAnimal animal) =>
-        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, SurveysFor(animal), InBank,
-            _hiddenWord ?? NotFound, HuntRuns());
+        AnimalRates.Read(animal, _hunting!, Look(animal), _xpRanges.TryGetValue(animal, out var range) ? range : null, SurveysFor(animal), FailBonuses,
+            InBank, _hiddenWord ?? NotFound, HuntRuns());
 
     // A hunt runs, by the one test the window and the development request share (AnimalRates.IsHunting).
     bool HuntRuns() => AnimalRates.IsHunting(_hunting!, _game);
@@ -936,7 +973,8 @@ public partial class HuntingRatesMod : IMod
         _looks.Clear();
         _xpRanges.Clear();
         _surveysMost.Clear();
-        _surveysLast = null;
+        _panelAnimal = null;
+        _tints.Clear();
         _toolWords.Clear();
         _spiderPicture = null;
     }
