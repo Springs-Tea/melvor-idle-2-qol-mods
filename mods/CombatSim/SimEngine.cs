@@ -290,7 +290,7 @@ sealed class SimEngine
             using (var stream = new MemoryStream(save)) LoadState(stream, sim);
             // The fight's own dice, or another key's kept in step (Find upgrades: the setup as it is; Compare: the fight's,
             // the same for A and B).
-            string diceKey = options.Dice ?? result.Key;
+            string diceKey = options.FightDice(result.Target);
             SimDice.Set(sim, diceKey, _log);
             step = options.Dice != null ? SimDice.Keep(sim, diceKey, _log) : null;
 #if DEVTOOLS
@@ -369,7 +369,7 @@ sealed class SimEngine
     {
         try
         {
-            string dice = options.Dice ?? result.Key;
+            string dice = options.FightDice(result.Target);
             var mine = new Paired(result, options.Side!, dice, step is { Off: false } ? parts : null)
             {
 #if DEVTOOLS

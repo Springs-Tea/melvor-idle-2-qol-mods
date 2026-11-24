@@ -121,9 +121,7 @@ sealed class UpgradeSearch(SimTarget target, SimState state, SimOptions options)
     /// The setup on the left when it was pressed, as it is: what every item is put on top of. Named with the stance chosen in
     /// Fights (issue #51), which every item is fought in too.
     /// </summary>
-    public readonly string SetupKey = state.SetupKey, SetupLabel = state.SetupName, LoadoutId = state.LoadoutId, SpellId = state.SpellId;
-    public readonly string? StanceId = state.ChosenStance?.Id;
-    readonly Dictionary<string, string> _overrides = new(state.Overrides);
+    public readonly string SetupKey = state.SetupKey, SetupLabel = state.SetupName;
     public readonly bool BestMode = state.BestMode;
     public readonly SimOptions Options = options;
     public readonly List<UpgradeTry> Tries = new();
@@ -177,10 +175,8 @@ sealed class UpgradeSearch(SimTarget target, SimState state, SimOptions options)
     public void Publish() => Lines = Tries.Where(t => t.Tried && t.Result != null)
         .Concat(Running ? Enumerable.Empty<UpgradeTry>() : Tries.Where(t => !t.Tried)).Select(t => t.Line).ToList();
 
-    /// <summary>The setup on the left is still the one the items were put on (its key, without making it).</summary>
-    public bool Matches(SimState state) => state.LoadoutId == LoadoutId && state.SpellId == SpellId && state.ChosenStance?.Id == StanceId
-                                           && state.Overrides.Count == _overrides.Count
-                                           && state.Overrides.All(o => _overrides.TryGetValue(o.Key, out string? v) && v == o.Value);
+    /// <summary>The items and stance on the left are still those the search used.</summary>
+    public bool Matches(SimState state) => SetupKey == state.SetupKey;
 
 #if DEVTOOLS
     // Development: the setup as it is twice more. "Again" goes on as an item does, its own piece of a slot put on again by
@@ -366,11 +362,12 @@ public partial class CombatSimMod : IUpgradeLookup
                 GearSet with = _gearWorn.Copy();
                 SimGear.Put(with, target, item, 0, _ctx.Log);
                 Dictionary<string, string> overrides = SimGear.Overrides(_gearLoadout, with, _gearSlots);
-                string key = _state.KeyWith(overrides);
+                var shown = with.OwnItems();
+                string key = _state.KeyWith(SimState.CodeOf(shown));
                 if (!setups.Add(key)) { skipped++; continue; }
                 t.SetupKey = key;
                 t.Overrides = overrides;
-                t.Shown = with.OwnItems();
+                t.Shown = shown;
                 t.InPlaceOf = InPlaceOf(_gearWorn, with, target.Id, id => items.TryGetObjectById(id, out Item? i) ? i.DisplayName.GetPluralText(1) : id);
 #if DEVTOOLS
                 t.DevSlots = SimGear.Describe(with, _gearSlots);
@@ -503,6 +500,8 @@ public partial class CombatSimMod : IUpgradeLookup
     {
         // Also a scan that has ended but whose end has not been taken in yet (Pump).
         if (_game == null || _engine.Running || _run != null || _upgradesOff) return;
+        // The item list in the panel was for the setup shown when it opened.
+        if (!ReadyForSetup("Find upgrades")) return;
         UpgradePlan plan = SafePlan();
         if (_upgradesOff) { RefreshShown(); return; }
         UpgradePick pick = Pick(plan, target, _state.UpgradeChoice);
@@ -517,7 +516,7 @@ public partial class CombatSimMod : IUpgradeLookup
         // every item on the other: each item is paired with it, and the items are not paired with each other.
         SimOptions options = RunOptions();
         options.Sure = 0;
-        options.Dice = SimResult.MakeKey(options.SetupKey, target.Key);
+        options.Dice = options.FightDice(target);
         options.Side = SimOptions.SideNow;
         options.StatusName = UpgradeSearch.Status;
         var search = new UpgradeSearch(target, _state, options) { Chosen = ChoiceWords(pick, _state.UpgradeChoice) };
@@ -538,6 +537,7 @@ public partial class CombatSimMod : IUpgradeLookup
         DevTwinJobs(search, jobs, pick);
 #endif
         ReadItemSources();
+        _state.EquipmentNotice = "";
         _state.Message = "";
         if (!_engine.Start(_game, jobs, UpgradeSearch.Workers, out string error))
         {

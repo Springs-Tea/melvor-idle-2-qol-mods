@@ -41,6 +41,13 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     casts spells, choose which one to fight with. A two-handed weapon fills both hands, as on
     the game's equipment screen: an item picked for the Offhand takes it off, and taking it
     off empties both hands.
+  - The simulator follows your worn loadout, equipment and stance. If your choices still
+    differ, Setup shows what you wear and what you can keep. "Keep my choices" keeps a loadout
+    you picked and applies the items, stance and spell you chose where they still fit. Other
+    slots follow the loadout. "Use worn equipment" clears the choices on the left. With
+    Compare on, it also leaves Compare and clears the other setup. A scan already running
+    finishes with its starting setup and stays in History. If "Wear this setup first" needs to
+    change loadouts and the change takes too long, Setup asks you to check your equipment.
   - Stance, in Fights: the attack stances of the weapon in the slots, in the game's names and
     with its pictures. The first choice is the stance the game has selected for that weapon, as
     before: "As now: Accurate" with the loadout you wear and a weapon of the kind you hold, "As
@@ -76,7 +83,8 @@ a fraction of a second; a copy of the character takes about one. Nothing the cop
     column it is sorted by, and in Best for says where each setup does best. Details shows the
     fight with both setups side by side, each with its stance ("as the game has it" where both
     fought in the same one and only one chose it). Fight is for the setup on the left. A and B
-    last until the game is closed or another character is opened.
+    last until you choose "Use worn equipment" in Compare, close the game or open another
+    character.
   - Find upgrades, the button over "Wear this setup first", opens a panel where you choose
     which items to try against the selected fight, one slot at a time, on top of the setup on
     the left: by slot, by where they come from (Owned, Drops in the fight's area, Enemy drop,

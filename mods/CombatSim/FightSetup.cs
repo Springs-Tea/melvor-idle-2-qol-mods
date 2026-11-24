@@ -567,6 +567,7 @@ public partial class CombatSimMod
         if (shown.Loadout != null)
         {
             run.Acted = true;
+            if (!_cannotReadWorn) _fightSwap = (shown.Loadout.Id, target, Godot.Time.GetTicksMsec() + WaitMilliseconds);
             combat.Loadouts.SwapToLoadout(shown.Loadout);
             if (combat.Loadouts.CurrentLoadout?.Data.Id != shown.Loadout.Id)
                 // The items swapped in were changes to that loadout: on another one they would be another setup.
@@ -834,6 +835,9 @@ public partial class CombatSimMod
         return all.Count <= 1 ? string.Concat(all) : string.Join(", ", all.Take(all.Count - 1)) + " and " + all[^1];
     }
 
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_IsSwappingLoadout")]
+    static extern bool IsSwappingLoadout(EquipmentComponent equipment);
+
 #if DEVTOOLS
     // ---- development ---------------------------------------------------------------------------------------
 
@@ -842,10 +846,6 @@ public partial class CombatSimMod
     readonly List<Item> _devFillers = new();
     List<Item> _devWearPieces = new();
     (Dictionary<string, int> Worn, Dictionary<string, int>? Kept) _devWearBefore;
-
-    // Whether the game is still changing loadouts (a private member, read for the log only).
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_IsSwappingLoadout")]
-    static extern bool DevSwappingLoadout(EquipmentComponent equipment);
 
     // Every slot with its piece and quantity, the loadout, the spell, whether a fight is on, and the two counts of
     // every piece that is worn or part of the simulated setup. Before anything is done, also the plan, step by step,
@@ -881,7 +881,7 @@ public partial class CombatSimMod
         var sums = Sums(list);
         IInventory stock = Stock;
         string swapping;
-        try { swapping = DevSwappingLoadout(_combat!.Equipment).ToString(); }
+        try { swapping = IsSwappingLoadout(_combat!.Equipment).ToString(); }
         catch (Exception e) { swapping = "(cannot be read: " + e.GetType().Name + ")"; }
         _ctx.Log($"Dev: wear {when}: loadout {_combat!.Loadouts.CurrentLoadout?.Data.Id ?? "-"}, still changing loadouts {swapping}, fight on {_combat.Action.IsStarted}, " +
                  $"spell {_combat.MagicSpells.SelectedSpell?.Data.Id ?? "-"}; slots {string.Join(", ", slots)}; " +

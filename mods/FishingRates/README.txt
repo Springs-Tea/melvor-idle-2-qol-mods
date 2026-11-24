@@ -9,8 +9,7 @@ the pictures of its fish, and per hour:
   - Catches: fish and junk together.
   - XP: Fishing XP.
   - Gold: what the catches sell for.
-  - Bait: the bait selected on the Fishing page, taken from your bank per hour: one every
-    catch, the same number as Catches (only while a bait is selected).
+  - Bait: the bait selected on the Fishing page, used per hour (only while one is selected).
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. A spot you cannot fish yet is greyed, with the level it needs. The
@@ -24,16 +23,10 @@ the game's catch time. The XP of a catch is counted with its fraction (the Fishi
 XP tag shows a whole number). It is an estimate, not a promise. With a priority fish set at
 a spot, its fish and gold are left out rather than guessed.
 
-Every catch takes one bait from the bank, also when your chance to preserve bait comes up.
-Measured in the game, on 29 catches at Rapid Runs with Mackerel Bait: the bank lost one bait
-on every catch, the 3 on which the chance came up included. So that chance is not counted;
-the tooltip names it.
-
 Click a line to go to that spot: the Fishing page opens its location and selects the spot,
-as your own two clicks there would. A locked spot opens its location only. While you fish,
-a spot of the location you fish at is never selected: a click there only opens that
-location, when the page shows another, and the line's tooltip says so. Nothing is started
-or stopped, and the window stays open. A fish the game has no picture for yet shows none.
+as your own two clicks there would. A locked spot opens its location only. Nothing is
+started or stopped, and the window stays open. A fish the game has no picture for yet
+shows none.
 
 Drag the window to move it, drag its bottom right corner to resize it, fold it down to its
 title with the button beside the X. On another page it steps aside and comes back on the

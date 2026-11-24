@@ -129,7 +129,17 @@ public partial class CombatSimMod : IMod, ISimLookup
             }
             if (_game == null) return;
             if (!_tick.Due()) return;
+#if DEVTOOLS
+            if (_devChoice is { } choice)
+            {
+                if (choice.Probe.DevShooting()) return;
+                DevEndChoice();
+            }
+#endif
             Pump();
+            bool visible = _window is { IsAlive: true, Visible: true, Minimised: false };
+            if ((_fightSwap != null || visible) && !_state.Running && !_engine.Running && CheckWorn() && visible)
+                RebuildVisible();
 #if DEVTOOLS
             DevRequests();
             DevWearRequests();
@@ -148,6 +158,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         Game? now = GameAccess.CurrentGame;
         if (now is not { IsSaveLoaded: true }) now = null;
         if (ReferenceEquals(now, _game)) return;
+#if DEVTOOLS
+        DevEndChoice();
+#endif
         _engine.Cancel();
         _game = now;
         _combat = null;
@@ -164,6 +177,13 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.Running = false;
         _state.Current = "";
         _state.Overrides.Clear();
+        _lastWorn = null;
+        _fightSwap = null;
+        _pendingEquipment = null;
+        _cannotReadWorn = false;
+        _loadoutStances.Clear();
+        _loadoutSpells.Clear();
+        _state.EquipmentNotice = "";
         _state.ForgetCompare();
         ForgetUpgrades();   // SimUpgrades.cs: the items tried, and where items come from, were the character's before
         _state.LoadoutId = _state.WornLoadoutId = _state.SpellId = _state.StanceId = _state.Message = _state.FightReport = "";
@@ -172,11 +192,27 @@ public partial class CombatSimMod : IMod, ISimLookup
         _historyRead = false;
         _run = null;
 #if DEVTOOLS
+        if (_devWaitingForScan != null)
+        {
+            _devWaitingForScan = null;
+            _ctx.Log("Dev: also put back: nothing changed. The equipment request ended because the character changed.");
+        }
+        if (_devXpRun != null)
+        {
+            _devXpRun.Cancel();
+            _devXpRun = null;
+            _ctx.Log("Dev: equipment XP check stopped because the character changed.");
+        }
         _devCommands.Clear();
         _devShotAt = _devPickerAt = -1;
         // What was kept of the character before is not this one's to put back (the settings are the mod's own).
         _devSession = null;
         _devStarted.Clear();
+        if (_devSettings != null)
+        {
+            DevPutBack();
+            _ctx.Log("Dev: also put back: request settings restored. The character changed and the request ended.");
+        }
 #endif
         if (now == null) return;
         _combat = now.Entities.TryGetObjectById("MelvorBase:Combat", out GameEntity? c) ? c as CombatEntity : null;
@@ -231,8 +267,12 @@ public partial class CombatSimMod : IMod, ISimLookup
         _state.FightAreas.RemoveWhere(id => !_areaIcons.ContainsKey(id));
         _state.BestAreas.RemoveWhere(id => !_areaIcons.ContainsKey(id));
 
-        BuildGear();
-        DescribeOther();   // compare mode's other setup (SimCompare.cs)
+        bool followed = CheckWorn();
+        if (_fightSwap == null && (!followed || _cannotReadWorn))
+        {
+            BuildGear();
+            DescribeOther();   // compare mode's other setup (SimCompare.cs)
+        }
     }
 
     // The loadouts to choose from, and the slots of the chosen one with the player's changes on top.
@@ -304,18 +344,22 @@ public partial class CombatSimMod : IMod, ISimLookup
         // the weapon, when the setup is the loadout worn with a weapon of the kind worn. Another loadout keeps a stance of
         // its own, which cannot be read.
         _state.StanceNow = null;
-        if (weapon != null && _state.LoadoutId == worn && weapon.Id == WornWeaponKind()?.Id)
+        if (weapon != null && _state.LoadoutId == worn)
         {
             try
             {
-                if (SelectedStance(_combat, weapon) is { } now && _state.Stances.Any(s => s.Id == now.Id))
+                if (weapon.Id == WornWeaponKind()?.Id && SelectedStance(_combat, weapon) is { } now && _state.Stances.Any(s => s.Id == now.Id))
                     _state.StanceNow = (now.Id, now.DisplayName.Text);
             }
             catch (Exception e)
             {
-                if (_reported.Add("stance now")) _ctx.Log("The attack stance selected now could not be read (the game was updated?): " + e.Message);
+                if (!_cannotReadWorn && _reported.Add("stance now"))
+                    _ctx.Log("The attack stance selected now could not be read (the game was updated?): " + e.Message);
             }
         }
+
+        _state.DefaultStance = weapon != null && _state.Stances.Count > 1
+            ? _loadoutStances.GetValueOrDefault((_state.LoadoutId, weapon.Id))?.ChangedTo : null;
 
         // So do the spells: a weapon casts those of its elements, of the books that are unlocked.
         _state.Spells.Clear();
@@ -331,6 +375,8 @@ public partial class CombatSimMod : IMod, ISimLookup
                 }
         }
         catch (Exception e) { _ctx.Log("The spells could not be listed (the game was updated?): " + e.Message); }
+        var defaultSpell = _loadoutSpells.GetValueOrDefault(_state.LoadoutId);
+        _state.DefaultSpell = _state.Spells.Count > 0 ? defaultSpell?.ChangedTo : null;
         if (_state.Spells.All(s => s.Id != _state.SpellId)) _state.SpellId = "";
         ActiveMagicSpell? casting = _state.LoadoutId == worn && _state.Overrides.Count == 0 ? _combat.MagicSpells.SelectedSpell : null;
         _state.SpellNow = casting != null ? (casting.DisplayName.Text, casting.Icon) : null;
@@ -472,16 +518,21 @@ public partial class CombatSimMod : IMod, ISimLookup
         SaveChoices();
     }
 
-    void Build()
+    GameWindow CreateWindow(string title, bool minimised)
     {
-        _window?.Free();
         Vector2? at = _settings is { X: { } x, Y: { } y } ? new Vector2(x, y) : null;
         // The game's bar along the bottom stays in sight: the window is placed, and kept, above it.
         float footer = FooterHeight();
+        return new GameWindow(_ctx.Tree, title, Math.Min(_settings.Scale, LargestScale(footer)), at,
+            canMinimise: true, minimised: minimised, bottomInset: footer, foldedRight: _settings.FoldedRight);
+    }
+
+    void Build()
+    {
+        _window?.Free();
         _title = Title(_settings.Minimised);
         _refreshOnUnfold = false;
-        _window = new GameWindow(_ctx.Tree, _title, Math.Min(_settings.Scale, LargestScale(footer)), at,
-            canMinimise: true, minimised: _settings.Minimised, bottomInset: footer, foldedRight: _settings.FoldedRight);
+        _window = CreateWindow(_title, _settings.Minimised);
         _window.CloseRequested += Close;
         _window.MinimisedChanged += minimised =>
         {
@@ -516,7 +567,8 @@ public partial class CombatSimMod : IMod, ISimLookup
             Build();
             _window!.Visible = true;
         };
-        _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, () => { Build(); _window!.Visible = true; }, Fight, _history.Clear);
+        _view = new SimView(_window, _state, this, Simulate, _engine.Cancel, SaveChoices, BuildGear, RebuildVisible,
+            Fight, _history.Clear, _chooseGear ? ChooseGear : null, _wornDescription, _keepDescription);
         KeepTitleRoom();
 #if DEVTOOLS
         _view.DevLog = _ctx.Log;
@@ -663,7 +715,8 @@ public partial class CombatSimMod : IMod, ISimLookup
 
     void Simulate()
     {
-        if (_game == null) return;
+        if (_game == null || !ReadyForSetup()) return;
+        _state.EquipmentNotice = "";
         // First back to the current results: the XP column of an earlier scan may be of another skill (RunOptions).
         _state.Viewing = null;
         // The setup on the left; in compare mode A and B, fight by fight (SimCompare.cs). B's options, when there are two:
@@ -709,7 +762,7 @@ public partial class CombatSimMod : IMod, ISimLookup
     // line names it, and SimView.FightAs names the one chosen in the Stance box of Fights (issue #51).
     void Fight(SimTarget target)
     {
-        if (_combat == null) return;
+        if (_combat == null || !ReadyForSetup("Fight")) return;
         // What the box put on first, when it was ticked and had something to do; null otherwise.
         WearOutcome? wore = null;
         try
@@ -757,6 +810,16 @@ public partial class CombatSimMod : IMod, ISimLookup
             _ctx.Log("Could not start the fight: " + e);
             if (wore != null) ShowWearReport(target, wore);   // what went on; the status line says the fight did not start
             _view?.Refresh();
+        }
+        finally
+        {
+            // A loadout swap can outlast the click. CheckWorn will accept its settled slots on the next poll,
+            // even with the window closed. Other equipment and stance changes can be read now.
+            if (_fightSwap == null && CheckWorn(fromFight: true) && _window is { IsAlive: true, Visible: true })
+            {
+                if (_state.FightReport != "") _state.FightReportKey = SimView.ReportKey(_state, target);
+                RebuildVisible();
+            }
         }
     }
 
@@ -917,6 +980,8 @@ public partial class CombatSimMod : IMod, ISimLookup
         Scan? Viewing, string SortKey, bool SortDescending, (bool On, bool ShowingB, SimSetup Other) Compare)
     {
         public readonly List<string> Made = new(), PlayerMade = new();
+        public bool EquipmentOnly;
+        public double? ProbeSure;
     }
 
     // The runs a request started itself (DevSimulate), until their scan goes into History (DevKept).
@@ -940,6 +1005,9 @@ public partial class CombatSimMod : IMod, ISimLookup
         _ctx.Log($"Dev: history: scan {scan.Id} kept, {(request ? "the request's own" : "the player's own (not the request's)")}.");
     }
 
+    string[]? _devWaitingForScan;
+    long _devScanUntil;
+
     void DevRequests()
     {
         string request = Path.Combine(_ctx.Directory, "sim.request");
@@ -947,10 +1015,30 @@ public partial class CombatSimMod : IMod, ISimLookup
         // So is the game's pop-up of popup= measured and closed again (SizeProbe.cs), the picture of shot= taken, and the
         // window drawn twice before cuts= measures it (CutProbe.cs).
         if (DevStanceShooting() || DevPopupMeasuring() || DevShooting() || DevCutsWaiting()) return;
+        if (DevXpFinishing()) return;
         if (_devSettings != null && _devCommands.Count == 0 && _devShotAt == -1 && _devPickerAt == -1
-            && _run == null && !_state.Running && !_engine.Running) DevPutBack();
-        if (_devCommands.Count == 0 && File.Exists(request))
+            && (_devSession is { EquipmentOnly: true } || (_run == null && !_state.Running && !_engine.Running))) DevPutBack();
+        long now = (long)Time.GetTicksMsec();
+        if (_devCommands.Count == 0 && (_devWaitingForScan != null || File.Exists(request)))
         {
+            string[] lines = _devWaitingForScan ?? File.ReadAllLines(request).Select(l => l.Trim()).Where(l => l != "").ToArray();
+            bool checksEquipment = lines.Any(l => l.StartsWith("gearcheck=", StringComparison.Ordinal));
+            if (checksEquipment && (_state.Running || _engine.Running || _run != null || _upgradeRun != null))
+            {
+                if (_devWaitingForScan == null)
+                {
+                    File.Delete(request);
+                    _devWaitingForScan = lines;
+                    _devScanUntil = now + WaitMilliseconds;
+                    _ctx.Log("Dev: equipment XP check is waiting for the player's scan to finish.");
+                }
+                else if (now >= _devScanUntil)
+                {
+                    _devWaitingForScan = null;
+                    _ctx.Log("Dev: also put back: nothing changed. The equipment request timed out waiting for the player's scan.");
+                }
+                return;
+            }
             _devSettings ??= JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(_settings));
             if (_devSession == null)
             {
@@ -959,18 +1047,19 @@ public partial class CombatSimMod : IMod, ISimLookup
                 _devSession = new DevSession(_history.DevKeep(), new Dictionary<string, SimResult>(_state.Results), _state.Done, _state.Total,
                     _state.Message, _state.LoadoutId, new Dictionary<string, string>(_state.Overrides), _state.SpellId, _state.StanceId, _state.Selected,
                     _state.Pinned, _state.Viewing, _state.SortKey, _state.SortDescending, (_state.Compare, _state.ShowingB, _state.Other));
-                DevKeepUpgrades();   // SimUpgrades.cs
+                _devSession.EquipmentOnly = checksEquipment && lines.All(l => l.StartsWith("sure=", StringComparison.Ordinal) ||
+                    l.StartsWith("gearcheck=", StringComparison.Ordinal) || l == "wait=finished");
+                if (!_devSession.EquipmentOnly) DevKeepUpgrades();   // SimUpgrades.cs
             }
-            foreach (string line in File.ReadAllLines(request))
-                if (line.Trim() != "") _devCommands.Enqueue(line.Trim());
-            File.Delete(request);
+            if (_devWaitingForScan == null) File.Delete(request);
+            _devWaitingForScan = null;
+            foreach (string line in lines) _devCommands.Enqueue(line);
         }
-        long now = (long)Time.GetTicksMsec();
         while (_devCommands.TryPeek(out string? command))
         {
             if (command == "wait=progress" && _state.Running && _state.Done == 0) return;
             // Also the run of "twice=", which is not the window's.
-            if (command == "wait=finished" && (_state.Running || _engine.Running)) return;
+            if (command == "wait=finished" && _devSession is not { EquipmentOnly: true } && (_state.Running || _engine.Running)) return;
             // size=log: once the window has been drawn twice since it was last built (SizeProbe.cs).
             if (DevSizeWaits(command, now)) return;
             if (command == "wait=selected" && (DevSelectWaiting(now) || _devCommands.Count == 0)) return;
@@ -1089,6 +1178,8 @@ public partial class CombatSimMod : IMod, ISimLookup
     //   shot=<name>   shot-<name>.png and crop-<name>.png two drawn frames later, the window's state in shot-<name>.txt, and
     //                 what the picture shows read back from the window and from its pixels (the next lines wait for it)
     //   sure=<percent>   chooses that size in "Go on until" (0 is "Time is up"), as the box does; put back at the end
+    //   gearcheck=<sword|bow|choice|shown>|<duration index>[|<enemy name>]   isolated fights, with sure=0 and Unlimited.
+    //                 The lowest-level unlocked enemy stands in for an absent or unavailable name.
     //   twice=<part of an enemy's name, or first>   simulates that fight of the current setup twice side by side, from one
     //                 snapshot, outside the window; the log says whether the two came out the same (SimEngine.DevTwin)
     //   pick=<slot>=<item>, picker=<slot>, gear=<name>, hover=<slot>, raw=<slot>=<item>   the slots on the left and the
@@ -1144,6 +1235,7 @@ public partial class CombatSimMod : IMod, ISimLookup
                 if (command.StartsWith("sort=", StringComparison.Ordinal)) _view?.DevOpenPicker(command);
                 else if (command.StartsWith("shot=", StringComparison.Ordinal)) DevShot(command[5..]);
                 else if (command.StartsWith("sure=", StringComparison.Ordinal)) DevSure(command[5..]);
+                else if (command.StartsWith("gearcheck=", StringComparison.Ordinal)) DevXpCheck(command[10..]);
                 else if (command.StartsWith("twice=", StringComparison.Ordinal)) DevTwice(command[6..].Trim());
                 else if (command.StartsWith("compare=", StringComparison.Ordinal)) DevCompare(command[8..].Trim());
                 else if (command.StartsWith("side=", StringComparison.Ordinal)) DevSide(command[5..].Trim());
@@ -1166,7 +1258,7 @@ public partial class CombatSimMod : IMod, ISimLookup
 
     bool DevSelectWaiting(long now)
     {
-        if (_devSelectUntil < 0) (_devSelectUntil, _devSelectedFrame) = (now + 5000, -1);
+        if (_devSelectUntil < 0) (_devSelectUntil, _devSelectedFrame) = (now + WaitMilliseconds, -1);
         bool selected = _state.Selected != null && _view?.DevFirstRow is { ButtonPressed: true };
         if (selected && _devSelectedFrame < 0) _devSelectedFrame = Engine.GetFramesDrawn();
         bool drawn = selected && Engine.GetFramesDrawn() >= _devSelectedFrame + 2;
@@ -1226,6 +1318,11 @@ public partial class CombatSimMod : IMod, ISimLookup
         if (!double.TryParse(size, out double percent) || !SimState.SureSizes.Contains(percent))
         {
             _ctx.Log($"Dev: sure={size} is not one of the sizes {string.Join(", ", SimState.SureSizes)}.");
+            return;
+        }
+        if (_devSession is { EquipmentOnly: true } probe)
+        {
+            probe.ProbeSure = percent;   // The choices being photographed and the player's next scan stay as they are.
             return;
         }
         _state.Sure = percent;
@@ -1331,6 +1428,13 @@ public partial class CombatSimMod : IMod, ISimLookup
     {
         Settings before = _devSettings!;
         _devSettings = null;
+        if (_devSession is { EquipmentOnly: true } probe)
+        {
+            _devSession = null;
+            string history = _history.DevPutBack(probe.History, probe.Made);
+            _ctx.Log($"Dev: also put back: {history}. Probe choices discarded. The player's simulator setup stayed in place.");
+            return;
+        }
         _ctx.Log($"Dev: request done. It left the window at {_settings.X},{_settings.Y}, scale {_settings.Scale}, folded {_settings.Minimised}, " +
                  $"folded right {_settings.FoldedRight}; put back to {before.X},{before.Y}, scale {before.Scale}, folded {before.Minimised}, folded right {before.FoldedRight}.");
         if (_devSession is { } session)

@@ -31,16 +31,16 @@ One line per fishing spot the Fishing page shows you, starting with the pictures
 [*][b]Catches[/b]: fish and junk together.
 [*][b]XP[/b]: Fishing XP.
 [*][b]Gold[/b]: what the catches sell for.
-[*][b]Bait[/b]: the bait selected on the Fishing page, taken from your bank per hour, while one is selected: one every catch, the same number as Catches.
+[*][b]Bait[/b]: the bait selected on the Fishing page, used per hour, while one is selected.
 [/list]
 The best number of each column is in gold. Click a column's name to sort by it; the first click puts the best spots on top. The spot the Fishing page shows has a lit outline. A spot you cannot fish yet is greyed, with the level it needs.
-Click a line to go to that spot: the Fishing page opens its location and selects the spot, as your own two clicks there would. A locked spot opens its location only. While you fish, a spot of the location you fish at is never selected: a click there only opens that location, and the line's tooltip says so. Nothing is started or stopped, and the window stays open.
+Click a line to go to that spot: the Fishing page opens its location and selects the spot, as your own two clicks there would. A locked spot opens its location only. Nothing is started or stopped, and the window stays open.
 
 [size=4][b]In the tooltip of a line[/b][/size]
 The whole hour at that spot: the catch time, the XP per hour and per catch, every fish, junk and special item with its chance per catch and how many an hour brings, the gold and how much of it is special items, and the bait with how long what is in your bank lasts.
 
 [size=4][b]What is counted[/b][/size]
-The numbers start from the game's own values for each spot, the ones its list of spots shows, so whatever changes those changes the window too. A catch takes the middle of the game's catch time, every catch gives the spot's XP (with its fraction: the Fishing page's XP tag shows a whole number), special items come on top of a catch, and chances count as their long-run average. Every catch takes one bait from the bank, also when your chance to preserve bait comes up: measured in the game, on 29 catches the bank lost one bait every time, the 3 on which the chance came up included. So that chance is not counted; the tooltip names it.
+The numbers start from the game's own values for each spot, the ones its list of spots shows, so whatever changes those changes the window too. A catch takes the middle of the game's catch time, every catch gives the spot's XP (with its fraction: the Fishing page's XP tag shows a whole number), special items come on top of a catch, and chances count as their long-run average.
 
 [size=4][b]Good to know[/b][/size]
 [list]
