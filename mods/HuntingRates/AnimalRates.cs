@@ -168,8 +168,8 @@ sealed class AnimalRates
 
     /// <summary>
     /// How many of the sizes the journal records the mod keeps per animal, the last ones at the animal's level
-    /// (HuntingRatesMod.KeepSizes): the journal itself had none after a game start (check-11), though it had recorded 24
-    /// in the game before. 50 is about half an hour of hunting Wild Chicken (94.8 catches an hour), twice the 24 the size
+    /// (HuntingRatesMod.KeepSizes): the journal itself had none in check-11, after a game start and a level-up of the
+    /// animal, though it had recorded 24 in the game before; which of the two emptied it no watch has told apart. 50 is about half an hour of hunting Wild Chicken (94.8 catches an hour), twice the 24 the size
     /// rule was measured on. At Wild Chicken's spread of sizes (a standard deviation of 0.152 a catch), the average of 50
     /// lies within 0.043 of the true one (twice its standard error), under 4% of the XP, against 0.062 with 24. More
     /// would narrow it slowly (100 gives 0.030) and write a longer file on every catch.
@@ -182,9 +182,10 @@ sealed class AnimalRates
     /// the last of HuntingAnimalJournalEntry.RecentStatEntries), 24 of 24 Wild Chicken catches. At animal level 18
     /// those sizes averaged 1.11 (twice its standard error 0.062), so the middle of the card's range does not hold
     /// there; at levels 1 to 7 Yellowtail Bird's 6 catches averaged the middle (1.001, within 0.24). No member says how
-    /// a size is drawn at a level (GenerateStatEntry draws it), so the middle is counted only at those levels.
+    /// a size is drawn at a level (GenerateStatEntry draws it, and takes no level), so the middle is counted only at those
+    /// levels. Fits: the catches whose XP was the animal's XP times their size, of all those watched.
     /// </summary>
-    public static readonly (string Animal, int Level, int Catches, double Mean) XpLevelMeasured = ("Wild Chicken", 18, 24, 1.11);
+    public static readonly (string Animal, int Level, int Fits, int Catches, double Mean) XpLevelMeasured = ("Wild Chicken", 18, 24, 24, 1.11);
 
     /// <summary>
     /// What the items' rule (<see cref="KnownOutput"/>: a product's quantity times the catch's size, rounded down, at
@@ -331,9 +332,10 @@ sealed class AnimalRates
     /// <summary>
     /// The most surveys a hunt takes as the Hunting page writes it for this animal: the high end of its surveying range
     /// over the low end (HuntingSelectedRecipeContainer.SurveyingInterval, an IntervalRangeDisplay, read by
-    /// HuntingRatesMod.ReadSurveyRange while the page's panel shows this animal); null until it has. No member of the game's
-    /// gives it (ApiDump: HuntingActionStats, HuntingAnimal, HuntingLocation and ActiveHuntingLocation have only the time of
-    /// one survey), and another animal's is never taken for it (review 6).
+    /// HuntingRatesMod.ReadSurveyRange), as the panel writes it for this animal: while it shows the animal, or when the
+    /// window has the panel's own method write it for this animal (HuntingRatesMod.AskSurveys); null until then. No member
+    /// of the game's gives it (ApiDump: HuntingActionStats, HuntingAnimal, HuntingLocation, ActiveHuntingAnimal and
+    /// ActiveHuntingLocation have only the time of one survey), and another animal's is never taken for it (review 6).
     /// </summary>
     public double? SurveysMost { get; private set; }
     /// <summary>
@@ -441,6 +443,28 @@ sealed class AnimalRates
     /// </summary>
     public IReadOnlyList<double>? Shares { get; private set; }
     public ShareFrom SharesFrom { get; private set; }
+
+    /// <summary>What keeps <see cref="Shares"/> from being known for an animal, for the note and the tooltip.</summary>
+    public enum Missing
+    {
+        /// <summary>Nothing: the shares are known.</summary>
+        None,
+        /// <summary>The animal's level is not known.</summary>
+        Level,
+        /// <summary>
+        /// Above the levels the middle was measured at: the sizes of <see cref="FewestSizes"/> catches at its level, whether
+        /// the card's range has been read or not (the code review of turn 13, smaller point 1).
+        /// </summary>
+        Sizes,
+        /// <summary>At a level the middle was measured at: the card's XP range, not shown on the page yet.</summary>
+        Range,
+    }
+
+    /// <summary>What keeps the XP and the output's hour from being counted, by the rule of <see cref="Read"/>.</summary>
+    public Missing SharesMissing => Shares != null ? Missing.None
+        : JournalLevel is not { } level ? Missing.Level
+        : level > XpMiddleMeasuredOn.ToLevel || XpRange != null ? Missing.Sizes
+        : Missing.Range;
     /// <summary>
     /// How many sizes are kept for this animal at its level now (HuntingRatesMod.KeepSizes): the journal's records as they
     /// came, in this game and earlier ones; 0 when the animal's level is not known.

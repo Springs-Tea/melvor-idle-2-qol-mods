@@ -67,7 +67,7 @@ public partial class HuntingRatesMod : IMod
         public int? SizesLevel { get; set; }
         /// <summary>
         /// The sizes the journal recorded for the animal's catches at <see cref="SizesLevel"/>, oldest first, the last
-        /// AnimalRates.KeptSizes of them (KeepSizes). The journal itself keeps none over a game start.
+        /// AnimalRates.KeptSizes of them (KeepSizes), so that they are there from one game to the next.
         /// </summary>
         public List<double>? Sizes { get; set; }
     }
@@ -125,8 +125,11 @@ public partial class HuntingRatesMod : IMod
     readonly Dictionary<ActiveHuntingAnimal, (double Low, double High)> _xpRanges = new(ReferenceEqualityComparer.Instance);
     // The most surveys a hunt takes as the page's panel writes it for an animal (its surveying range, high end over low
     // end), kept per animal and only ever used for that animal (review 6, fault 2). _panelAnimal: the animal selected at
-    // the last read, and _panelSince the process frame of the first read that saw it selected (ReadPage).
+    // the last read, and _panelSince the process frame of the first read that saw it selected (ReadPage). _surveysAsked:
+    // the animals the panel was asked to write it for in this game (AskSurveys), each once; _askOff once that failed.
     readonly Dictionary<ActiveHuntingAnimal, double> _surveysMost = new(ReferenceEqualityComparer.Instance);
+    readonly HashSet<ActiveHuntingAnimal> _surveysAsked = new(ReferenceEqualityComparer.Instance);
+    bool _askOff;
     ActiveHuntingAnimal? _panelAnimal;
     long _panelSince;
     // This character's readings as remembered (Reading): from the file when the character is opened, and every reading
@@ -549,6 +552,8 @@ public partial class HuntingRatesMod : IMod
                 bool panelOfIt = panelXp == null || ReferenceEquals(Native.XpOf(panelXp), selected.Stats.Experience);
                 if (frame >= _panelSince + 2 && panelOfIt && Native.SurveyOf(panel) is { } survey) ReadSurveyRange(survey, selected);
             }
+            // Every other animal's surveys, as the same panel works them out (AskSurveys), shown or not.
+            if (Native.TrackingView(_page!) is { } tracking && Native.Panel(tracking) is { } own) AskSurveys(own);
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)
         {
@@ -569,6 +574,51 @@ public partial class HuntingRatesMod : IMod
         if (kept.SurveysMost == high / low) return;
         kept.SurveysMost = high / low;
         _readingsUnsaved = true;
+    }
+
+    // The surveys of a hunt for every animal the panel has not written them for in this game, each asked once, from the
+    // panel itself (review 13, point 1): no member of the game's keeps how many surveys a hunt takes, for any animal
+    // (Native.WriteSurveying), and the panel works it out from the animal it is given when it writes its surveying range.
+    // So the panel's own method writes the range for each such animal in turn, the range is read as ReadSurveyRange reads
+    // the selected animal's, and the method then writes it once more for the panel's own animal, in the same call: nothing
+    // is drawn in between, and a range that still differs from what it showed before is set back to it. Only while the
+    // panel shows its own animal's range (its low end that animal's time of a survey), so that there is a range to go back
+    // to. A member gone after an update ends it with one line; the surveys are then read only as the panel shows them.
+    void AskSurveys(HuntingSelectedRecipeContainer panel)
+    {
+        if (_askOff) return;
+        var asked = _hunting!.Action.Animals.Values.Where(a => a != null && !_surveysAsked.Contains(a) && !_surveysMost.ContainsKey(a)).ToList();
+        if (asked.Count == 0) return;
+        try
+        {
+            if (Native.PanelAnimal(panel) is not { } own || Native.SurveyOf(panel) is not { } survey) return;
+            double low = survey.MinSeconds, high = survey.MaxSeconds;
+            if (!double.IsFinite(low) || !double.IsFinite(high) || Math.Abs(low - own.Stats.SurveyInterval.Value / 1000) > 0.005) return;
+            try
+            {
+                foreach (ActiveHuntingAnimal animal in asked)
+                {
+                    _surveysAsked.Add(animal);
+                    Native.WriteSurveying(panel, animal);
+                    ReadSurveyRange(survey, animal);
+                }
+            }
+            finally
+            {
+                Native.WriteSurveying(panel, own);
+                if (survey.MinSeconds != low || survey.MaxSeconds != high)
+                {
+                    survey.MinSeconds = low;
+                    survey.MaxSeconds = high;
+                }
+            }
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or NullReferenceException)
+        {
+            _askOff = true;
+            Report("The Hunting page's panel could not write the surveys of a hunt for every animal (the game was updated?): " +
+                $"an animal's surveys are read only while the panel shows it. {e.Message}");
+        }
     }
 
     // The most surveys a hunt takes for an animal, as the page wrote it for that animal in this game, else as it last
@@ -610,9 +660,12 @@ public partial class HuntingRatesMod : IMod
     }
 
     // The size of every catch the journal records (HuntingAnimalJournalEntry.RecentStatEntries, each entry's
-    // StatPercentage), kept in the mod's own file with the animal's level (review 12, point 1): the journal had none
-    // after a game start, though it had recorded 24 in the game before (check-11). Every two seconds, so that no entry
-    // comes and goes between two looks (a catch takes far longer). An entry is new when it was not in the list at the
+    // StatPercentage), kept in the mod's own file with the animal's level (review 12, point 1): in check-11 the journal
+    // had none after a game start and a level-up of the animal, though it had recorded 24 in the game before; which of
+    // the two emptied it no watch has told apart. Every two seconds, so that no entry comes and goes between two looks (a
+    // catch takes far longer). The game raises HuntingAnimalJournalEntry.StatEntryAdded for each entry, but the level an
+    // entry was drawn at is told here by the level at the look before, and in which order the game raises a catch's
+    // level-up and its entry no watch has seen, so the looks stay. An entry is new when it was not in the list at the
     // last look. It is kept only when the animal's level is known and the same as at that look: a catch that brought a
     // level up may have been drawn at either level, so it is left out, and a level-up starts the kept sizes anew. The
     // entries already there at the first look in a game are not kept: their level is not known, and an earlier game of
@@ -1197,6 +1250,7 @@ public partial class HuntingRatesMod : IMod
         _looks.Clear();
         _xpRanges.Clear();
         _surveysMost.Clear();
+        _surveysAsked.Clear();
         _panelAnimal = null;
         _panelSince = 0;
         _tints.Clear();

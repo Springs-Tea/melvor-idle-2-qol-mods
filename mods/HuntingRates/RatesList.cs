@@ -52,7 +52,7 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
                 a => a.SecondsPerCatch, Words.Seconds, Better.Less),
             new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
             new("xp", "XP", Lines(["Hunting XP per hour: the animal's XP times each catch's size",
-                    AnimalRates.XpRule != null ? $"Measured: {xp.Catches} of {xp.Catches} catches of {xp.Animal}, sizes as the journal records them" : "",
+                    AnimalRates.XpRule != null ? $"Measured: {xp.Fits} of {xp.Catches} catches of {xp.Animal}, sizes as the journal records them" : "",
                     unknown]), 66,
                 a => a.XpPerHour, Words.Number, Better.More),
             new("gold", "Gold", Lines(["What the output of an hour sells for, rare extras too, no collectable",

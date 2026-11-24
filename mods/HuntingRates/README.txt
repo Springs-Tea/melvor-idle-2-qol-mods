@@ -8,17 +8,18 @@ its picture, its location, and:
   - Time: how long one catch takes, surveying, tracking and trapping, escapes included.
   - Catches: animals caught per hour.
   - XP: Hunting XP per hour.
-  - Gold: what the output of an hour sells for, rare extras too but no collectable.
+  - Gold: what the output of an hour sells for, rare extras too, no collectable.
   - Traps: traps taken from the bank per hour, one every try, preserved or not.
 
 How the steps of a hunt join into a catch is in no number of the game's: it was measured on
 a character's own hunting, on Yellowtail Bird and Wild Chicken. An escape sends you back to
-tracking with the animal's fewest steps more to go. A line is "-" until the Hunting page has
-written how many surveys a hunt of that animal takes: select the animal there once. A
-catch's XP and output follow its size, as the Hunting journal records it: the window counts
-by the sizes it recorded for your last catches at the animal's level, or at animal level 1
-to 7 by the middle of the range the card writes; above that, XP and Gold are "-" until 5
-sizes are recorded. The journal forgets them when the game starts; the window keeps them.
+tracking with the animal's fewest steps more to go. How many surveys a hunt takes, the
+window has the Hunting page's panel write for every animal, as it writes it for the animal
+selected there. A catch's XP and output follow its size, as the Hunting journal records it:
+the window counts by the sizes it recorded for your last catches at the animal's level, or
+at animal level 1 to 7 by the middle of the range the card writes (open the location once);
+above that, XP and Gold are "-" until 5 catches at the animal's level are recorded. The
+window keeps those sizes from one game to the next.
 The window reads what the page writes whenever the page is on the screen, window open or
 not, and keeps it for each of your characters in readings.json, so a line keeps its numbers
 from one game to the next; the tooltip says "as the Hunting page last wrote it" for a number

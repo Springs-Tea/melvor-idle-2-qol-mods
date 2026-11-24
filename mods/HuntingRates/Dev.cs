@@ -1269,7 +1269,7 @@ public partial class HuntingRatesMod
                 $"rare {R(s.RareSpeciesChance.Value)} (base {R(h.BaseRareSpeciesChance)}), doubling {R(s.DoublingChance?.Total.Value ?? double.NaN)}, " +
                 $"preservation {R(s.PreservationChance?.Total.Value ?? double.NaN)}, XP {R(s.Experience.XpToAdd.Value)} (base {h.BaseExperience}), insights {R(a.Active.Location?.Location?.BaseInsightsChance ?? double.NaN)}, " +
                 $"survey XP base {a.Active.Location?.Location?.BaseSurveyingExperience}, journal {h.BaseJournalTrackingExperience}/{h.BaseJournalTrappingExperience} at level {a.JournalLevel}, " +
-                $"the page's surveys 1 to {R(a.SurveysMost)}, base steps {h.BaseMinTrackingSteps}..{h.BaseMaxTrackingSteps}, " +
+                $"the page's surveys 1 to {R(a.SurveysMost)} ({(_surveysAsked.Contains(a.Active) ? "asked of the panel" : _surveysMost.ContainsKey(a.Active) ? "as the panel showed it" : a.SurveysRemembered ? "kept from an earlier game" : "not written")}{(_askOff ? ", asking OFF" : "")}), base steps {h.BaseMinTrackingSteps}..{h.BaseMaxTrackingSteps}, " +
                 $"its trap's bonuses after a failed try {a.TrapFailBonuses}, " +
                 $"products [{Items(s.Products)}], survey finds [{Items(s.SurveyingProducts)}], tool {h.Tool?.Id ?? "none"}, trap type {h.TrapType?.Id ?? "none"}, " +
                 $"its trap {a.Trap?.Id ?? "none"} ({a.TrapsInBank} in the bank), trapless {a.Trapless} (enabled by the game {h.EnableTrapless}), bait {h.PreferredBait?.Id ?? "none"} " +

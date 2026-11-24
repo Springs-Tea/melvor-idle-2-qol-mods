@@ -34,7 +34,9 @@ enum CardSight
 // member names and types from tools/ApiDump are used here. A member that is gone after a game update throws when it is
 // first used: for a click on a line that switches the clicks off with one line in the log (HuntingRatesMod.ClicksOff),
 // for what the list reads from the page (the look of an animal not discovered, the XP range, the surveying range) that
-// is given up with one line, elsewhere it stops the mod with one line. Nothing here presses or changes anything by itself; the page's own
+// is given up with one line, elsewhere it stops the mod with one line. Nothing here presses or changes anything by itself
+// (the panel's surveying range, written for another animal by WriteSurveying, is written back for its own animal in the
+// same call of HuntingRatesMod.AskSurveys, before anything is drawn); the page's own
 // controls a click on a line goes through (a location's button, an animal's card button, the hunt's view button) are
 // pressed only by HuntingRatesMod, by the rule of its ShowOnPage. The page's buttons that start or stop a hunt
 // (HuntingSelectedRecipeContainer.CreateRecipeButton, HuntingCurrentRecipeContainer.StopButton) and its trap, bait and
@@ -105,6 +107,16 @@ internal static class Native
     // takes ("Surveying: 3.84s - 11.52s"; HuntingSelectedRecipeContainer.SurveyingInterval, its MinSeconds and MaxSeconds).
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SurveyingInterval")]
     internal static extern IntervalRangeDisplay? SurveyOf(HuntingSelectedRecipeContainer panel);
+    // How the panel writes that range for an animal (HuntingSelectedRecipeContainer.UpdateSurveyingInterval, a private
+    // method that takes the animal), and the animal it was last filled in for (LastSelectedRecipe). No member of the
+    // game's keeps the most surveys of a hunt (ApiDump: HuntingActionStats, HuntingAnimal, HuntingLocation,
+    // ActiveHuntingAnimal and ActiveHuntingLocation hold only the time of one survey): the panel works it out when it
+    // writes. HuntingRatesMod.AskSurveys has it written for every animal in turn and then for its own animal again, as
+    // Recipe Rates has a game tooltip draw itself again (RecipeRatesMod.Redraw).
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "UpdateSurveyingInterval")]
+    internal static extern void WriteSurveying(HuntingSelectedRecipeContainer panel, ActiveHuntingAnimal active);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_LastSelectedRecipe")]
+    internal static extern ActiveHuntingAnimal? PanelAnimal(HuntingSelectedRecipeContainer panel);
 
     // What a trap's bonuses after a failed try hold (HuntingTrapCapability.FailBonuses, a ModifierTemplate whose values
     // are internal: ModifierTemplate._baseValues).
