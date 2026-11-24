@@ -28,6 +28,8 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
 
     /// <summary>
     /// The columns, left to right: the issue's (#73), with Woodcutting Rates' names and widths where they mean the same.
+    /// The issue's "Logs burnt" is "Input", the page's own word for what a recipe uses (its Input panel, its Input
+    /// Preservation Chance): a line burns lanterns as well as logs (the orchestrator's review 3).
     /// Mastery XP is not a column: Firemaking in this game keeps no mastery XP per action by the game's names (its
     /// Mastery Guild, FiremakingEntity.MasteryGuild, counts ranks, points and tasks). Every number rests on the arithmetic
     /// of a fire (LogRates.XpRule, LogsRule, ItemsRule, CoinsRule), which is Recipe Rates' for the same log: each tip
@@ -42,9 +44,9 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
     [
         new("time", "Time", "Seconds for one fire: the game's time to burn one log, with your bonuses", 58,
             t => t.HasTime ? t.Seconds : null, Words.Seconds, Better.Less),
-        new("logs", "Logs", Lines(["Logs burnt per hour: the logs that leave the bank",
-                "Every fire takes the log, kept at your preservation chance", By(LogRates.LogsRule),
-                "Logs of different kinds: none is the best for every player"]),
+        new("input", "Input", Lines(["Input per hour: what an hour of fires takes from the bank, logs or lanterns",
+                "Every fire takes its input, kept at your Input Preservation Chance", By(LogRates.LogsRule),
+                "Inputs of different kinds: none is the best for every player"]),
             66, t => t.LogsPerHour, Words.Number, Better.Neither),
         new("xp", "XP", Lines(["Firemaking XP per hour: the XP of the log's XP tag, on every fire", By(LogRates.XpRule)]),
             66, t => t.XpPerHour, Words.Number, Better.More),
@@ -245,14 +247,17 @@ sealed class RatesList
         return ordered;
     }
 
-    // The best number of every column among the logs that can be burnt, when there is a choice (RecipeRatesMod.Update).
+    // The best number of every column among the logs that can be burnt, when there is a choice (RecipeRatesMod.Update). A
+    // best of 0 is no best: nothing to want more of is never gold (the orchestrator's review 3: every Gold of 0 was gold).
     Dictionary<string, double> Best(IReadOnlyList<LogRates> logs)
     {
         var best = new Dictionary<string, double>();
         foreach (RateColumn column in _columns.Where(c => c.Better != Better.Neither))
         {
             var values = logs.Where(t => !t.Locked).Select(column.Value).OfType<double>().Where(double.IsFinite).ToList();
-            if (values.Count > 1) best[column.Key] = column.Better == Better.More ? values.Max() : values.Min();
+            if (values.Count < 2) continue;
+            double top = column.Better == Better.More ? values.Max() : values.Min();
+            if (Math.Abs(top) > 1e-9) best[column.Key] = top;
         }
         return best;
     }

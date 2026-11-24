@@ -76,8 +76,9 @@ sealed class LogRates
     /// </summary>
     public static readonly Settled? LogsRule = new(RuleSource.RecipeRates);
     /// <summary>
-    /// The items burning makes: every burn rolls each of the log's products at its chance (the crafting stats' Products, the
-    /// member Recipe Rates reads), as many as its quantity, and the doubling chance (DoublingChance) doubles them. What the doubling doubles is Recipe Rates' reading
+    /// The items burning makes: every burn rolls each of the log's products at its chance (FiremakingActionStats.
+    /// ProductChances, the game's own list), as many as its quantity, and the doubling chance (DoublingChance) doubles
+    /// them. What the doubling doubles is Recipe Rates' reading
     /// too: the products, not the coins.
     /// </summary>
     public static readonly Settled? ItemsRule = new(RuleSource.RecipeRates);
@@ -181,7 +182,7 @@ sealed class LogRates
     /// <summary>The bank was read for <see cref="SecondsOfStock"/>: without it the tooltip says nothing of the stock.</summary>
     public bool StockRead { get; private set; }
 
-    /// <summary>The items a burn can make (ICraftingActionStats.Products, as Recipe Rates reads them), with your bonuses.</summary>
+    /// <summary>The items a burn can make (FiremakingActionStats.ProductChances), with your bonuses.</summary>
     public List<Product> Products { get; } = new();
     /// <summary>The coins a burn gives (FiremakingActionStats.CurrencyReward), with your bonuses; null for none.</summary>
     public Currency? Coins { get; private set; }
@@ -326,11 +327,12 @@ sealed class LogRates
         r.StockRead = bank != null && r.HasTime;
         r.SecondsOfStock = r.StockRead ? StockSeconds(r, bank!) : null;
 
-        // What a burn makes: Recipe Rates' arithmetic on the member it reads (ICraftingActionStats.Products, which
-        // FiremakingActionStats keeps as an explicit member), skipping what it skips (nothing on average); the request
-        // holds it against FiremakingActionStats.ProductChances (the code review of turn 1, fault 9).
+        // What a burn makes: Recipe Rates' arithmetic, skipping what it skips (nothing on average), on the game's own list
+        // of a log's products, FiremakingActionStats.ProductChances (Ash, Charcoal, Soot, Cinder, Blessed Fragment, the lit
+        // lanterns in check-3). The member Recipe Rates reads, the crafting stats' Products, is empty for every Firemaking
+        // log (check-3, all 21 lines), so Recipe Rates lists none of these: the orchestrator's review 3.
         double? made = ItemsRule != null ? burns : null;
-        foreach (var node in ((ICraftingActionStats)stats).Products?.Values ?? [])
+        foreach (var node in stats.ProductChances?.Values ?? [])
             if (node?.Value is { Item: { } item } product)
             {
                 double chance = Fraction(product.Chance), each = product.Quantity * (1 + r.DoublingChance);

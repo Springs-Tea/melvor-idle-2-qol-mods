@@ -84,7 +84,7 @@ static class Words
         // What a burn uses: the logs that leave the bank, how long the bank's stock lasts, and what else it uses.
         lines.Add("");
         if (t.Log is { } log)
-            lines.Add(log.PerHour is { } logs ? $"Logs burnt: {Number(logs)} {log.Name} an hour" + (t.StockRead ? $"; {Stock(t)}." : ".") : $"Logs burnt: {log.Name}, {log.Quantity:N0} a fire.");
+            lines.Add(log.PerHour is { } logs ? $"Input: {Number(logs)} {log.Name} an hour" + (t.StockRead ? $"; {Stock(t)}." : ".") : $"Input: {log.Name}, {log.Quantity:N0} a fire.");
         foreach (LogRates.Cost other in t.Costs.Skip(1))
             lines.Add(other.PerHour is { } n ? $"Also used: {Number(n)} {other.Name} an hour." : $"Also used: {other.Name}, {other.Quantity:N0} a fire.");
         foreach (LogRates.CurrencyCost paid in t.CurrencyCosts)
@@ -115,7 +115,7 @@ static class Words
         }
         if (t.CostPerHour is { } cost)
             lines.Add(cost <= 0 ? "Cost: none, what is burnt sells for no gold."
-                : $"Cost: {Number(cost)} gold an hour, what the logs burnt would sell for" + (t.CurrencyCosts.Any(c => c.Gold) ? ", and the gold used." : "."));
+                : $"Cost: {Number(cost)} gold an hour, what the input would sell for" + (t.CurrencyCosts.Any(c => c.Gold) ? ", and the gold used." : "."));
 
         // The game's events that may come while this log burns: the window does not know how often the game rolls them.
         if (t.Events.Count > 0)

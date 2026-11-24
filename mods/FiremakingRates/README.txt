@@ -6,9 +6,10 @@ Firemaking page, a round button on the right edge of the screen opens a window w
 line per log you can see: its picture, its category, and:
 
   - Time: how long one fire takes, the game's time to burn one log.
-  - Logs: the logs burnt per hour, the ones your preservation chance keeps not counted.
+  - Input: what an hour of fires takes from the bank, logs or lanterns; what your Input
+    Preservation Chance keeps is not counted.
   - XP: Firemaking XP per hour.
-  - Cost: what the logs burnt in an hour would sell for, in gold.
+  - Cost: what the input of an hour would sell for, in gold.
   - Gold: what burning gives in an hour, in gold: its coins, and what its items sell for.
 
 The numbers are counted the way Recipe Rates counts the same log, so where Recipe Rates
@@ -18,14 +19,15 @@ their chances (the doubling chance doubles them) and gives its coins (not double
 has measured them on a character's burning yet. Chances count as their long-run average.
 It is an estimate, not a promise.
 
-The best XP, gold and time are gold (the most XP and gold, the least time; the logs and the
-cost have no best); click a column's name to sort by it, and again to turn the order
-around. A log you cannot burn yet is greyed, with the level it needs. The log the
-Firemaking page shows has a lit outline. Hover a line for the whole hour: the time of a
-fire, the XP per hour and per fire, the logs burnt and how long the bank's last, what else
-a fire uses, the coins and items a fire gives with their chances, the gold and the cost of
-the hour, and the game's Firemaking events that may come, which are not counted. The
-bonfire is not counted: the window does not know yet what a fire adds to it.
+The best XP, gold and time are gold (the most XP and gold, the least time; a best of 0 is
+not marked; the input and the cost have no best); click a column's name to sort by it,
+and again to turn the order around. A log you cannot burn yet is greyed, with the level
+it needs. The log the Firemaking page shows has a lit outline. Hover a line for the whole
+hour: the time of a fire, the XP per hour and per fire, the input and how long the bank's
+lasts, what else a fire uses, the coins and items a fire gives with their chances, the
+gold and the cost of the hour, and the game's Firemaking events that may come, which are
+not counted. The bonfire is not counted: the window does not know yet what a fire adds to
+it.
 
 While you are not burning, click a line to open that log on the Firemaking page: the page
 shows the log's category and selects the log, as your own clicks there would, and its list
@@ -36,11 +38,11 @@ nothing: on a log of the category the page shows it only scrolls the page's list
 When the page has no room for the button beside the window, the line's tooltip says so:
 drag the window aside.
 
-Until you move it, the window opens at the right side of the page, beside the page's list
-of logs. Drag the window to move it, drag its bottom right corner to resize it, fold it
-down to its title with the button beside the X. On another page it steps aside and comes
-back on the Firemaking page. Its place, size, fold and sort order are kept in
-settings.json in the mod's folder.
+Until you move it, the window opens beside the page's list of logs, where it leaves the
+selected log's Input and Output clear if it can. Drag the window to move it, drag its
+bottom right corner to resize it, fold it down to its title with the button beside the X.
+On another page it steps aside and comes back on the Firemaking page. Its place, size,
+fold and sort order are kept in settings.json in the mod's folder.
 
 INSTALL
   Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),

@@ -343,8 +343,9 @@ public partial class FiremakingRatesMod
 
     void DevEnd(string result)
     {
-        // A scroll of the window's own still waiting for drawn frames is dropped: nothing moves his list after the request.
-        _scrollTo = null;
+        // A scroll (and a selection of a log) of the window's own still waiting for drawn frames is dropped: nothing moves
+        // his list after the request.
+        _scrollTo = _selectTo = null;
         DevLog("Firemaking Rates check " + result);
         _devSteps.Clear();
         _devAt = 0;
@@ -1160,9 +1161,14 @@ public partial class FiremakingRatesMod
             if (categoryLeft || logLeft)
                 said.Add($"TO SELECT BY HAND on the Firemaking page: the category '{want.Category?.Data.DisplayName.Text ?? "-"}' and the log " +
                     $"'{want.Log?.Recipe.DisplayName.Text ?? "-"}' (it shows '{action.SelectedCategory?.Data.DisplayName.Text ?? "-"}' and '{action.SelectedRecipe?.Recipe.DisplayName.Text ?? "-"}')");
-            // The selection as the page draws it too, not only the members (Mining Rates' code review of turn 1, fault 2).
+            // The selection as the page draws it too, not only the members (Mining Rates' code review of turn 1, fault 2);
+            // and, while the player did not change it, as it was drawn when the request began: a put-back taken as the
+            // origin of a later press must not hide a drawing the request's own press left wrong (check-3: two category
+            // buttons drawn pressed were read back "as it was").
             string? look = DevLook();
             SayPage(look != null && look == want.Look, _devHis.Contains("category") ? "category" : "log", $"the page's selection drawn {want.Look ?? "(not read at the start)"}", look ?? "not found");
+            if (_devHis.Count == 0 && ReferenceEquals(want.Category, before.Category) && ReferenceEquals(want.Log, before.Log) && want.Look != before.Look)
+                Say(look != null && look == before.Look, $"the page's selection drawn as when the request began, {before.Look ?? "(not read)"}", look ?? "not found");
             int? scroll = DevScrollNow();
             SayPage(scroll == want.Scroll, "scroll", $"the page's list of logs scrolled to {want.Scroll?.ToString() ?? "-"}", scroll?.ToString() ?? "-");
             return true;
@@ -1305,7 +1311,7 @@ public partial class FiremakingRatesMod
 
     // The page's category button of a category (FiremakingActionView._categoryButtons), or null.
     Button? DevCategoryButton(ActiveFiremakingCategory category) =>
-        Native.ActionView(_page!) is { } view && DevNative.CategoryButtons(view) is { } buttons && buttons.TryGetValue(category, out AnimatedButton? b) && GodotObject.IsInstanceValid(b) ? b : null;
+        Native.CategoryButton(_page!, category);
 
     // The page's selection as the page draws it: its category buttons drawn pressed, the category its list shows, and the
     // selected log's name in its panel. Null when the page's parts are not there.
@@ -1314,7 +1320,7 @@ public partial class FiremakingRatesMod
         try
         {
             if (_page == null || !GodotObject.IsInstanceValid(_page) || Native.ActionView(_page) is not { } view) return null;
-            var pressed = (DevNative.CategoryButtons(view) ?? new Dictionary<ActiveFiremakingCategory, AnimatedButton>())
+            var pressed = (Native.CategoryButtons(view) ?? new Dictionary<ActiveFiremakingCategory, AnimatedButton>())
                 .Where(p => GodotObject.IsInstanceValid(p.Value) && p.Value.ButtonPressed).Select(p => p.Key.Data.Id);
             string list = Native.List(_page) is { } select && DevNative.ListCategoryName(select) is { } name ? name.Text : "-";
             return $"category buttons pressed [{string.Join(", ", pressed)}], the list's category '{list}', the selected log '{DevPanelName()}'";
@@ -1400,6 +1406,14 @@ public partial class FiremakingRatesMod
         // Where it opened: at the first place (FirstPlace) when the player had not placed it, or at his own.
         string opened = _firstPlace is { } first ? $"opened at the first place {first} (nothing saved by the player)"
             : _settings is { X: { } x, Y: { } y } ? $"at the player's own place ({x:0}, {y:0}) from settings.json" : "in the middle (no first place could be measured)";
+        // Which place the first place took, and why: its scores beside those of the first place tried (at the right side).
+        static string Score(PlaceScore? p) => p == null ? "-" : $"{p.At}: {p.Room} of {p.Buttons} buttons with room, Input and Output {p.MainClear} of {p.Main} clear, " +
+            $"the burning part and the bonfire {p.OtherClear} of {p.Other} clear{(p.Covered.Length > 0 ? $", covering [{p.Covered}]" : "")}";
+        if (_firstPlace != null)
+            DevLog($"room | {when} | the first place took {Score(_firstPlaceWon)}; the first tried, at the right side: {Score(_firstPlaceFirst)}" +
+                (_firstPlaceWon is { } won && won.Room == won.Buttons && won.MainClear == won.Main && won.OtherClear == won.Other ? " (everything clear)"
+                    : _firstPlaceWon is { } part && part.Room == part.Buttons && part.MainClear == part.Main ? " (every button and Input and Output clear; NOT ALL OF THE REST)"
+                    : "  NO PLACE KEEPS EVERY BUTTON AND THE INPUT AND OUTPUT CLEAR"));
         string strip = _opener?.GetParent() is Control buttons ? Native.Drawn(buttons).ToString() : "not found";
         DevLog($"room | {when} | the window at {Cover()?.ToString() ?? "none, not on the screen"}, from its frame {(_window is { IsAlive: true } w ? w.Root.GetGlobalRect().ToString() : "-")} " +
             $"at {(_window is { IsAlive: true } s ? s.Style.Scale.ToString("0.##") : "-")}, {opened}; the strip of round buttons at {strip}; the first button shown: {places}");
@@ -1425,7 +1439,7 @@ public partial class FiremakingRatesMod
     // cannot move the list after the put-back (fault 10). The scroll is put back on its own afterwards (DevScrollBack).
     string DevSelectionBack()
     {
-        _scrollTo = null;
+        _scrollTo = _selectTo = null;
         if (_devOrigin is not { } origin || !DevOwnsAny) return "nothing of the request's is left on the page";
         if (_page == null || !GodotObject.IsInstanceValid(_page)) return "the Firemaking page is gone: its selection and scroll NOT AS IT WAS (not put back)";
         var action = _firemaking!.Action;
@@ -1454,8 +1468,17 @@ public partial class FiremakingRatesMod
         {
             if (CategoryWrong())
             {
-                action.SelectCategory(origin.Category!);
-                calls.Add($"SelectCategory({Id(origin.Category)}): now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}");
+                // Through the page's own button of the category, as the click opens one (CategoryPress), so that the page
+                // draws its buttons right (the orchestrator's review 3); its member only when the page has no button that
+                // can be pressed or it did not take, said, since the page then may draw two buttons pressed.
+                if (Native.CategoryButton(_page!, origin.Category!) is { } button && CanPress(button) && CategoryPress(button, origin.Category!))
+                    calls.Add($"the page's own button of {Id(origin.Category)} by its signal: now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}");
+                else
+                {
+                    action.SelectCategory(origin.Category!);
+                    calls.Add($"SelectCategory({Id(origin.Category)}), the page's own button not pressable or not taking (ITS BUTTONS MAY BE DRAWN WRONG): " +
+                        $"now {Id(action.SelectedCategory)} / {Id(action.SelectedRecipe)}");
+                }
                 pressed = true;
             }
             if (LogWrong())
@@ -1678,8 +1701,7 @@ public partial class FiremakingRatesMod
                 $"raw: interval {R(s.Interval.Value)} ms (the recipe's {recipe.BaseInterval}), XP {R(s.Experience.XpToAdd.Value)} (the recipe's {recipe.BaseExperience}), " +
                 $"item cost [{string.Join(", ", (s.ItemCost?.Values ?? []).Select(n => $"{n?.Value?.Item?.Id} x{n?.Value?.Quantity}"))}], currency cost " +
                 $"[{string.Join(", ", (s.CurrencyCost?.Values ?? []).Select(n => $"{n?.Value?.Currency?.Id} x{n?.Value?.Quantity}"))}], product chances [{Items(s.ProductChances?.Values)}], " +
-                $"the crafting stats' products [{Items(((ICraftingActionStats)s).Products?.Values)}]" +
-                (Items(s.ProductChances?.Values) == Items(((ICraftingActionStats)s).Products?.Values) ? "" : "  DIFFER") +
+                $"the crafting stats' products (Recipe Rates reads them; empty for every log in check-3) [{Items(((ICraftingActionStats)s).Products?.Values)}]" +
                 $", currency reward {s.CurrencyReward?.Value?.Currency?.Id} x{s.CurrencyReward?.Value?.Quantity} (the recipe's {recipe.CurrencyReward?.Currency?.Id} x{recipe.CurrencyReward?.Quantity}), " +
                 $"doubling {R(s.DoublingChance?.Total.Value ?? double.NaN)}, preservation {R(s.PreservationChance?.Total.Value ?? double.NaN)}, " +
                 $"bonfire time {R(FiremakingBonfireComponent.GetBonfireTimeForRecipe(t.Active))} | counted: {R(t.Seconds)} s a fire, {R(t.FiresPerHour)} fires/h, " +
@@ -1736,11 +1758,15 @@ public partial class FiremakingRatesMod
                 }
                 Hold("Skill XP", read.GetValueOrDefault("Skill XP"), t.XpPerHour);
                 if (t.Coins != null) Hold(t.CoinsName, read.GetValueOrDefault(t.CoinsName), t.CoinsPerHour, "+");
-                foreach (LogRates.Product p in t.Products) Hold(p.Name, read.GetValueOrDefault(p.Name), p.PerHour, "+");
+                // Recipe Rates reads the crafting stats' Products, empty for Firemaking (check-3), so its block has none of
+                // the items ours counts from ProductChances: said as its own gap, not ours.
+                foreach (LogRates.Product p in t.Products)
+                    if (read.ContainsKey(p.Name)) Hold(p.Name, read[p.Name], p.PerHour, "+");
+                    else said.Add($"'{p.Name}' not in its block (Recipe Rates reads the empty Products: RECIPE RATES MISSES IT)");
                 foreach (LogRates.Cost c in t.Costs) Hold(c.Name, read.GetValueOrDefault(c.Name), c.PerHour is { } h ? -h : null);
-                if (t.ItemsGoldPerHour >= 1) Hold("Sell value", read.GetValueOrDefault("Sell value"), t.ItemsGoldPerHour);
-                string? every = block.Split('\n').FirstOrDefault(l => l.StartsWith("One every "));
-                said.Add(every == null ? "no 'One every'" : every == $"One every {t.Seconds:0.##}s" ? $"'{every}': the same" : $"'{every}', ours {t.Seconds:0.##}s  DIFFER");
+                if (t.ItemsGoldPerHour >= 1 && read.ContainsKey("Sell value")) Hold("Sell value", read["Sell value"], t.ItemsGoldPerHour);
+                string every = Regex.Match(block, @"One every [\d.,]+s").Value;
+                said.Add(every.Length == 0 ? "no 'One every'" : every == $"One every {t.Seconds:0.##}s" ? $"'{every}': the same" : $"'{every}', ours {t.Seconds:0.##}s  DIFFER");
                 said.Add($"its block '{block}'");
             }
             lines.Add($"{t.Active.Recipe.LocalId}: {string.Join("; ", said)}");
@@ -1818,7 +1844,7 @@ public partial class FiremakingRatesMod
             (order.SequenceEqual(oursOrder) ? "" : "  DIFFER"));
         // Every category button against the categories the window lists a log of.
         var listedCategories = new HashSet<object>(logs.Values.Select(t => (object)t.Active.Category!), ReferenceEqualityComparer.Instance);
-        DevLog("game | the page's category buttons: " + string.Join(" | ", (DevNative.CategoryButtons(view) ?? new Dictionary<ActiveFiremakingCategory, AnimatedButton>()).Select(p =>
+        DevLog("game | the page's category buttons: " + string.Join(" | ", (Native.CategoryButtons(view) ?? new Dictionary<ActiveFiremakingCategory, AnimatedButton>()).Select(p =>
         {
             bool shown = GodotObject.IsInstanceValid(p.Value) && p.Value.IsVisibleInTree(), ours = listedCategories.Contains(p.Key.Data);
             return $"{p.Key.Data.Id} '{p.Value.Text}' shown={shown}, disabled={p.Value.Disabled}, pressed={p.Value.ButtonPressed}, " +

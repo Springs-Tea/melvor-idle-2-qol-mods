@@ -14,7 +14,7 @@ PICTURES
 none yet
 
 SUMMARY (the short line under the name, at most 350 characters)
-Which log gives the most per hour? On the Firemaking page, a round button opens a window with one line per log: the time of a fire, and the logs burnt, Firemaking XP, cost and gold of an hour, the best in gold, sortable. Each line's tooltip has the whole hour with every item and its chance. A click opens the log on the page.
+Which log gives the most per hour? On the Firemaking page, a round button opens a window with one line per log: the time of a fire, and the input, Firemaking XP, cost and gold of an hour, the best in gold, sortable. Each line's tooltip has the whole hour with every item and its chance. A click opens the log on the page.
 
 DESCRIPTION (paste as is: it is in Nexus formatting)
 
@@ -28,16 +28,16 @@ On the Firemaking page, a round button with the Firemaking icon joins the others
 One line per log the Firemaking page shows you, starting with the log's picture and its category, and:
 [list]
 [*][b]Time[/b]: how long one fire takes, the game's time to burn one log.
-[*][b]Logs[/b]: the logs burnt per hour, the ones your preservation chance keeps not counted.
+[*][b]Input[/b]: what an hour of fires takes from the bank, logs or lanterns; what your Input Preservation Chance keeps is not counted.
 [*][b]XP[/b]: Firemaking XP per hour.
-[*][b]Cost[/b]: what the logs burnt in an hour would sell for, in gold.
+[*][b]Cost[/b]: what the input of an hour would sell for, in gold.
 [*][b]Gold[/b]: what burning gives in an hour, in gold: its coins, and what its items sell for.
 [/list]
-The best XP, gold and time are in gold: the most XP and gold, the least time; the logs and the cost have no best. Click a column's name to sort by it; the first click puts the best logs on top. The log the Firemaking page shows has a lit outline. A log you cannot burn yet is greyed, with the level it needs.
+The best XP, gold and time are in gold: the most XP and gold, the least time; a best of 0 is not marked, and the input and the cost have no best. Click a column's name to sort by it; the first click puts the best logs on top. The log the Firemaking page shows has a lit outline. A log you cannot burn yet is greyed, with the level it needs.
 While you are not burning, click a line to open that log on the Firemaking page: the page shows the log's category and selects the log, as your own clicks there would, and its list scrolls until the log's button is in sight beside the window. As after your own click, the selected log is then the one the page shows and its Start button would start. Nothing is started, and the window stays open. While you burn a log, a click selects nothing: on a log of the category the page shows, it only scrolls the page's list to it. When the page has no room for the button beside the window, the line's tooltip says so: drag the window aside.
 
 [size=4][b]In the tooltip of a line[/b][/size]
-The whole hour of burning that log: the time of a fire, the XP per hour and per fire, the logs burnt and how long the bank's last, what else a fire uses, the coins and items a fire gives with their chances, the gold and the cost of the hour, and the game's Firemaking events that may come, which are not counted.
+The whole hour of burning that log: the time of a fire, the XP per hour and per fire, the input and how long the bank's lasts, what else a fire uses, the coins and items a fire gives with their chances, the gold and the cost of the hour, and the game's Firemaking events that may come, which are not counted.
 
 [size=4][b]What is counted[/b][/size]
 The numbers start from the game's own values for each log, so whatever changes those changes the window too. They are counted the way Recipe Rates counts the same log, so where Recipe Rates writes a number under a log, this window has the same one: every fire gives the XP of the log's XP tag, takes the log (kept at your preservation chance), makes the log's items at their chances (the doubling chance doubles them) and gives its coins (not doubled). Nobody has measured these on a character's burning yet. Chances count as their long-run average. The bonfire is not counted: the window does not know yet what a fire adds to it.
@@ -49,7 +49,7 @@ The numbers start from the game's own values for each log, so whatever changes t
 [*]The game's Firemaking events and its rare events are not counted: the window does not know how often the game rolls them.
 [*]The window starts nothing. While you are not burning, a click on a line selects the log's category and the log on the Firemaking page, as your own clicks there would, and scrolls its list; while you burn, it selects nothing and only scrolls the list.
 [*]A log the game has no picture for yet shows none, rather than the game's grey stand-in.
-[*]Until you move it, the window opens at the right side of the page, beside the page's list of logs. Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
+[*]Until you move it, the window opens beside the page's list of logs, where it leaves the selected log's Input and Output clear if it can. Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
 [/list]
 
 [size=4][b]Install[/b][/size]

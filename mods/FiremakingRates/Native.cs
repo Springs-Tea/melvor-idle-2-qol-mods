@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using GamesByMalcs.Melvor2.Components.CraftingAction;
 using GamesByMalcs.Melvor2.Components.Experience;
 using GamesByMalcs.Melvor2.Conditions;
+using GamesByMalcs.Melvor2.CustomControls;
 using GamesByMalcs.Melvor2.Data.Recipes;
 using GamesByMalcs.Melvor2.Entities.Firemaking;
 using GamesByMalcs.Melvor2.Utils;
@@ -52,12 +53,35 @@ internal static class Native
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Buttons")]
     static extern Dictionary<IActiveCraftingRecipe, CraftingRecipeButton>? Buttons(RecipeSubcategoryView view);
 
-    // Where a click shows its result besides the list: the part with the selected log (its name, its time, the page's
-    // burning label and Start button), found as what the part with the logs holds besides its category buttons
-    // (FiremakingActionView.CategoryButtonContainer) and its list; and the bonfire's part (FiremakingActiveView.BonfireView).
-    // Read only for where the window first opens (FiremakingRatesMod.FirstPlace); never pressed.
-    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CategoryButtonContainer")]
-    static extern VBoxContainer? CategoryColumn(FiremakingActionView view);
+    // The page's own controls a click on a line goes through, as the player's own clicks there do (the orchestrator's
+    // review 3: SelectCategory alone left two category buttons drawn pressed): its button of each category
+    // (FiremakingActionView._categoryButtons, toggle buttons the player clicks to see a category), and the handlers of a
+    // log's button's click (BaseButtonContainer.Pressed, an event of its own, not a signal), which a player's click on
+    // the button raises.
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_categoryButtons")]
+    internal static extern ref Dictionary<ActiveFiremakingCategory, AnimatedButton>? CategoryButtons(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "Pressed")]
+    static extern ref Action? PressedHandlers(BaseButtonContainer button);
+
+    // Where a click shows its result besides the list, read only for where the window first opens
+    // (FiremakingRatesMod.FirstPlace), never pressed: the selected log's Input and Output (FiremakingActionView.Inputs,
+    // Outputs), the page's burning label above its Start button with the selected log's name and time under it
+    // (CurrentRecipe, SelectedLogName, LogIntervalLabel) and the chances' icons beside it (Doubling, Preservation), and
+    // the bonfire's part (FiremakingActiveView.BonfireView). The Start button itself is never named.
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Inputs")]
+    static extern Control? Inputs(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Outputs")]
+    static extern Control? Outputs(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CurrentRecipe")]
+    static extern Label? BurningLabel(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SelectedLogName")]
+    static extern Label? SelectedName(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_LogIntervalLabel")]
+    static extern Control? IntervalLabel(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Doubling")]
+    static extern Control? DoublingIcon(FiremakingActionView view);
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Preservation")]
+    static extern Control? PreservationIcon(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_BonfireView")]
     static extern FiremakingBonfireView? BonfireView(FiremakingActiveView page);
 
@@ -82,22 +106,52 @@ internal static class Native
     }
 
     /// <summary>
-    /// The parts of the page where a click shows its result, as drawn and shown now: the part with the selected log (the
-    /// children of the part with the logs that hold neither its category buttons nor its list) and the bonfire's part.
+    /// A part of the page where a click shows its result, as drawn now. Main: the selected log's Input and Output, which
+    /// the window keeps clear wherever the lines keep their room; otherwise the burning part (the page's burning label,
+    /// its Start button between it and the selected log's name and time) and the bonfire's, kept clear where it can.
     /// </summary>
-    internal static List<Rect2> Panels(FiremakingActiveView page)
+    internal sealed record Part(string Name, Rect2 At, bool Main);
+
+    /// <summary>The parts of the page where a click shows its result, those shown now (FiremakingRatesMod.FirstPlace).</summary>
+    internal static List<Part> Parts(FiremakingActiveView page)
     {
-        var parts = new List<Rect2>();
+        var parts = new List<Part>();
         if (ActionView(page) is { } view && GodotObject.IsInstanceValid(view))
         {
-            Control? list = RecipeSelect(view), column = CategoryColumn(view);
-            foreach (Control child in view.GetChildren().OfType<Control>())
-                if (child.IsVisibleInTree() && !Holds(child, list) && !Holds(child, column)) parts.Add(Drawn(child));
+            void Add(string name, Control? control, bool main)
+            {
+                if (control != null && GodotObject.IsInstanceValid(control) && control.IsVisibleInTree() && Drawn(control) is { } at && at.HasArea())
+                    parts.Add(new Part(name, at, main));
+            }
+            Add("Input", Inputs(view), true);
+            Add("Output", Outputs(view), true);
+            // The burning part: one box around the burning label above the Start button, the chances' icons, and the
+            // selected log's name and time under it.
+            Rect2? burning = null;
+            foreach (Control? c in new Control?[] { BurningLabel(view), DoublingIcon(view), PreservationIcon(view), SelectedName(view), IntervalLabel(view) })
+                if (c != null && GodotObject.IsInstanceValid(c) && c.IsVisibleInTree() && Drawn(c) is { } at && at.HasArea())
+                    burning = burning is { } so ? so.Merge(at) : at;
+            if (burning is { } box) parts.Add(new Part("the burning part", box, false));
         }
-        if (BonfireView(page) is { } bonfire && GodotObject.IsInstanceValid(bonfire) && bonfire.IsVisibleInTree()) parts.Add(Drawn(bonfire));
-        return parts.Where(r => r.HasArea()).ToList();
+        if (BonfireView(page) is { } bonfire && GodotObject.IsInstanceValid(bonfire) && bonfire.IsVisibleInTree() && Drawn(bonfire) is { } fire && fire.HasArea())
+            parts.Add(new Part("the bonfire", fire, false));
+        return parts;
+    }
 
-        static bool Holds(Control part, Control? inner) => inner != null && GodotObject.IsInstanceValid(inner) && (part == inner || part.IsAncestorOf(inner));
+    /// <summary>The page's own button of a category, or null when the page has none for it now.</summary>
+    internal static AnimatedButton? CategoryButton(FiremakingActiveView page, ActiveFiremakingCategory category) =>
+        ActionView(page) is { } view && GodotObject.IsInstanceValid(view) && CategoryButtons(view) is { } buttons &&
+        buttons.TryGetValue(category, out AnimatedButton? button) && GodotObject.IsInstanceValid(button) && !button.IsQueuedForDeletion() ? button : null;
+
+    /// <summary>
+    /// A log's button in the page's list pressed the way a player's click presses it: the handlers of its click, which
+    /// the button raises itself on a click (BaseButtonContainer.Pressed). False when it has none to call.
+    /// </summary>
+    internal static bool PressLogButton(CraftingRecipeButton button)
+    {
+        if (PressedHandlers(button) is not { } handlers) return false;
+        handlers();
+        return true;
     }
 
     /// <summary>The button of a log in the page's list, or null when the list does not have one for it now.</summary>

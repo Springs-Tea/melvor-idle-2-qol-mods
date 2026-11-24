@@ -37,9 +37,8 @@ static class DevNative
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_BonfireView")]
     internal static extern FiremakingBonfireView? BonfireView(FiremakingActiveView page);
 
-    // The part with the logs: its category buttons, and the selected log's panel as the page shows it.
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_categoryButtons")]
-    internal static extern ref Dictionary<ActiveFiremakingCategory, AnimatedButton>? CategoryButtons(FiremakingActionView view);
+    // The part with the logs: the selected log's panel as the page shows it (its category buttons are Native's, which the
+    // player build presses).
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CategoryButtonContainer")]
     internal static extern VBoxContainer? CategoryColumn(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Inputs")]

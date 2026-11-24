@@ -29,11 +29,11 @@ The button is only there on the Firemaking page. On any other page the window st
 Firemaking page, it is there again as you left it, open or folded.
 
 Until you move it, the window opens where the most of the logs' buttons in the page's list can be shown whole
-beside it, clear of the round buttons; of places as good, it takes one that leaves the selected log and the
-bonfire clear, and else the right side of the page. Drag the window to move it, drag its bottom right corner
-to resize it, or fold it down to its title with the button beside the X. It is never larger than fits above
-the game's bottom bar, and a list of more than 14 logs scrolls. Its place, size, fold and sort order are kept
-in `settings.json` in the mod's folder.
+beside it, clear of the round buttons; of places as good, it takes one that leaves the selected log's Input
+and Output clear, then its Start Burning and the bonfire, and else the right side of the page. Drag the window
+to move it, drag its bottom right corner to resize it, or fold it down to its title with the button beside the
+X. It is never larger than fits above the game's bottom bar, and a list of more than 14 logs scrolls. Its
+place, size, fold and sort order are kept in `settings.json` in the mod's folder.
 
 ## What the window shows
 
@@ -43,16 +43,16 @@ category when the page has more than one, and:
 | Column | What it is |
 | --- | --- |
 | **Time** | How long one fire takes: the game's time to burn one log. |
-| **Logs** | The logs burnt per hour: the logs that leave the bank, the ones your preservation chance keeps not counted. |
+| **Input** | What an hour of fires takes from the bank, logs or lanterns, in the page's own word for it: the ones your Input Preservation Chance keeps are not counted. |
 | **XP** | Firemaking XP per hour. |
-| **Cost** | What the logs burnt in an hour would sell for, in gold: what you give up by burning them instead of selling them. |
-| **Gold** | What burning gives in an hour, in gold: its coins, and what the items it makes sell for. |
+| **Cost** | What the input of an hour would sell for, in gold: what you give up by burning it instead of selling it. |
+| **Gold** | What burning gives in an hour, in gold: its coins, and what the items it makes sell for (ash, charcoal, a lit lantern...). |
 
 - **The numbers are Recipe Rates' for the same log.** Where Recipe Rates writes a number under a log, or in
   its XP tag's tooltip, this window has the same one. See [What is counted](#what-is-counted).
-- **The best XP, Gold and Time are gold**: the most XP and gold, the least time. Logs and Cost have no best:
-  you do not choose a log for them alone, since more logs an hour, or a dearer log, is as much a faster pace
-  or a better log as a greater cost.
+- **The best XP, Gold and Time are gold**: the most XP and gold, the least time; a best of 0 is not marked.
+  Input and Cost have no best: you do not choose a log for them alone, since more input an hour, or a dearer
+  one, is as much a faster pace or a better log as a greater cost.
 - **Click a column's name to sort by it.** The first click puts the best logs on top, the next turns the
   order around. "Log" goes back to the order of the page. The name the list is sorted by is gold, with the
   game's small arrow after it.
@@ -88,13 +88,13 @@ Put the pointer on a line for the whole hour of burning that log. The numbers be
 | **The log you are burning.** | Only on the log your fire burns. |
 | **One fire every 2.5s: 1,440 fires an hour.** | The game's time to burn one log, with your bonuses. |
 | **Firemaking XP: 14,400 an hour, 10 a fire.** | Per hour, and for one fire: the XP the log's XP tag shows. |
-| **Logs burnt: 1,368 Oak Logs an hour; the bank has enough for 3h 39m.** | The logs that leave the bank in an hour, and how long the bank's logs last at that pace, in whole minutes. "The bank has not enough for one fire" when it has too few to start one. |
+| **Input: 1,368 Oak Logs an hour; the bank has enough for 3h 39m.** | What leaves the bank in an hour, and how long the bank's stock of it lasts at that pace, in whole minutes. "The bank has not enough for one fire" when it has too few to start one. |
 | **Also used:** or **Also costs:** | What else a fire uses, if anything, per hour. |
 | **The preservation chance (5%) is counted in what is used.** | Only when you have one. Once the window has read it, the chance is named as the Firemaking page names it. |
 | **What a fire gives:**, and a line per thing | The coins a fire gives, and each item it can make, with its chance and how many an hour brings. |
 | **The doubling chance (10%) is counted in the items, not the coins.** | Only when you have one and the log makes items, named as the page names it once read. |
 | **Gold: 1,234 an hour, ...** | What burning gives in an hour, in gold. |
-| **Cost: 34,200 gold an hour, what the logs burnt would sell for.** | The Cost column's number (here for a log that sells for 25). |
+| **Cost: 34,200 gold an hour, what the input would sell for.** | The Cost column's number (here for a log that sells for 25). |
 | **May also come while a log burns, not counted:**, and a line per event | The game's Firemaking events that may come while this log burns, by the game's names, with what each gives. |
 | **Click to open this log on the Firemaking page. Burning is not started.** | What a click on the line does while you are not burning. On a locked log: "Click to open *its category* on the Firemaking page". Not there when a click changes nothing. |
 | **While you burn a log, a click only scrolls the Firemaking page's list to this log.** | Instead, while you burn, on a log of the category the page shows whose button is out of sight. |
@@ -114,9 +114,9 @@ bonus, so the list moves with them.
 | A fire burns one log in the log's time; the fires of an hour are an hour over it. | The game's value for the log; the hour is the mod's. |
 | Every fire gives the XP of the log's XP tag. | Recipe Rates' rule, which writes the same number under the log. Not measured yet. |
 | Every fire takes the log's cost, and the preservation chance keeps it. | Recipe Rates' rule. Not measured yet. |
-| Every fire makes each of the log's items at its chance, and the doubling chance doubles them. | Recipe Rates' rule. Not measured yet. |
+| Every fire makes each of the log's items at its chance, and the doubling chance doubles them. | Recipe Rates' arithmetic, on the game's own list of a log's items. Recipe Rates itself reads another list, which is empty for Firemaking, so it shows none of these items. Not measured yet. |
 | Every fire gives the log's coins, not doubled. | Recipe Rates' rule, which lists the coins apart from its "Sell value". Not measured yet. |
-| Gold is the gold coins and what the items sell for; Cost is what the logs burnt sell for. | The game's sell prices; the sums are the mod's. |
+| Gold is the gold coins and what the items sell for; Cost is what the input sells for. | The game's sell prices; the sums are the mod's. |
 | The bonfire is not counted. | The window does not know yet what a fire adds to it, nor the unit of the game's number for it, so it shows nothing of it. |
 | The Firemaking events are not counted. | The window does not know how often the game rolls them. |
 | Chances count as their long-run average. | The mod's. |
@@ -127,7 +127,7 @@ ranks, points and tasks).
 ## Questions it answers
 
 - **Which log do I burn for XP?** The gold number under XP.
-- **How many logs does an hour burn, and how long will my bank last?** The Logs column, and the "Logs burnt"
+- **How many logs does an hour burn, and how long will my bank last?** The Input column, and the "Input"
   line of the tooltip.
 - **Is burning worth more than selling?** The Cost column, beside the Gold column.
 - **What else does a fire bring?** The "What a fire gives" lines of the tooltip, each with its chance.
