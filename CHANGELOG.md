@@ -4,6 +4,12 @@ From 0.3.0 on all the mods share one version, the repository's. Before that each
 
 ## Unreleased
 
+- **Firemaking Rates**, a new mod: on the Firemaking page, a round button opens one line per log and lantern, with
+  its picture, its category, the time of a fire, and what an hour burns, gives in Firemaking XP (the same number the
+  page writes on each log), costs and brings in gold from the ash, charcoal and other items a fire gives. The best of
+  each column is gold, a click on a column's name sorts by it, the log the page shows is lit, a locked log is greyed
+  with the level it needs, and a click on a line opens that log on the page while nothing burns; while a log burns it
+  only scrolls to it, so the fire is never touched.
 - **Woodcutting Rates**, a new mod: on the Woodcutting page, a round button opens one line per tree, with its
   picture, its category, the time of one log, and logs, Woodcutting XP and gold per hour for your character: the hits
   a cut takes (a hit takes 1, a double hit 2) and the XP coming with a cut were measured in the game. The best of each

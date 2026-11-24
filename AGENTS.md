@@ -6,7 +6,7 @@ this page needs fixing.
 
 ## What this is
 
-Fourteen mods for the game Melvor Idle 2 (Godot 4, C#, .NET 10), loaded by the unofficial Melvor Mod Loader. A
+Fifteen mods for the game Melvor Idle 2 (Godot 4, C#, .NET 10), loaded by the unofficial Melvor Mod Loader. A
 mod is one DLL built from `mods/<Mod>`; the code in `mods/Shared` is compiled into every one of them. They
 show what the game already knows (rates, sources, counts, a combat simulation). They never give items or
 XP and never change the save.

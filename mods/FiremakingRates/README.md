@@ -1,6 +1,14 @@
-# Firemaking Rates
+<h1 align="center"><img src="../../docs/img/art/h-firemaking-rates.svg" alt="Firemaking Rates" width="720"></h1>
+
+<p align="center">
+  <a href="../../README.md"><img src="../../docs/img/art/btn-all-mods.svg" alt="All mods" height="46"></a>
+  &nbsp;
+  <a href="https://github.com/Springs-Tea/melvor-idle-2-qol-mods/releases"><img src="../../docs/img/art/btn-download.svg" alt="Download" height="46"></a>
+</p>
 
 > Which log gives me the most per hour, and how many logs does an hour burn?
+
+![Every log and lantern with its category, the time of a fire, and what an hour burns, gives in Firemaking XP, costs and brings in gold, sorted by XP](../../docs/img/firemaking-rates.png)
 
 Every log has its own time to burn, its own XP, and some give coins or items on the side. Recipe Rates already
 writes the XP per hour under each log on the Firemaking page; the rest of the hour, how many logs it uses up,
@@ -71,6 +79,9 @@ category when the page has more than one, and:
   only scrolls the page's list to the log's button; any other line does nothing. The line's tooltip says so.
 - **When the page's list has no room for a log's button beside the window**, the line's tooltip says so: drag
   the window aside, off the page's list.
+
+![After a click on Willow Log's line: the Firemaking page shows Willow Log with its Input, Output and Grants beside the window](../../docs/img/firemaking-rates-clicked.png)
+
 - **A log you cannot burn yet is greyed**, with the Firemaking level it needs (`Lv 40`), or `Locked` when it
   needs something else. Its numbers come from the game's own values for it like the others, and it is never
   marked best. In a list sorted by a number, the locked logs come last.
@@ -101,6 +112,8 @@ Put the pointer on a line for the whole hour of burning that log. The numbers be
 | **While you burn a log, a click selects nothing on the Firemaking page.** | Instead, while you burn, on the other lines but the lit one. |
 | **The Firemaking page has no room for this log's button beside this window: drag the window aside.** | On two lines, when no scroll of the page's list shows the log's whole button clear of the window. |
 | **The Firemaking page's list does not show this log's button now.** | When the page shows the log's category but not its button. |
+
+![The tooltip of Normal Log: the time of a fire, the XP, the logs an hour burns, what a fire gives, the doubling chance, the gold and the cost](../../docs/img/firemaking-rates-tooltip.png)
 
 ## What is counted
 
