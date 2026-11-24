@@ -1347,7 +1347,9 @@ public partial class HuntingRatesMod
             string xpWords = xp == null ? "no XP view" : $"XP label '{DevNative.XpLabel(xp).Text}' (value {R(DevNative.XpLabel(xp).Value)}), range shown {DevNative.XpRangeBox(xp).IsVisibleInTree()} " +
                 $"'{DevNative.XpMinLabel(xp).Text}' to '{DevNative.XpMaxLabel(xp).Text}' ({R(DevNative.XpMinLabel(xp).Value)} to {R(DevNative.XpMaxLabel(xp).Value)}), multipliers " +
                 $"{R(Native.XpLow(xp))}..{R(Native.XpHigh(xp))}, bound to the animal's stats {ReferenceEquals(Native.XpOf(xp), selected.Stats.Experience)}";
-            string xpSame = xp != null && ours.XpRange is { } range ? Same(DevNative.XpMinLabel(xp).Value, ours.XpEach * range.Low, 0.51) + Same(DevNative.XpMaxLabel(xp).Value, ours.XpEach * range.High, 0.51) : "";
+            // The panel's ends against ours as the tooltip writes them (Words.AsGameWritesXp, review 10, point 2).
+            string xpSame = xp != null && ours.XpRange is { } range ? Same(DevNative.XpMinLabel(xp).Value, Words.AsGameWritesXp(ours.XpEach * range.Low), 0.01) +
+                Same(DevNative.XpMaxLabel(xp).Value, Words.AsGameWritesXp(ours.XpEach * range.High), 0.01) : "";
             DevLog($"game | the panel of {selected.Animal.Id}: its name '{DevNative.PanelName(panel).Text}', tool '{DevNative.PanelTool(panel).Text}' | surveying {R(survey.MinSeconds)}..{R(survey.MaxSeconds)} s " +
                 $"'{DevLabels(survey)}' against ours {R(ours.SurveySeconds)}{Same(survey.MinSeconds, ours.SurveySeconds, 0.005)}, the most surveys " +
                 $"{(survey.MinSeconds > 0 ? R(Math.Round(survey.MaxSeconds / survey.MinSeconds, 4)) : "-")} against ours {R(ours.SurveysMost)}" +
@@ -1440,8 +1442,10 @@ public partial class HuntingRatesMod
     {
         static string Of(Dictionary<string, double> cards) => string.Join(", ", cards.Select(c => $"{c.Key} {R(c.Value)}"));
         bool apart = _devCardsBlack.Values.All(v => v == 0) && _devCardsColour.Values.All(v => v > 0);
+        bool unread = _devCardsBlack.Values.Concat(_devCardsColour.Values).Any(double.IsNaN);
         DevLog($"card | seen | drawn black [{Of(_devCardsBlack)}], drawn in colour [{Of(_devCardsColour)}], each with the journal's count of its catches | " +
-            (_devCardsBlack.Count == 0 || _devCardsColour.Count == 0 ? "NOT DECIDED (NOT BOTH SEEN)"
+            (unread ? "NOT DECIDED (A COUNT NOT READ)"
+                : _devCardsBlack.Count == 0 || _devCardsColour.Count == 0 ? "NOT DECIDED (NOT BOTH SEEN)"
                 : apart ? "THE COUNT TELLS THEM APART: 0 BLACK, MORE IN COLOUR" : "THE COUNT DOES NOT TELL THEM APART"));
     }
 
@@ -1461,9 +1465,12 @@ public partial class HuntingRatesMod
                 // (HuntingRatesMod.Look), and the journal's two counts of catches beside it (its entry's TimesTrapped,
                 // the turn 7 reading, and the count the card redraws on), as evidence of the page's rule.
                 Color cardTint = icon != null ? icon.Modulate * icon.SelfModulate : Colors.White;
+                // A picture the page hides (a locked card's) is not judged: the page shows nothing to compare (review
+                // 10).
+                bool shownOnCard = icon != null && icon.IsVisibleInTree();
                 string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" +
-                    (l.Animal.PictureTint.IsEqualApprox(cardTint) ? "" : "  CARD AND LINE DIFFER") : "NO LINE";
-                bool black = cardTint.R + cardTint.G + cardTint.B < 0.05f, pictured = icon != null && icon.IsVisibleInTree();
+                    (!shownOnCard ? " (the card's picture not shown: not compared)" : l.Animal.PictureTint.IsEqualApprox(cardTint) ? "" : "  CARD AND LINE DIFFER") : "NO LINE";
+                bool black = cardTint.R + cardTint.G + cardTint.B < 0.05f, pictured = shownOnCard;
                 double count = animal != null ? DevTrappedCount(animal) : double.NaN;
                 if (animal?.JournalEntry is { IsDiscovered: true } && pictured) (black ? _devCardsBlack : _devCardsColour)[animal.Animal.LocalId] = count;
                 DevLog($"card | {when} | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times " +

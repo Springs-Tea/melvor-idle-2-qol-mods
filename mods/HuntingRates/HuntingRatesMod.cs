@@ -130,8 +130,9 @@ public partial class HuntingRatesMod : IMod
     string? _rememberedOf;
     bool _readingsUnsaved;
     // A trap's bonuses after a failed try could not be read once: said in one line, and no catch is counted with a trap
-    // that has them from then on (FailBonuses).
-    bool _failBonusesOff;
+    // that has them from then on (FailBonuses). _countOff: the journal's count of catches could not be read once
+    // (TrappedCount).
+    bool _failBonusesOff, _countOff;
     // The tool as each card writes it (HuntingAnimalTrackingView.TrackingTool), for the tooltip (review 1, fault 10).
     readonly Dictionary<ActiveHuntingAnimal, string> _toolWords = new(ReferenceEqualityComparer.Instance);
     Texture2D? _spiderPicture;
@@ -683,14 +684,17 @@ public partial class HuntingRatesMod : IMod
     // for something not found yet (the journal's, AnimalSpeciesView.HiddenText) and no picture. A spider, while the
     // game's spider setting is on, has the picture the page shows instead, or none: the list never shows a spider then.
     // A discovered animal's picture is drawn in the colour its card drew it in, in this game or as the page last drew
-    // it for this character; before the page has drawn its card, as it is, as the window drew every picture before turn
-    // 7. The window never draws a shape of its own (review 9): which animals the page draws as a black shape is the
-    // card's own rule, which no member names. The card redraws on the journal's count of catches
-    // (HuntingAnimalTrackingView.AnimalTrappedValueChangedHandler, on HuntingJournalComponent.AnimalTrapped), but what
-    // it does with it is in its code; HuntingAnimalJournalEntry.TimesTrapped, the turn 7 reading, was 0 for Yellowtail
-    // Bird, Thornback Lizard and Bluetail Bird, which the page drew in colour (check-8). A colour kept from an earlier
-    // game may be out of date for an animal trapped for the first time since, until the page shows its card again; the
-    // light check logs every card's colour beside the journal's count (Dev: card), for a later turn to settle the rule.
+    // it for this character: a picture the page drew always wins. Before the page has drawn its picture, by the rule
+    // the page was measured to keep (review 10): a black shape while the journal's count of the animal's catches
+    // (HuntingJournalComponent.AnimalTrapped, the count the card redraws on: HuntingAnimalTrackingView
+    // .AnimalTrappedValueChangedHandler) is 0, in colour otherwise. check-9 drew Green Butterfly, Wild Boar, Scamp Toad
+    // and Swamp Snake black with 0 catches each, and Thornback Lizard (3), Bluetail Bird (1) and Yellowtail Bird (14)
+    // in colour: 7 of 7 cards. check-6's two black cards, Green Butterfly and Wild Boar, agree, and a locked card's
+    // hidden picture carried the same black with 0 (Green Toad in check-9).
+    // HuntingAnimalJournalEntry.TimesTrapped, the turn 7 reading, is not it: it was 0 for animals the page drew in
+    // colour (check-8). When the count cannot be read, the picture is drawn as it is, as before turn 7, with one line
+    // in the log (TrappedCount). A colour kept from an earlier game may be out of date for an animal trapped for the
+    // first time since, until the page shows its card again.
     (string Name, Texture2D? Picture, Color Tint) Look(ActiveHuntingAnimal active)
     {
         if (active.JournalEntry?.IsDiscovered == false)
@@ -699,8 +703,23 @@ public partial class HuntingRatesMod : IMod
         Texture2D? picture = animal.IsScarySpider && SpiderSetting() ? Shown(_spiderPicture) : Shown(animal.Icon);
         Color tint = _tints.TryGetValue(active, out Color drawn) ? drawn
             : Kept(active) is { Tint: [var r, var g, var b, var a] } && float.IsFinite(r + g + b + a) ? new Color(r, g, b, a)
-            : Colors.White;
+            : TrappedCount(active) == 0 ? Colors.Black : Colors.White;
         return (animal.DisplayName.Text, picture, tint);
+    }
+
+    // The journal's count of an animal's catches (HuntingJournalComponent.AnimalTrapped), or null when it cannot be
+    // read: said once in the log, and from then on every picture the page has not drawn is shown as it is.
+    double? TrappedCount(ActiveHuntingAnimal active)
+    {
+        if (_countOff) return null;
+        try
+        {
+            if (_hunting!.Journal?.AnimalTrapped is { } count) return count.GetValue(active.Animal);
+        }
+        catch (Exception e) when (e is MissingMemberException or TypeLoadException or KeyNotFoundException or NullReferenceException) { }
+        _countOff = true;
+        Report("The Hunting journal's count of catches could not be read (the game was updated?): an animal's picture is shown as it is until the Hunting page has drawn it.");
+        return null;
     }
 
     // An animal's hour, with what the list reads from the page for it.

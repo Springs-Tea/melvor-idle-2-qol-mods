@@ -87,8 +87,10 @@ animals): the animal's picture, its name, its location, and:
   writes it (by the game's own word for something not found until the page has shown its location), its
   location and what it needs, no picture until the page draws one, and no numbers.
 - **Each picture is drawn as the animal's card on the Hunting page last drew it**: where the card draws a
-  black shape, so does the line. Until the page has drawn a card, the line has the animal's picture as it is.
-  The colour is kept from game to game, and the page draws it again whenever it shows that card.
+  black shape, so does the line. Until the page has drawn its picture, the line follows the rule the page was
+  seen to keep on every card checked: a black shape for an animal the Hunting journal counts no catch of, in
+  colour once it counts one. The colour is kept from game to game, and the page draws it again whenever it
+  shows that card.
 - **The game's setting for players who do not want to see spiders** is followed: with it on, a spider's line
   shows the picture the game shows instead, or none, never the spider.
 
@@ -108,7 +110,7 @@ is not counted. A line of the tooltip that would be longer than the screen allow
 | **Trapping: 7.65s to 11.05s a try, 45% success; Trapping Reattempt Chance 6%.** | The time of a try of the trap and its chance, and the chance to try again, by the page's name for it. |
 | **An escape: back to tracking, with 4 more steps, 1.15 escapes a catch.** | Where an escape takes you, how many steps it adds, and how many escapes a catch takes. Where the window does not know the steps yet, the numbers its readings give. |
 | **A catch every 2m 27s on average, worked out by a rule measured in the game: 24.5 an hour.** | The time of a catch and the catches of an hour; where they cannot be counted, what the window does not know. |
-| **Hunting XP: 11,433 an hour, 467 a catch, the middle of 234 to 701.** | The XP of a catch, the middle of the range the animal's card writes, and of an hour. Before the page has ever shown the card, the game's XP before its range. Kept from an earlier game, it adds "as the Hunting page last wrote it". |
+| **Hunting XP: 11,433 an hour, 467 a catch, the middle of 233 to 700.** | The XP of a catch, the middle of the range the animal's card writes, and of an hour. The range and the XP of a catch are rounded down, as the card writes them ("+233 - 700"). Before the page has ever shown the card, the game's XP before its range. Kept from an earlier game, it adds "as the Hunting page last wrote it". |
 | **The middle of XP and output was measured on 6 catches of Yellowtail Bird, level 1 to 7.** | What the window's middles rest on: the animal, its level then, and the catches. The page says an animal's level raises the average, so at a higher level both can be low. |
 | **Journal XP: 504 an hour, 1 a tracking step and 10 a catch.** | The animal's journal XP, and of an hour. |
 | **Every catch, a chance of:** | The animal's output with the chance of each item, how many it brings, and how many an hour. |

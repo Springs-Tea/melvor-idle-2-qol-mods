@@ -317,16 +317,27 @@ static class Words
     // range the animal's card writes on the Hunting page, and comes with a catch only (XpRule, measured: lesson 55). The
     // game keeps that range in no member an animal has, only in the card's view, so before the page has ever shown the
     // card for this character there is the game's XP before it, and no hour. A range kept from an earlier game says so.
+    // The range, and the XP of a catch, are written as the game writes the range (AsGameWritesXp): Yellowtail Bird's
+    // 233.625 to 700.875 is "233 to 700", as its card's "+233 - 700" (review 10, point 2).
     static string XpLine(AnimalRates a)
     {
         if (a.XpRange is not { } range || a.XpMiddle is not { } middle)
             return $"Hunting XP: {Number(a.XpEach)} before the range its card writes, not shown on the page yet.";
-        string shown = NumberRange(a.XpEach * range.Low, a.XpEach * range.High);
+        string shown = NumberRange(AsGameWritesXp(a.XpEach * range.Low), AsGameWritesXp(a.XpEach * range.High));
         string kept = a.XpRangeRemembered ? ",\n  " + LastWrote : "";
         if (a.XpPerCatch is not { } xp) return $"Hunting XP: {shown}{(a.XpRangeRemembered ? kept : ", as the page writes it")}; when it is added is not known yet.";
-        return a.XpPerHour is { } hour ? $"Hunting XP: {Number(hour)} an hour, {Number(xp)} a catch, the middle of {shown}{kept}."
-            : $"Hunting XP: {Number(xp)} a catch, the middle of {shown}{kept}.";
+        string each = Number(AsGameWritesXp(xp));
+        return a.XpPerHour is { } hour ? $"Hunting XP: {Number(hour)} an hour, {each} a catch, the middle of {shown}{kept}."
+            : $"Hunting XP: {each} a catch, the middle of {shown}{kept}.";
     }
+
+    /// <summary>
+    /// An XP of a catch as the game writes one on an animal's card and panel (ExperienceStatsXPView): rounded down.
+    /// check-9's seven cards wrote both ends of their range so, 14 of 14 (Green Butterfly 91.875 to 275.625 is "+91 -
+    /// 275"); rounding to the nearest would have missed 7 of them. A hair is added first, so that 121 worked out as
+    /// 120.9999999 is still 121.
+    /// </summary>
+    public static double AsGameWritesXp(double xp) => Math.Floor(xp + 1e-9);
 
     // What backs a rule, in plain words: the number is always worked out by the mod, from the animal's own numbers by a
     // rule the game states or one measured on a character's hunting.

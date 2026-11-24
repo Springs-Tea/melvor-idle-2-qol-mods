@@ -32,7 +32,8 @@ species you have never trapped and a collectable you have never found are not na
 journal does. An animal you have not discovered yet gives nothing away: only its name as the
 page writes it, its location and what it needs. Each picture is drawn as the animal's card on
 the Hunting page last drew it, a black shape where the card draws one; until the page has
-drawn the card, as the picture is.
+drawn its picture, a black shape for an animal the journal counts no catch of, in colour
+once it counts one.
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. An animal you cannot hunt yet is greyed, with the level it needs.
