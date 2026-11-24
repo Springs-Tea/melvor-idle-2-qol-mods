@@ -8,6 +8,9 @@ using GamesByMalcs.Melvor2.Conditions;
 using GamesByMalcs.Melvor2.CustomControls;
 using GamesByMalcs.Melvor2.Data.Recipes;
 using GamesByMalcs.Melvor2.Entities.Firemaking;
+using GamesByMalcs.Melvor2.InfoIcons;
+using GamesByMalcs.Melvor2.InfoLabels;
+using GamesByMalcs.Melvor2.InfoTables;
 using GamesByMalcs.Melvor2.Utils;
 using Godot;
 
@@ -69,19 +72,19 @@ internal static class Native
     // (CurrentRecipe, SelectedLogName, LogIntervalLabel) and the chances' icons beside it (Doubling, Preservation), and
     // the bonfire's part (FiremakingActiveView.BonfireView). The Start button itself is never named.
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Inputs")]
-    static extern Control? Inputs(FiremakingActionView view);
+    static extern InputsContainer? Inputs(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Outputs")]
-    static extern Control? Outputs(FiremakingActionView view);
+    static extern OutputsContainer? Outputs(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_CurrentRecipe")]
     static extern Label? BurningLabel(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SelectedLogName")]
     static extern Label? SelectedName(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_LogIntervalLabel")]
-    static extern Control? IntervalLabel(FiremakingActionView view);
+    static extern DoubleFormattedLabel? IntervalLabel(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Doubling")]
-    static extern Control? DoublingIcon(FiremakingActionView view);
+    static extern DoublingIcon? DoublingIcon(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Preservation")]
-    static extern Control? PreservationIcon(FiremakingActionView view);
+    static extern PreservationIcon? PreservationIcon(FiremakingActionView view);
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_BonfireView")]
     static extern FiremakingBonfireView? BonfireView(FiremakingActiveView page);
 

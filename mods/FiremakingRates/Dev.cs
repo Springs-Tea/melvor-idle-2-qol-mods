@@ -487,6 +487,13 @@ public partial class FiremakingRatesMod
         if (_devSettle is not { } settle) return;
         long now = (long)Engine.GetProcessFrames();
         if (now < settle.Frame + SettleFrames || (_scrollTo != null && now < settle.Frame + ScrollWaitFrames)) return;
+        // The window's own scroll or log selection still waiting at the limit (drawing stopped, the game folded down): it is
+        // dropped, so it cannot land after this reading and be taken for a change of his (Firemaking's code review of turn 4).
+        if (_scrollTo != null || _selectTo != null)
+        {
+            DevLog("page | the window's own scroll or log selection had not come after " + ScrollWaitFrames + " frames: dropped");
+            _scrollTo = _selectTo = null;
+        }
         _devSettle = null;
         _devSettledTick = _devTick;
         if (_firemaking == null || _page == null || !GodotObject.IsInstanceValid(_page)) return;
@@ -1411,7 +1418,8 @@ public partial class FiremakingRatesMod
             $"the burning part and the bonfire {p.OtherClear} of {p.Other} clear{(p.Covered.Length > 0 ? $", covering [{p.Covered}]" : "")}";
         if (_firstPlace != null)
             DevLog($"room | {when} | the first place took {Score(_firstPlaceWon)}; the first tried, at the right side: {Score(_firstPlaceFirst)}" +
-                (_firstPlaceWon is { } won && won.Room == won.Buttons && won.MainClear == won.Main && won.OtherClear == won.Other ? " (everything clear)"
+                (_firstPlaceWon is { Main: 0, Other: 0 } ? "  NOT MEASURED: no part of the page beside the list was found"
+                    : _firstPlaceWon is { } won && won.Room == won.Buttons && won.MainClear == won.Main && won.OtherClear == won.Other ? " (everything clear)"
                     : _firstPlaceWon is { } part && part.Room == part.Buttons && part.MainClear == part.Main ? " (every button and Input and Output clear; NOT ALL OF THE REST)"
                     : "  NO PLACE KEEPS EVERY BUTTON AND THE INPUT AND OUTPUT CLEAR"));
         string strip = _opener?.GetParent() is Control buttons ? Native.Drawn(buttons).ToString() : "not found";
