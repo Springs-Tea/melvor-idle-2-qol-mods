@@ -86,10 +86,9 @@ animals): the animal's picture, its name, its location, and:
 - **An animal you have not discovered yet** gives nothing away: its line has its name as the Hunting page
   writes it (by the game's own word for something not found until the page has shown its location), its
   location and what it needs, no picture until the page draws one, and no numbers.
-- **An animal you have never trapped** is drawn as a black shape until the Hunting page has drawn its card.
-  That is the window's reading of the page: the cards of never-trapped animals it has been checked against so
-  far were black. Once the page has drawn the card, the line has the card's own colour, kept from game to
-  game.
+- **Each picture is drawn as the animal's card on the Hunting page last drew it**: where the card draws a
+  black shape, so does the line. Until the page has drawn a card, the line has the animal's picture as it is.
+  The colour is kept from game to game, and the page draws it again whenever it shows that card.
 - **The game's setting for players who do not want to see spiders** is followed: with it on, a spider's line
   shows the picture the game shows instead, or none, never the spider.
 

@@ -30,8 +30,9 @@ chance, what surveying finds, and what the animal's level adds to the average (t
 of XP and output was measured on 6 catches of Yellowtail Bird, level 1 to 7). A rare
 species you have never trapped and a collectable you have never found are not named, as the
 journal does. An animal you have not discovered yet gives nothing away: only its name as the
-page writes it, its location and what it needs. An animal you have never trapped is drawn as
-a black shape until the page has drawn its card, then in the card's own colour.
+page writes it, its location and what it needs. Each picture is drawn as the animal's card on
+the Hunting page last drew it, a black shape where the card draws one; until the page has
+drawn the card, as the picture is.
 
 The best number of each column is gold; click a column's name to sort by it, and again to
 turn the order around. An animal you cannot hunt yet is greyed, with the level it needs.

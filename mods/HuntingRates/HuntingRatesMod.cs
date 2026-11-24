@@ -61,12 +61,8 @@ public partial class HuntingRatesMod : IMod
         /// <summary>The range a catch's XP is written in, as multipliers of the XP of a catch (ReadXpRange).</summary>
         public double? XpLow { get; set; }
         public double? XpHigh { get; set; }
-        /// <summary>
-        /// The colour the card drew the picture in (red, green, blue, alpha), and whether the animal had been trapped
-        /// then.
-        /// </summary>
+        /// <summary>The colour the card drew its picture in (red, green, blue, alpha), as last drawn.</summary>
         public float[]? Tint { get; set; }
-        public bool NeverTrapped { get; set; }
     }
 
     sealed class Readings
@@ -112,14 +108,13 @@ public partial class HuntingRatesMod : IMod
 
     // What the list reads from the page's own cards in this game, for the character it was read for: how the page draws
     // an animal not discovered yet (its name and picture as the card shows them), the colour every card draws its
-    // picture in (the reading is that an animal never trapped is a black shape on the page: NeverTrapped), the range
-    // each card writes its animal's XP in (the multipliers its XP view is bound with: the game keeps them in no member
-    // an animal has, only in the view, ExperienceStatsXPView.Bind), and the picture the page shows for a spider while
-    // the game's spider setting is on. Read on every tick the page is on the screen, window open or not (the cards of
-    // the location it shows); _looksOff once a member is gone. The colours, the XP ranges and the surveys are also kept
-    // in _remembered.
+    // picture in (some cards draw a black shape: Look), the range each card writes its animal's XP in (the multipliers
+    // its XP view is bound with: the game keeps them in no member an animal has, only in the view,
+    // ExperienceStatsXPView.Bind), and the picture the page shows for a spider while the game's spider setting is on.
+    // Read on every tick the page is on the screen, window open or not (the cards of the location it shows); _looksOff
+    // once a member is gone. The colours, the XP ranges and the surveys are also kept in _remembered.
     readonly Dictionary<ActiveHuntingAnimal, (string Name, Texture2D? Picture, Color Tint)> _looks = new(ReferenceEqualityComparer.Instance);
-    readonly Dictionary<ActiveHuntingAnimal, (Color Tint, bool NeverTrapped)> _tints = new(ReferenceEqualityComparer.Instance);
+    readonly Dictionary<ActiveHuntingAnimal, Color> _tints = new(ReferenceEqualityComparer.Instance);
     readonly Dictionary<ActiveHuntingAnimal, (double Low, double High)> _xpRanges = new(ReferenceEqualityComparer.Instance);
     // The most surveys a hunt takes as the page's panel writes it for an animal (its surveying range, high end over low
     // end), kept per animal and only ever used for that animal (review 6, fault 2). _panelAnimal: the animal selected at
@@ -376,6 +371,10 @@ public partial class HuntingRatesMod : IMod
     void Refresh()
     {
         if (_window is not { IsAlive: true } window || _list == null) return;
+#if DEVTOOLS
+        // A development request holds the list still while it waits for a tooltip (DevTooltip, review 9).
+        if (DevHoldsList) return;
+#endif
         var animals = ReadAnimals();
         if (_page != null) _bonusNames.Read(_page, animals, Report);
         // A line more or less in sight (an animal the game reveals after a level up), or the note under the list come or
@@ -495,15 +494,18 @@ public partial class HuntingRatesMod : IMod
                         _looks[animal] = (Native.NameOf(card)?.Text is { Length: > 0 } name ? name : _hiddenWord ?? NotFound,
                             icon.IsVisibleInTree() ? icon.Texture : null, icon.Modulate * icon.SelfModulate);
                     else _looks.Remove(animal);
-                    // The colour the card draws the picture in, with whether the animal had been trapped then (Look).
-                    // It is kept in the file only once the card draws it steadily, near the same at two reads in a row:
-                    // a card still fading in or out would otherwise mark the file on every read (the code review of
-                    // turn 8, smaller point 1).
-                    Color tint = icon.Modulate * icon.SelfModulate;
-                    bool never = NeverTrapped(animal);
-                    bool steady = _tints.TryGetValue(animal, out var before) && before.NeverTrapped == never && Near(before.Tint, tint);
-                    _tints[animal] = (tint, never);
-                    if (steady) RememberTint(animal, tint, never);
+                    // The colour the card draws the picture in (Look), only while the card shows its picture: a locked
+                    // card hides it, with a black colour on it (Green Toad, check-8), which the page never shows. It is
+                    // kept in the file only once the card draws it steadily, near the same at two reads in a row: a
+                    // card still fading in or out would otherwise mark the file on every read (the code review of turn
+                    // 8, smaller point 1).
+                    if (icon.IsVisibleInTree())
+                    {
+                        Color tint = icon.Modulate * icon.SelfModulate;
+                        bool steady = _tints.TryGetValue(animal, out Color before) && Near(before, tint);
+                        _tints[animal] = tint;
+                        if (steady) RememberTint(animal, tint);
+                    }
                     // The picture the game's own control shows for a spider with the setting on: the one this list shows.
                     if (animal.Animal.IsScarySpider && SpiderSetting() && icon.Texture != null && !ReferenceEquals(icon.Texture, animal.Animal.Icon))
                         _spiderPicture = icon.Texture;
@@ -606,12 +608,11 @@ public partial class HuntingRatesMod : IMod
     }
 
     // A colour the card draws steadily, kept when it is new, or differs from the kept one by more than Near allows.
-    void RememberTint(ActiveHuntingAnimal animal, Color tint, bool never)
+    void RememberTint(ActiveHuntingAnimal animal, Color tint)
     {
         Reading kept = RememberedFor(animal);
-        if (kept.Tint is [var r, var g, var b, var a] && Near(new Color(r, g, b, a), tint) && kept.NeverTrapped == never) return;
+        if (kept.Tint is [var r, var g, var b, var a] && Near(new Color(r, g, b, a), tint)) return;
         kept.Tint = [tint.R, tint.G, tint.B, tint.A];
-        kept.NeverTrapped = never;
         _readingsUnsaved = true;
     }
 
@@ -636,11 +637,6 @@ public partial class HuntingRatesMod : IMod
         }
         return has;
     }
-
-    // An animal the journal counts no catch of (HuntingAnimalJournalEntry.TimesTrapped 0). The page's cards drew Green Butterfly
-    // and Wild Boar as black shapes in check-6, both discovered: the window's reading is that this is why, and the list draws
-    // such an animal so until the page has drawn its card (Look). The light check logs every card's colour beside it.
-    static bool NeverTrapped(ActiveHuntingAnimal animal) => animal.JournalEntry is { TimesTrapped: 0 };
 
     // The multipliers an XP view of the page is bound with, kept for the animal whose stats it shows.
     void ReadXpRange(ExperienceStatsXPView view, ActiveHuntingAnimal animal)
@@ -686,19 +682,24 @@ public partial class HuntingRatesMod : IMod
     // and pictured as the page's own card draws it, once the page has shown that card; before, by the game's own word
     // for something not found yet (the journal's, AnimalSpeciesView.HiddenText) and no picture. A spider, while the
     // game's spider setting is on, has the picture the page shows instead, or none: the list never shows a spider then.
-    // A discovered animal's picture is drawn in the colour its card drew it in, in this game or as last remembered for
-    // this character, as long as whether it has been trapped is as it was then; before the page has drawn its card,
-    // black while it has never been trapped (the reading of NeverTrapped), otherwise as it is.
+    // A discovered animal's picture is drawn in the colour its card drew it in, in this game or as the page last drew
+    // it for this character; before the page has drawn its card, as it is, as the window drew every picture before turn
+    // 7. The window never draws a shape of its own (review 9): which animals the page draws as a black shape is the
+    // card's own rule, which no member names. The card redraws on the journal's count of catches
+    // (HuntingAnimalTrackingView.AnimalTrappedValueChangedHandler, on HuntingJournalComponent.AnimalTrapped), but what
+    // it does with it is in its code; HuntingAnimalJournalEntry.TimesTrapped, the turn 7 reading, was 0 for Yellowtail
+    // Bird, Thornback Lizard and Bluetail Bird, which the page drew in colour (check-8). A colour kept from an earlier
+    // game may be out of date for an animal trapped for the first time since, until the page shows its card again; the
+    // light check logs every card's colour beside the journal's count (Dev: card), for a later turn to settle the rule.
     (string Name, Texture2D? Picture, Color Tint) Look(ActiveHuntingAnimal active)
     {
         if (active.JournalEntry?.IsDiscovered == false)
             return _looks.TryGetValue(active, out var seen) ? (seen.Name, Shown(seen.Picture), seen.Tint) : (_hiddenWord ?? NotFound, null, Colors.White);
         HuntingAnimal animal = active.Animal;
         Texture2D? picture = animal.IsScarySpider && SpiderSetting() ? Shown(_spiderPicture) : Shown(animal.Icon);
-        bool never = NeverTrapped(active);
-        Color tint = _tints.TryGetValue(active, out var drawn) && drawn.NeverTrapped == never ? drawn.Tint
-            : Kept(active) is { Tint: [var r, var g, var b, var a] } kept && kept.NeverTrapped == never && float.IsFinite(r + g + b + a) ? new Color(r, g, b, a)
-            : never ? Colors.Black : Colors.White;
+        Color tint = _tints.TryGetValue(active, out Color drawn) ? drawn
+            : Kept(active) is { Tint: [var r, var g, var b, var a] } && float.IsFinite(r + g + b + a) ? new Color(r, g, b, a)
+            : Colors.White;
         return (animal.DisplayName.Text, picture, tint);
     }
 

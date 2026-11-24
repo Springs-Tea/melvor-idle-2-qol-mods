@@ -61,26 +61,28 @@ namespace HuntingRates;
 //     named; shot-hunting-panel-tooltip.png.
 //  4. A picture of the screen without the window; presses the round button, and opens the window up with its own button
 //     if it opened folded; the round button must be lit.
-// 4a. "Dev: card" at his location (the page's cards as he left them: a never-trapped card and a trapped one, if his
-//     location has them; "Dev: card | seen" says which were seen). Then, while no hunt runs, a counted line (review 7,
-//     point 2): the line of an animal whose escape the window counts (Yellowtail Bird on his character), clicked as a
-//     player clicks it, so that the page's panel writes its surveys and its card its XP range; "Dev: counted" reads
-//     its hour back (NOT COUNTED if it stays "-"). While a hunt runs, it opens nothing and says so; when the page
-//     shows that animal already, it clicks nothing.
+// 4a. "Dev: card" at his location (the page's cards as he left them, each drawn black or in colour beside the journal's
+//     counts of its catches; "Dev: card | seen" says whether a count tells them apart, review 9). Then, while no hunt
+//     runs, a counted line (review 7, point 2): the line of an animal whose escape the window counts (Yellowtail Bird
+//     on his character), clicked as a player clicks it, so that the page's panel writes its surveys and its card its XP
+//     range; "Dev: counted" reads its hour back (NOT COUNTED if it stays "-"). While a hunt runs, it opens nothing and
+//     says so; when the page shows that animal already, it clicks nothing.
 //  5. "Dev: row" (raw, counted, the time of a catch by every reading still open, drawn, tooltip), "Dev: game" (the
-//     panel's labels beside ours, its surveying range against the most surveys the window counts, its bonus rows, and the
-//     animal's trap, bait, trapless, journal and fail bonuses beside its stats), "Dev: card" (every card: name, picture,
-//     tool as drawn with its colour, its button), "order", "words", "spiders", "hidden", "discovery", "lit", "tips",
-//     "heads" (every name's whole tip), "wrap" (every tooltip line longer than Fishing Rates' longest, WRAPPED), "size",
-//     "room". "Dev: cut" over every label of the picture; crop-hunting-window.png and, when the list scrolls,
-//     crop-hunting-window-end.png. Then the page put back from the counted line's click (AddPageBack, as after the
-//     click of step 8), before any step that waits for his hand (lesson 57). The counted line stays counted: its
-//     surveys and XP range are kept.
+//     panel's labels beside ours, its surveying range against the most surveys the window counts, its bonus rows, and
+//     the animal's trap, bait, trapless, journal and fail bonuses beside its stats), "Dev: card" (every card: name,
+//     picture, tool as drawn with its colour, its button), "order", "words", "spiders", "hidden", "discovery", "lit",
+//     "tips", "heads" (every name's whole tip), "wrap" (every tooltip line longer than Fishing Rates' longest, WRAPPED,
+//     with the lines it comes out as), "size", "room". "Dev: cut" over every label of the picture;
+//     crop-hunting-window.png and, when the list scrolls, crop-hunting-window-end.png. Then the page put back from the
+//     counted line's click (AddPageBack, as after the click of step 8), before any step that waits for his hand (lesson
+//     57). The counted line stays counted: its surveys and XP range are kept.
 //  6. The tooltip of a line whose hour is counted, when there is one (shot-hunting-tooltip.png), and the tooltip of the
-//     name with the longest tip (shot-hunting-header-tooltip.png). Then a click on "XP": "Dev: order" and
-//     crop-hunting-sorted.png.
-//  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the click
-//     after has to show the hunt again by the page's own button.
+//     name with the longest tip (shot-hunting-header-tooltip.png), and between them the tooltip of the first line with
+//     a wrapped line (shot-hunting-tooltip-wrapped.png). The list is held still while each waits, the pointer put on it
+//     anew every 4 s, and a tooltip that does not come says what was so (DevTooltip, review 9). Then a click on "XP":
+//     "Dev: order" and crop-hunting-sorted.png.
+//  7. "Dev: journal": presses the page's own journal button with the pointer (shot-hunting-journal.png), so that the
+//     click after has to show the hunt again by the page's own button.
 //  8. "Dev: click": a click on a line. While no hunt runs: a line of an animal at another location than the page's,
 //     which the click opens and selects through the page's own controls; read back: the location, the animal, the view
 //     and both view buttons as drawn, the panel's name, the lit line, the window, the game's events during the click
@@ -339,6 +341,7 @@ public partial class HuntingRatesMod
         _devFailure = _devFailOnPurpose = _devPutBackWords = null;
         _devPutBackOk = _devPutBackRead = _devOpenedPage = false;
         _devGuardSince = _devTipSince = 0;
+        _devHoldStep = -1;
         _devFrameMark = 0;
         _devAim = null;
         _devMisses = 0;
@@ -353,8 +356,8 @@ public partial class HuntingRatesMod
         _devOrigin = _devOriginWait = null;
         _devOnTheWay.Clear();
         _devHis.Clear();
-        _devCardsNever.Clear();
-        _devCardsTrapped.Clear();
+        _devCardsBlack.Clear();
+        _devCardsColour.Clear();
         _devFocusAfter = null;
         _devPressFrame = -1;
         _devAnimalBackFrame = -1;
@@ -457,8 +460,8 @@ public partial class HuntingRatesMod
             return true;
         });
         // Review 7, point 2: a counted line, made by the request itself while no hunt runs, before the pictures. The
-        // cards of his own location first (point 4: a never-trapped card and a trapped one, where his location has
-        // them), since the click opens the counted animal's location. The line is the first one of an animal whose
+        // cards of his own location first (point 4, and review 9: each card black or in colour beside the journal's
+        // counts), since the click opens the counted animal's location. The line is the first one of an animal whose
         // escape the window counts, open, discovered and selectable from its line (Yellowtail Bird on his character),
         // clicked through the window's own click as a player clicks it. The page is put back right after the steps that
         // need no hand ("numbers" and the pictures of the list), before the tooltips and the sort, which wait for his
@@ -591,6 +594,33 @@ public partial class HuntingRatesMod
             return true;
         });
         Add("tooltip", () => DevTooltip(target!, beforeTip, "tooltip"), PointerStepTime);
+        // Review 9, point 3: the tooltip of a line that has a wrapped line (a rare species list longer than Fishing
+        // Rates' longest), pictured too, so that the wrap can be judged by eye: the second part indented, nothing in
+        // brackets cut.
+        Button? wrapTarget = null;
+        Image? beforeWrap = null;
+        Add("point at a wrapped line", () =>
+        {
+            var lines = _list!.DevLines().ToList();
+            wrapTarget = lines.FirstOrDefault(l => Words.DevOverlong(l.Animal, _bonusNames, _noTool).Count > 0).Button;
+            if (wrapTarget == null)
+            {
+                DevLog("tooltip | no line's tooltip has a wrapped line: no picture of one");
+                return true;
+            }
+            DevLog($"tooltip | the line pointed at for a wrapped tooltip: {lines.First(l => l.Button == wrapTarget).Animal.Animal.Id}");
+            _list.DevScroll.EnsureControlVisible(wrapTarget);
+            _devTipSince = 0;
+            return true;
+        });
+        Add("the screen before the wrapped tooltip", () =>
+        {
+            if (wrapTarget == null) return true;
+            if (!DevFramesDrawn()) return false;
+            beforeWrap = _ctx.Tree.Root.GetTexture().GetImage();
+            return true;
+        });
+        Add("the wrapped tooltip", () => wrapTarget == null || DevTooltip(wrapTarget, beforeWrap, "tooltip-wrapped"), PointerStepTime);
         Add("point at a column's name", () =>
         {
             header = _list!.DevHeaders.OrderByDescending(h => h.TooltipText.Split('\n').Max(l => l.Length)).First();
@@ -1289,7 +1319,7 @@ public partial class HuntingRatesMod
         // WRAPPED with the line and how many lines it became.
         var wrapped = _list.DevLines().SelectMany(l => Words.DevOverlong(l.Animal, _bonusNames, _noTool).Select(line => (l.Animal.Animal.LocalId, Line: line))).ToList();
         DevLog($"wrap | {when} | " + (wrapped.Count == 0 ? $"no tooltip line is longer than {FishingTooltipMost} characters: none wrapped"
-            : string.Join(" | ", wrapped.Select(w => $"{w.LocalId} WRAPPED, {w.Line.Length} characters: '{w.Line}'"))));
+            : string.Join(" | ", wrapped.Select(w => $"{w.LocalId} WRAPPED, {w.Line.Length} characters, into '{string.Join("' / '", Words.DevWrapped(w.Line))}'"))));
     }
 
     // The page's panel of the animal selected, its own labels beside ours (DIFFER), and its list of bonuses as filled in.
@@ -1392,13 +1422,28 @@ public partial class HuntingRatesMod
         }
     }
 
-    // The cards "Dev: card" has seen in this request, never trapped and trapped (review 7, point 4).
-    readonly HashSet<string> _devCardsNever = new(), _devCardsTrapped = new();
+    // The cards "Dev: card" has seen in this request with their picture shown, drawn black and drawn in colour, each
+    // with the journal's count of its catches (HuntingJournalComponent.AnimalTrapped, which the card redraws on):
+    // evidence for a later turn of what the page's rule for a black shape is (review 9). The window itself draws what
+    // the page drew.
+    readonly Dictionary<string, double> _devCardsBlack = new(), _devCardsColour = new();
 
-    // Which cards were seen: at least one never-trapped card and one trapped are wanted beside their lines.
-    void DevCardsSeen() =>
-        DevLog($"card | seen | never trapped [{string.Join(", ", _devCardsNever)}], trapped [{string.Join(", ", _devCardsTrapped)}]" +
-            (_devCardsNever.Count == 0 ? "  NO NEVER-TRAPPED CARD SEEN" : "") + (_devCardsTrapped.Count == 0 ? "  NO TRAPPED CARD SEEN" : ""));
+    // The journal's count of an animal's catches, NaN when it cannot be read.
+    double DevTrappedCount(ActiveHuntingAnimal animal)
+    {
+        try { return _hunting!.Journal?.AnimalTrapped?.GetValue(animal.Animal) ?? double.NaN; }
+        catch (Exception) { return double.NaN; }
+    }
+
+    // Which cards were seen, and whether the journal's count tells the black ones from the coloured ones.
+    void DevCardsSeen()
+    {
+        static string Of(Dictionary<string, double> cards) => string.Join(", ", cards.Select(c => $"{c.Key} {R(c.Value)}"));
+        bool apart = _devCardsBlack.Values.All(v => v == 0) && _devCardsColour.Values.All(v => v > 0);
+        DevLog($"card | seen | drawn black [{Of(_devCardsBlack)}], drawn in colour [{Of(_devCardsColour)}], each with the journal's count of its catches | " +
+            (_devCardsBlack.Count == 0 || _devCardsColour.Count == 0 ? "NOT DECIDED (NOT BOTH SEEN)"
+                : apart ? "THE COUNT TELLS THEM APART: 0 BLACK, MORE IN COLOUR" : "THE COUNT DOES NOT TELL THEM APART"));
+    }
 
     // Every card of the page's list against its line, and the page's order of locations and animals against the window's.
     void DevCards(string when)
@@ -1412,14 +1457,17 @@ public partial class HuntingRatesMod
                 ActiveHuntingAnimal? animal = Native.AnimalOf(card);
                 SettingsIcon? icon = Native.IconOf(card);
                 var xp = Native.XpViewOf(card);
-                // The line's colour against the card's: a black shape on the page is one on the line too (HuntingRatesMod.Look),
-                // and the journal's count of catches beside it, which the window reads it from where no card was drawn.
+                // The line's colour against the card's: a black shape on the page is one on the line too
+                // (HuntingRatesMod.Look), and the journal's two counts of catches beside it (its entry's TimesTrapped,
+                // the turn 7 reading, and the count the card redraws on), as evidence of the page's rule.
                 Color cardTint = icon != null ? icon.Modulate * icon.SelfModulate : Colors.White;
                 string line = animal != null && lines.TryGetValue(animal, out var l) ? $"the line '{l.Animal.Name}' {DevTexture(l.Picture)} tint {l.Animal.PictureTint}" +
                     (l.Animal.PictureTint.IsEqualApprox(cardTint) ? "" : "  CARD AND LINE DIFFER") : "NO LINE";
-                if (animal?.JournalEntry is { IsDiscovered: true } known) (known.TimesTrapped == 0 ? _devCardsNever : _devCardsTrapped).Add(animal.Animal.LocalId);
-                DevLog($"card | {when} | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times" +
-                    $"{(animal?.JournalEntry is { IsDiscovered: true } entry && (entry.TimesTrapped == 0) != (cardTint.R + cardTint.G + cardTint.B < 0.05f) ? "  NOT AS THE READING (BLACK WHILE NEVER TRAPPED)" : "")}" +
+                bool black = cardTint.R + cardTint.G + cardTint.B < 0.05f, pictured = icon != null && icon.IsVisibleInTree();
+                double count = animal != null ? DevTrappedCount(animal) : double.NaN;
+                if (animal?.JournalEntry is { IsDiscovered: true } && pictured) (black ? _devCardsBlack : _devCardsColour)[animal.Animal.LocalId] = count;
+                DevLog($"card | {when} | {animal?.Animal.Id ?? "no animal"} discovered {animal?.JournalEntry?.IsDiscovered}, trapped {animal?.JournalEntry?.TimesTrapped} times " +
+                    $"by its journal entry, {R(count)} by the journal's count the card redraws on, its picture {(pictured ? black ? "drawn black" : "drawn in colour" : "not shown")}" +
                     $" | the card's name '{Native.NameOf(card)?.Text}', picture " +
                     $"{DevTexture(icon?.Texture)} shown {icon?.IsVisibleInTree()} modulate {icon?.Modulate}/{icon?.SelfModulate}, spider icon {icon?.IsArachnophobiaModeIcon}, " +
                     $"tool {DevToolDrawn(card)} (the animal's tool {animal?.Animal.Tool?.Id ?? "none"}), trap '{DevNative.CardTrapType(card).Text}', XP '{(xp == null ? "-" : DevLabels(xp))}' multipliers " +
@@ -1734,24 +1782,45 @@ public partial class HuntingRatesMod
         return parts.Where(p => p.Size.X > 0 && p.Size.Y > 0).OrderByDescending(p => p.Size.X * p.Size.Y).FirstOrDefault();
     }
 
+    // A tooltip waited for (review 9, point 2: check-8's line tooltip did not come in 20 s, the name's did). While the
+    // step waits, the list is held still (DevHoldsList: the window's numbers and the line's words are not set again),
+    // and the pointer is put on the control anew every TipNudge, a few pixels aside, which starts the game's tooltip
+    // delay again. What the line's words would have become meanwhile is counted, not set. When no tooltip comes, its
+    // line says what was so: the control, its words, the pointer, the game's window and its tooltip delay.
+    const ulong TipNudge = 4000;
+    int _devHoldStep = -1, _devTipNudges, _devTipChecks, _devTipChanges;
+    ulong _devTipNudgeAt;
+    string? _devTipFirstChange;
+
+    bool DevHoldsList => _devHoldStep >= 0 && _devHoldStep == _devAt && _devSteps.Count > 0;
+
     bool DevTooltip(Button target, Image? before, string shot)
     {
         if (DevHandAtMouse("the tooltip")) { _devTipSince = 0; return false; }
-        if (_devTipSince == 0) _devTipSince = Time.GetTicksMsec();
+        if (_devTipSince == 0 || _devHoldStep != _devAt)
+        {
+            _devTipSince = _devTipNudgeAt = Time.GetTicksMsec();
+            _devHoldStep = _devAt;
+            _devTipNudges = _devTipChecks = _devTipChanges = 0;
+            _devTipFirstChange = null;
+        }
+        DevTipWordsNow(target);
         Control? over = _ctx.Tree.Root.GuiGetHoveredControl();
+        Rect2 rect = DevSight(target);
         if (over == null || (over != target && !target.IsAncestorOf(over)))
         {
-            Rect2 rect = DevSight(target);
             if (!rect.HasArea()) throw new InvalidOperationException($"No part of '{target.Text}' is in sight for its tooltip.");
             DevPointer(rect.GetCenter());
+            _devTipNudgeAt = Time.GetTicksMsec();
             return false;
         }
         string tooltip = GameStyle.DevTooltips(_ctx.Tree.Root);
         string first = target.TooltipText.Split('\n')[0];
+        ulong waited = Time.GetTicksMsec() - _devTipSince;
         if (first.Length > 0 && tooltip.Contains(first))
         {
             if (!DevFramesDrawn()) return false;
-            DevLog($"tooltip | {shot} | {tooltip}");
+            DevLog($"tooltip | {shot} | after {waited / 1000.0:0.#} s, the pointer put there anew {_devTipNudges} times; {DevTipHeld()} | {tooltip}");
             Shot(shot);
             if (before != null && DevTooltipRect() is { } at)
             {
@@ -1759,13 +1828,55 @@ public partial class HuntingRatesMod
                 DevLog($"shot-hunting-{shot}.png | " + DevChanged(before, now, at, "the tooltip's place", "VISIBLE", "NOT VISIBLE"));
             }
             DevPointerBack();
+            _devHoldStep = -1;
             return true;
         }
-        if (Time.GetTicksMsec() - _devTipSince < TipWait) return false;
-        DevLog($"tooltip | {shot} | NOT SHOWN in 20 s with the pointer on {DevName(over)}; its words are in the 'row' and 'tips' lines, and there is no picture of it");
+        if (waited < TipWait)
+        {
+            // A fresh move onto the same control, more than the 5 pixels the game asks of a move before it starts its
+            // tooltip delay again; left and right of the middle in turn, inside the control.
+            if (Time.GetTicksMsec() - _devTipNudgeAt >= TipNudge && rect.HasArea())
+            {
+                _devTipNudges++;
+                _devTipNudgeAt = Time.GetTicksMsec();
+                float aside = Math.Min(8, rect.Size.X / 4) * (_devTipNudges % 2 == 0 ? 1 : -1);
+                DevPointer(rect.GetCenter() + new Vector2(aside, 0));
+            }
+            return false;
+        }
+        Vector2I real = DisplayServer.MouseGetPosition(), window = DisplayServer.WindowGetPosition(), size = DisplayServer.WindowGetSize();
+        bool inside = new Rect2I(window, size).HasPoint(real);
+        Variant delay = ProjectSettings.GetSetting("gui/timers/tooltip_delay_sec");
+        DevLog($"tooltip | {shot} | NOT SHOWN in {TipWait / 1000} s with the pointer on {DevName(over)}, put there anew {_devTipNudges} times | the control " +
+            $"{(GodotObject.IsInstanceValid(target) && target.IsInsideTree() ? "in the tree" : "GONE")} at {target.GetGlobalRect()}, its words {target.TooltipText.Split('\n').Length} lines " +
+            $"and {target.TooltipText.Length} characters; {DevTipHeld()} | the real pointer {(inside ? "inside" : "OUTSIDE")} the game's window at {real}, the game's " +
+            $"window {(DisplayServer.WindowIsFocused() ? "focused" : "NOT FOCUSED")}, mouse buttons down {Input.GetMouseButtonMask()}, the game's tooltip delay " +
+            $"{(delay.VariantType == Variant.Type.Nil ? "not set (Godot's own)" : delay.ToString())} s | tooltips shown now: {tooltip}; there is no picture of it");
         DevPointerBack();
+        _devHoldStep = -1;
         return true;
     }
+
+    // What a line's words would be now, beside the words the held line shows: counted on every tick of the wait, the
+    // first difference kept (a name over the list has words that never change, and is not counted).
+    void DevTipWordsNow(Button target)
+    {
+        if (_list?.DevLines().FirstOrDefault(l => l.Button == target).Animal is not { } held) return;
+        AnimalRates? now = ReadAnimals().FirstOrDefault(a => ReferenceEquals(a.Active, held.Active));
+        if (now == null) return;
+        _devTipChecks++;
+        string words = Words.Tooltip(now, _bonusNames, _noTool);
+        if (words == target.TooltipText) return;
+        _devTipChanges++;
+        if (_devTipFirstChange != null) return;
+        string[] was = target.TooltipText.Split('\n'), comes = words.Split('\n');
+        int at = Enumerable.Range(0, Math.Max(was.Length, comes.Length)).FirstOrDefault(i => i >= was.Length || i >= comes.Length || was[i] != comes[i]);
+        _devTipFirstChange = $"line {at + 1}: '{(at < was.Length ? was[at] : "")}' would become '{(at < comes.Length ? comes[at] : "")}'";
+    }
+
+    string DevTipHeld() => _devTipChecks == 0 ? "the list held still while it waited"
+        : $"the list held still while it waited; its words would have changed on {_devTipChanges} of {_devTipChecks} ticks" +
+          (_devTipFirstChange != null ? $", first {_devTipFirstChange}" : "");
 
     string DevProofBeside(Image before, Control control, string what)
     {

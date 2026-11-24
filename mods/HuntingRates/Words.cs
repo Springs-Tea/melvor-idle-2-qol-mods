@@ -121,6 +121,9 @@ static class Words
     /// <summary>Development: the tooltip's lines longer than Fishing Rates' longest, before they are wrapped.</summary>
     public static List<string> DevOverlong(AnimalRates a, BonusNames names, string? noTool) =>
         TooltipLines(a, names, noTool).SelectMany(l => l.Split('\n')).Where(l => l.Length > MostWide).ToList();
+
+    /// <summary>Development: a line as the tooltip wraps it.</summary>
+    public static List<string> DevWrapped(string line) => Wrapped(line).ToList();
 #endif
 
     static List<string> TooltipLines(AnimalRates a, BonusNames names, string? noTool)
@@ -265,8 +268,9 @@ static class Words
 
     // The lines joined, each line longer than Fishing Rates' longest (94 characters) wrapped at its words, the rest of it
     // indented two spaces more than it (Godot's tooltip does not wrap: review 3, a rare species' lock of 114 characters).
-    // A line is cut at the space the fewest brackets deep that leaves it short enough, the last such space, so that a
-    // lock in brackets is kept whole before anything inside it is cut, and "(Step 1)" never is (review 4).
+    // A line is cut at a space the fewest brackets deep that leaves it short enough, so that a lock in brackets is kept
+    // whole before anything inside it is cut, and "(Step 1)" never is (review 4); of those, between the parts of a list
+    // where it can, else at the last (Cut).
     const int MostWide = 94;
     static string Joined(IEnumerable<string> lines) => string.Join("\n", lines.SelectMany(l => l.Split('\n')).SelectMany(Wrapped));
 
@@ -285,11 +289,14 @@ static class Words
         yield return rest;
     }
 
-    // Where to cut a line too long: of its spaces after the indent and within MostWide, the one the fewest brackets deep,
-    // the last of those; when none is within MostWide, the first space after it (a word longer than the room stays whole).
+    // Where to cut a line too long: of its spaces after the indent and within MostWide, those the fewest brackets deep;
+    // of those the last one after a comma or a semicolon, when it leaves at least half the room on the first line, so
+    // that a list (the rare species, each with its share and what it brings) is cut between its parts, never inside one
+    // (review 9, point 3: check-8 cut "Ashcrest Chicken" from its 44.44%); else the last of them. When no space is
+    // within MostWide, the first space after it (a word longer than the room stays whole).
     static int Cut(string line, int indent)
     {
-        int best = -1, bestDepth = int.MaxValue, depth = 0;
+        int best = -1, bestDepth = int.MaxValue, clause = -1, depth = 0;
         for (int i = 0; i < line.Length && i <= MostWide; i++)
         {
             char c = line[i];
@@ -297,11 +304,13 @@ static class Words
             else if (c == ')') depth = Math.Max(0, depth - 1);
             else if (c == ' ' && i > indent && depth <= bestDepth)
             {
+                if (depth < bestDepth) clause = -1;
                 best = i;
                 bestDepth = depth;
+                if (i >= MostWide / 2 && line[i - 1] is ',' or ';') clause = i;
             }
         }
-        return best >= 0 ? best : line.IndexOf(' ', MostWide);
+        return clause >= 0 ? clause : best >= 0 ? best : line.IndexOf(' ', MostWide);
     }
 
     // The XP as Fishing Rates writes it ("Fishing XP: 8,470 an hour, 17 a catch."): the XP of a catch is the middle of the
