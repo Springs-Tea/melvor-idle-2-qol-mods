@@ -28,11 +28,12 @@ button opens it up again. It is lit while the window is open and not folded.
 The button is only there on the Hunting page. On any other page the window steps aside; back on the Hunting
 page, it is there again as you left it, open or folded.
 
-Until you move it, the window opens at a corner of the Hunting page where it leaves the page's two panels (the
-animal selected and the hunt in progress), its location buttons and the most of its animals in sight. Drag the
-window to move it, drag its bottom right corner to resize it, or fold it down to its title with the button
-beside the X. It is never larger than fits above the game's bottom bar, and a list of more than 14 animals
-scrolls. Its place, size, fold and sort order are kept in `settings.json` in the mod's folder.
+Until you move it, the window opens at the corner of the Hunting page where the most of its animals and
+location buttons stay in sight beside it, then its panel of the animal selected; it may lie over the panel of
+the hunt in progress. Drag the window to move it, drag its bottom right corner to resize it, or fold it down
+to its title with the button beside the X. It is never larger than fits above the game's bottom bar, and a
+list of more than 14 animals scrolls. Its place, size, fold and sort order are kept in `settings.json` in the
+mod's folder.
 
 ## What the window shows
 

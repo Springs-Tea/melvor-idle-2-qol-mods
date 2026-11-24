@@ -50,7 +50,7 @@ The numbers start from the game's own values for each animal, so whatever change
 [*]Gold is not profit: traps and bait are not taken off.
 [*]The window starts nothing. While you are not hunting, a click on a line changes which location and animal the Hunting page selects, through the page's own buttons; while you hunt, it selects nothing. Hunting, traps, bait and hunting without a trap are left as they are.
 [*]An animal the game has no picture for yet shows none, rather than the game's grey stand-in.
-[*]Until you move it, the window opens at a corner of the Hunting page where it leaves the page's panels and its animals in sight. Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
+[*]Until you move it, the window opens at the corner of the Hunting page where the most of its animals and locations stay in sight beside it. Drag the window to move it, resize it from its bottom right corner, or fold it down to its title. Its place, size, fold and sort order are kept in its own folder.
 [/list]
 
 [size=4][b]Install[/b][/size]

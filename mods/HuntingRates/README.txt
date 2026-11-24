@@ -36,11 +36,11 @@ there would. While you hunt, a click selects nothing, since that might change th
 only shows the hunt instead of the journal, and the animal's card when the page shows its
 location. Nothing is started or stopped, and the window stays open where it is.
 
-Until you move it, the window opens at a corner of the Hunting page where it leaves the
-page's panels and its animals in sight. Drag the window to move it, drag its bottom right
-corner to resize it, fold it down to its title with the button beside the X. On another
-page it steps aside and comes back on the Hunting page. Its place, size, fold and sort
-order are kept in settings.json in the mod's folder.
+Until you move it, the window opens at the corner of the Hunting page where the most of
+its animals and locations stay in sight beside it. Drag the window to move it, drag its
+bottom right corner to resize it, fold it down to its title with the button beside the X.
+On another page it steps aside and comes back on the Hunting page. Its place, size, fold
+and sort order are kept in settings.json in the mod's folder.
 
 INSTALL
   Extract this zip into the game folder (Steam > Melvor Idle 2 > Manage > Browse local files),

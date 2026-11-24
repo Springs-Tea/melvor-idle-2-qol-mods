@@ -198,8 +198,11 @@ public partial class HuntingRatesMod
             if (a.Before != null && a.Tooltip != null)
             {
                 using var shot = _ctx.Tree.Root.GetTexture().GetImage();
+                // The rectangle read is its labels': a dark tooltip over the dark page changes only its letters' pixels
+                // there (check-3: "Skill XP" drawn, 13% of the label's pixels changed, NOT VISIBLE by the window's
+                // quarter). Words are proved drawn from DevWordsChanged's share up.
                 DevLog($"shot-hunting-{a.Shot}.png | " + (DevDrawn(a.Tooltip, out string where) is { } drawn
-                    ? DevChangedPixels(a.Before, shot, drawn, $"the game's tooltip: {where}", "VISIBLE", "NOT VISIBLE")
+                    ? DevChangedPixels(a.Before, shot, drawn, $"the game's tooltip: {where}", "VISIBLE", "NOT VISIBLE", DevWordsChanged)
                     : $"NOT PROVED: where the game's tooltip is drawn is not known ({where})"));
             }
         }
@@ -235,6 +238,9 @@ public partial class HuntingRatesMod
         }
         return said.Count == 0 ? "no number in it" : "its numbers [" + string.Join("; ", said) + "]";
     }
+
+    // The share of a label's pixels that its letters change: a word's strokes cover about a tenth to a quarter of its line.
+    const double DevWordsChanged = 0.05;
 
     // Where the words of a game's tooltip are drawn, in the picture's own pixels (Woodcutting Rates' DevDrawn).
     static Rect2? DevDrawn(BaseTooltip tooltip, out string where)

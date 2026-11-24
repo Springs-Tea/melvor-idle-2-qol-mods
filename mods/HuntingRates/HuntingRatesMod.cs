@@ -114,6 +114,11 @@ public partial class HuntingRatesMod : IMod
         {
             long frame = (long)Engine.GetProcessFrames();
             if (_viewCheck is { } check && frame >= check.After) ViewChecked();
+#if DEVTOOLS
+            // A development request's put-back of the animal, two process frames after its location's, as the click's own
+            // steps (DevAnimalBackSoon).
+            if (_devAnimalBackFrame >= 0 && frame >= _devAnimalBackFrame) DevAnimalBackSoon();
+#endif
             if (_clickStep is { } step && frame >= step.After) ClickNext();
             if (_scrollTo != null && frame >= _scrollAfter) ScrollToCard();
             if (!_tick.Due()) return;
@@ -521,7 +526,8 @@ public partial class HuntingRatesMod : IMod
     // - It selects only through the page's own controls, pressed as a player's click presses them: the animal's location
     //   by the page's button of that location (PressLocation), then, once the page has laid out that location's cards, the
     //   animal by its card's own button (PressCard). Never through the members behind them.
-    // - It selects only while no hunt runs (HuntingActionComponent.IsStarted, read at the click and again before every
+    // - It selects only while no hunt runs (AnimalRates.IsHunting: started, among the game's running actions, or the hunted
+    //   animal in a state other than idle; read at the click and again before every
     //   step): a selection may change the running hunt, and no check on the maintainer's character is to find out.
     // - While a hunt runs, a click only shows: the hunt instead of the journal, by the page's own button (HuntView), and
     //   the page's list scrolled to the animal's card when the page shows its location (ScrollToCard). Any other line
@@ -737,41 +743,52 @@ public partial class HuntingRatesMod : IMod
     // Where the window opens while the player has not placed it himself (Woodcutting Rates' review 4: in the middle of the
     // page it left almost no line clickable). Of the four corners of the page's own view (its right side as far from the
     // strip of round buttons as the strip is from the screen's edge, so it never covers a round button; its left side;
-    // level with its top, or with its bottom above the game's bottom bar), the one that leaves uncovered the page's panel
-    // of the animal selected and its panel of the hunt in progress (a hunting player watches it), then its location
-    // buttons, then the most of the cards of its list whole beside it (Native.Place: in sight, or after a scroll); the right
-    // top when they are equal. Everything is measured from the page as it is drawn now. Null when the page's parts are
-    // not there: the window then opens in the middle.
+    // level with its top, or with its bottom above the game's bottom bar), ranked as Woodcutting and Firemaking Rates rank
+    // theirs (review 3 of this job: the first check opened it over the locations and the cards, with 1 card of 4 in
+    // sight): first the room a click needs, the cards of the page's list and its location buttons whole beside it
+    // (Native.Place: in sight, or after a scroll), then the panel of the animal selected left uncovered, then the panel of
+    // the hunt in progress; the right top when they are equal. The window may cover the panel of the hunt in progress when
+    // nothing else keeps the cards clear. Everything is measured from the page as it is drawn now. Null when the page's
+    // parts are not there: the window then opens in the middle.
     Vector2? FirstPlace(Vector2 size)
     {
         if (!PageShown || _clicksOff || size.X <= 0 || size.Y <= 0) return null;
         try
         {
             if (Native.TrackingView(_page!) is not { } view || !view.IsVisibleInTree()) return null;
-            var cards = Native.Cards(_page!).Where(c => c.IsVisibleInTree()).ToList();
-            var panels = new Control?[] { Native.Panel(view), Native.Current(view) }.OfType<Control>().Where(p => p.IsVisibleInTree()).ToList();
-            Control? places = Native.LocationSelect(view) is { } l && l.IsVisibleInTree() ? l : null;
-            if (cards.Count == 0 && panels.Count == 0) return null;
+            var cards = Native.Cards(_page!).Where(c => c.IsVisibleInTree()).Cast<Control>().ToList();
+            var places = Native.LocationSelect(view) is { } select && select.IsVisibleInTree() && Native.LocationButtons(select) is { } buttons
+                ? buttons.Values.Where(b => GodotObject.IsInstanceValid(b) && b.IsVisibleInTree()).Cast<Control>().ToList() : new List<Control>();
+            Control? selected = Native.Panel(view) is { } p && p.IsVisibleInTree() ? p : null;
+            Control? current = Native.Current(view) is { } c && c.IsVisibleInTree() ? c : null;
+            if (cards.Count == 0 && places.Count == 0 && selected == null) return null;
             Rect2 screen = _ctx.Tree.Root.GetVisibleRect(), page = Native.Drawn(view);
             float right = screen.End.X;
             if (GodotObject.IsInstanceValid(_opener) && _opener!.GetParent() is Control strip && strip.IsVisibleInTree())
             {
-                Rect2 buttons = Native.Drawn(strip);
-                right = buttons.Position.X - Math.Max(0, screen.End.X - buttons.End.X);
+                Rect2 strips = Native.Drawn(strip);
+                right = strips.Position.X - Math.Max(0, screen.End.X - strips.End.X);
             }
             float bottom = screen.End.Y - FooterHeight();
             float lowest = Math.Max(screen.Position.Y, bottom - size.Y), widest = Math.Max(screen.Position.X, right - size.X);
             Vector2? best = null;
-            int most = -1;
+            (int Room, int Selected, int Current) most = (-1, -1, -1);
+            var ranked = new List<string>();
             foreach (float left in new[] { right - size.X, page.Position.X })
                 foreach (float top in new[] { page.Position.Y, Math.Min(page.End.Y, bottom) - size.Y })
                 {
                     float x = Math.Clamp(left, screen.Position.X, widest), y = Math.Clamp(top, screen.Position.Y, lowest);
                     var cover = new Rect2(x, y, size);
-                    int room = panels.Count(p => !Native.Covered(p, cover)) * 10_000 + (places != null && !Native.Covered(places, cover) ? 1_000 : 0) +
-                        cards.Count(c => Native.Place(c, cover, out _) is CardSight.Clear or CardSight.Scroll);
-                    if (room > most) { most = room; best = new Vector2(x, y); }
+                    bool Whole(Control control) => Native.Place(control, cover, out _) is CardSight.Clear or CardSight.Scroll;
+                    var rank = (Room: cards.Count(Whole) + places.Count(Whole), Selected: selected != null && !Native.Covered(selected, cover) ? 1 : 0,
+                        Current: current != null && !Native.Covered(current, cover) ? 1 : 0);
+                    ranked.Add($"({x:0}, {y:0}): {cards.Count(Whole)} of {cards.Count} cards and {places.Count(Whole)} of {places.Count} location buttons whole beside it, " +
+                        $"the selected animal's panel {(rank.Selected == 1 ? "clear" : selected == null ? "not shown" : "covered")}, the hunt's panel {(rank.Current == 1 ? "clear" : current == null ? "not shown" : "covered")}");
+                    if (rank.CompareTo(most) > 0) { most = rank; best = new Vector2(x, y); }
                 }
+#if DEVTOOLS
+            _devFirstPlaceWords = $"the first place {best?.Round().ToString() ?? "none"} won of [{string.Join("; ", ranked)}]";
+#endif
             return best?.Round();
         }
         catch (Exception e) when (e is MissingMemberException or TypeLoadException)

@@ -33,7 +33,7 @@ namespace HuntingRates;
 // shown (code review 1). Built on Woodcutting Rates' request (mods/WoodcuttingRates/Dev.cs) as merged; the page's parts it
 // changes, who owns each, how each is put back and the hunt guard are in DevPage.cs, the pointer on the page's parts in
 // DevAims.cs.
-// Lesson 56: nothing is selected while a hunt runs. "A hunt runs" (HuntingActionComponent.IsStarted) is read again right
+// Lesson 56: nothing is selected while a hunt runs. "A hunt runs" (AnimalRates.IsHunting, the window's own test) is read again right
 // before every press that selects and every put-back of a selection; while one runs, those are not made and are said
 // (NOT PUT BACK for what the request owned). The check is meant to run while the character is not hunting; run while he
 // hunts, it only proves that a click on a line selects nothing and leaves the hunt alone.
@@ -256,6 +256,7 @@ public partial class HuntingRatesMod
         DevLog("Hunting Rates check " + result);
         DevHuntGuard.DisposeCurrent();
         _devGuard = null;
+        _devAnimalBackFrame = -1;
         _devSteps.Clear();
         _devAt = 0;
         _devWithout?.Dispose();
@@ -308,6 +309,8 @@ public partial class HuntingRatesMod
         _devHis.Clear();
         _devFocusAfter = null;
         _devPressFrame = -1;
+        _devAnimalBackFrame = -1;
+        _devAnimalBackWords = "";
         _devWithout?.Dispose();
         _devWithout = null;
         _devStarted = Time.GetTicksMsec();
@@ -547,9 +550,15 @@ public partial class HuntingRatesMod
             Add($"{name}: the animal", () =>
             {
                 if (!run) return true;
-                if (Waiting()) return false;
-                His();
-                Put("the animal", DevAnimalBack);
+                // The animal is put back two process frames after its location (DevAnimalBackSoon), not on this tick: its
+                // words are taken here, and anything it could not do is tried again now.
+                if (_devAnimalBackFrame >= 0 || Waiting()) return false;
+                Put("the animal", () =>
+                {
+                    string soon = _devAnimalBackWords;
+                    _devAnimalBackWords = "";
+                    return DevJoin(soon, DevAnimalBack());
+                });
                 return true;
             });
             Add($"{name}: the scroll", () =>
@@ -615,7 +624,7 @@ public partial class HuntingRatesMod
         Add("a line to click", () =>
         {
             var action = _hunting!.Action;
-            huntingAtClick = action.IsStarted;
+            huntingAtClick = DevHuntRuns;
             ActiveHuntingLocation? location = action.SelectedLocation;
             var lines = _list!.DevLines().Select(l => l.Animal).Where(a => a.Click == AnimalRates.Opens.Animal).ToList();
             // No hunt: a clickable line of an animal at another location first, which the click opens and selects. A hunt:
@@ -691,7 +700,9 @@ public partial class HuntingRatesMod
             events = null;
             return true;
         });
-        AddPageBack("the page back after the click", () => clicked == null, "click | the page put back for the page's own buttons:");
+        // Whenever the request owns a part of the page, the journal its own step opened too when no line could be clicked
+        // (the third code review: a view the request left is put back as a selection is).
+        AddPageBack("the page back after the click", () => !DevOwnsAny, "click | the page put back for the page's own buttons:");
         // The page's own buttons, pressed with the pointer as a player would: the location's button, then the card's button.
         // Only while no hunt runs, read again before each, and only while the player has changed nothing of the page
         // (Woodcutting Rates' code review 4: the comparison is a development check, never made over a page he uses).
@@ -1340,8 +1351,12 @@ public partial class HuntingRatesMod
     }
 
     // The window's place against the page: the panel of the animal selected, the location buttons, and every card.
+    // How the first place ranked its four corners (HuntingRatesMod.FirstPlace), for "Dev: room": which won, and why.
+    string _devFirstPlaceWords = "the first place not measured";
+
     void DevRoom(string when)
     {
+        DevLog($"room | {when} | {_devFirstPlaceWords}");
         string opened = _firstPlace is { } first ? $"opened at the first place {first} (nothing saved by the player)"
             : _settings is { X: { } x, Y: { } y } ? $"at the player's own place ({x:0}, {y:0}) from settings.json" : "in the middle (no first place could be measured)";
         string strip = _opener?.GetParent() is Control buttons ? Native.Drawn(buttons).ToString() : "not found";
@@ -1639,7 +1654,7 @@ public partial class HuntingRatesMod
     string DevChanged(Image before, Image after, Rect2 place, string what, string yes, string no) =>
         DevChangedPixels(before, after, _ctx.Tree.Root.GetFinalTransform() * place, what, yes, no);
 
-    static string DevChangedPixels(Image before, Image after, Rect2 screen, string what, string yes, string no)
+    static string DevChangedPixels(Image before, Image after, Rect2 screen, string what, string yes, string no, double share0 = 0.25)
     {
         if (before.GetSize() != after.GetSize()) return $"{no}: the two pictures differ in size ({before.GetSize()} and {after.GetSize()}), so they cannot be compared";
         Rect2I at = ((Rect2I)screen).Intersection(new Rect2I(0, 0, after.GetWidth(), after.GetHeight()));
@@ -1653,7 +1668,7 @@ public partial class HuntingRatesMod
                 if (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) > 0.1f) changed++;
             }
         double share = all == 0 ? 0 : (double)changed / all;
-        return $"{(share >= 0.25 ? yes : no)}: {share:P0} of the {all:N0} pixels read at {at} ({what}) differ from the picture before";
+        return $"{(share >= share0 ? yes : no)}: {share:P0} of the {all:N0} pixels read at {at} ({what}) differ from the picture before (at least {share0:P0} for {yes})";
     }
 
     int DevRowsInSight()

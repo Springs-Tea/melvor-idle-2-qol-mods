@@ -304,9 +304,30 @@ public partial class HuntingRatesMod
         _devSettle = ((long)Engine.GetProcessFrames(), Time.GetTicksMsec(), false);
         if (!took) return $"the location NOT AS IT WAS: the page's own button of {origin.Location.Location?.Id} did not open it (it stays the request's own)";
         _devOwnLocation = null;
+        // The animal goes back two process frames later, once the page has laid out the location's cards, as the window's
+        // own click steps (ClickStepNow): its card stands for a moment at most (the third code review).
+        if (_devOwnAnimal != null) _devAnimalBackFrame = (long)Engine.GetProcessFrames() + 2;
         string animal = his != null && !ReferenceEquals(action.SelectedAnimal, his)
             ? $"; the animal the player had picked, {his.Animal.Id}, NOT AS IT WAS: the game changed it to {action.SelectedAnimal?.Animal.Id ?? "none"} with the location" : "";
         return $"the location put back to {origin.Location.Location?.Id} with the page's own button{animal}";
+    }
+
+    // The put-back of the animal two process frames after its location's (DevLocationBack): run from OnFrame, its words kept
+    // for the put-back's step, which says them. Every check of DevAnimalBack runs as on the tick: the player's changes, the
+    // hunt, the location shown.
+    long _devAnimalBackFrame = -1;
+    string _devAnimalBackWords = "";
+
+    void DevAnimalBackSoon()
+    {
+        _devAnimalBackFrame = -1;
+        if (_stopped || _hunting == null || _page == null || !GodotObject.IsInstanceValid(_page)) return;
+        try
+        {
+            string his = string.Join(", ", DevHisNow().Select(p => $"{p} is the player's, and is left"));
+            _devAnimalBackWords = DevJoin(_devAnimalBackWords, his, DevAnimalBack());
+        }
+        catch (Exception e) { _devAnimalBackWords = DevJoin(_devAnimalBackWords, $"the animal NOT AS IT WAS: its put-back failed ({e.GetType().Name}: {e.Message})"); }
     }
 
     // The animal the request owns, put back by its card's own button once the page shows its location, while no hunt runs.
@@ -588,7 +609,7 @@ public partial class HuntingRatesMod
         {
             public long Number;
             public bool InWindow;
-            public bool Ended, Back, Down, TimerStopped, TimerStarted;
+            public bool Ended, Back, Down, Left, TimerStopped, TimerStarted;
             public readonly List<string> Backs = new(), Marks = new(), Course = new();
         }
 
@@ -662,8 +683,9 @@ public partial class HuntingRatesMod
                         f.Back = true;
                         f.Backs.Add($"{id} went back to surveying from {e.OldValue}");
                     }
-                    // A hunt that ended stays ended until the next one leaves surveying.
-                    if (e.OldValue == HuntState.Surveying && e.NewValue != HuntState.Surveying) _ended = false;
+                    // A hunt that ended stays ended until the next one leaves surveying: noted in the frame, and cleared when
+                    // the frame is judged, after its marks (the third code review).
+                    if (e.OldValue == HuntState.Surveying && e.NewValue != HuntState.Surveying) f.Left = true;
                 });
                 EventHandler<ValueChangedEventArgs<int>> step = (_, e) => Safe(() =>
                 {
@@ -672,12 +694,12 @@ public partial class HuntingRatesMod
                     f.Down = true;
                     f.Backs.Add($"{id} step {e.OldValue} -> {e.NewValue}");
                 });
+                // Tracks going down are the hunt's course, not a reset, until the watch shows what Tracks is (it may be used up
+                // as tracking starts; the third code review).
                 EventHandler<ValueChangedEventArgs<int>> tracks = (_, e) => Safe(() =>
                 {
                     if (!Hunted() || e.NewValue >= e.OldValue) return;
-                    Frame f = Now();
-                    f.Down = true;
-                    f.Backs.Add($"{id} tracks {e.OldValue} -> {e.NewValue}");
+                    Now().Course.Add($"{id} tracks {e.OldValue} -> {e.NewValue}");
                 });
                 EventHandler<HuntingAnimalEventArgs> ended = (_, _) => Safe(() =>
                 {
@@ -729,6 +751,7 @@ public partial class HuntingRatesMod
                 marks.Add($"HUNT RESET: {string.Join(", ", f.Backs)} without a catch or an escape in that frame");
             if (f.TimerStopped && !f.TimerStarted) marks.Add("HUNT RESET: the action's timer stopped and did not start again in that frame");
             if (f.Ended) _ended = true;
+            else if (f.Left) _ended = false;
             if (f.InWindow)
             {
                 _window.AddRange(marks);

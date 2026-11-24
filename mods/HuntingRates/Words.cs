@@ -90,7 +90,7 @@ static class Words
         {
             lines.Add("Not discovered yet.");
             AddClick(lines, a);
-            return string.Join("\n", lines);
+            return Joined(lines);
         }
         // The tool in the card's own words once the page has shown the card, as the page writes a tool it lacks too; for an
         // animal that needs none, the page's own words for that, without "Tool:" (code review 2).
@@ -100,7 +100,7 @@ static class Words
         {
             lines.Add("The game gives no time for a step of this hunt yet.");
             AddClick(lines, a);
-            return string.Join("\n", lines);
+            return Joined(lines);
         }
 
         lines.Add("");
@@ -156,7 +156,28 @@ static class Words
         else if (a.CatchGold > 0) lines.AddRange(["", $"Gold: {Number(a.CatchGold)} for the output of one catch, by the window's reading."]);
         if (lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
         AddClick(lines, a);
-        return string.Join("\n", lines);
+        return Joined(lines);
+    }
+
+    // The lines joined, each line longer than Fishing Rates' longest (94 characters) wrapped at its words, the rest of it
+    // indented two spaces more than it (Godot's tooltip does not wrap: review 3, a rare species' lock of 114 characters).
+    const int MostWide = 94;
+    static string Joined(IEnumerable<string> lines) => string.Join("\n", lines.SelectMany(l => l.Split('\n')).SelectMany(Wrapped));
+
+    static IEnumerable<string> Wrapped(string line)
+    {
+        if (line.Length <= MostWide) { yield return line; yield break; }
+        string indent = new(' ', line.Length - line.TrimStart(' ').Length + 2);
+        string rest = line;
+        while (rest.Length > MostWide)
+        {
+            int cut = rest.LastIndexOf(' ', MostWide);
+            if (cut <= indent.Length) cut = rest.IndexOf(' ', MostWide);
+            if (cut < 0) break;
+            yield return rest[..cut];
+            rest = indent + rest[(cut + 1)..].TrimStart(' ');
+        }
+        yield return rest;
     }
 
     // The XP as the page writes it (its XP tag, a range once the page has shown it) and, while no watch has settled it,

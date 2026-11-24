@@ -201,7 +201,7 @@ sealed class AnimalRates
     public CardSight? Sight { get; set; }
     /// <summary>The page's panel of the selected animal lies under the window, where a click's animal would show.</summary>
     public bool PanelCovered { get; set; }
-    /// <summary>A hunt runs (HuntingActionComponent.IsStarted): a click only shows, and selects nothing.</summary>
+    /// <summary>A hunt runs (<see cref="IsHunting"/>): a click only shows, and selects nothing.</summary>
     public bool HuntRuns { get; init; }
     /// <summary>While a hunt runs, a click would select on this line, and so does nothing (HuntingRatesMod.ClickChanges).</summary>
     public bool HuntBlocks { get; set; }
