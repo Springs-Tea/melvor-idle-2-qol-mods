@@ -45,11 +45,11 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
                 "The middle of the game's range of every time and of the steps", .. HuntTip()]), 58,
             a => a.SecondsPerCatch, Words.Seconds, Better.Less),
         new("catches", "Catches", Lines(["Animals caught per hour: an hour over the time of a catch"]), 66, a => a.CatchesPerHour, Words.Number, Better.More),
-        new("xp", "XP", Lines(["Hunting XP per hour: the middle of the XP range the animal's card writes,",
-                "as the Hunting page last wrote it, kept from one game to the next", .. Measured(AnimalRates.XpRule), MiddleTip(), .. LevelTip()]), 66,
+        new("xp", "XP", Lines(["Hunting XP per hour: a catch gives the animal's XP times its size,",
+                .. Measured(AnimalRates.XpRule), .. SizeTip()]), 66,
             a => a.XpPerHour, Words.Number, Better.More),
         new("gold", "Gold", Lines(["What the output of an hour sells for, rare extras too but no collectable", .. Measured(AnimalRates.OutputRule),
-                MiddleTip(), "Not counted: what an animal's level adds to the output",
+                "Each product: its quantity times the catch's size, rounded down, at least one", .. SizeTip(),
                 AnimalRates.SurveyFindsRule == null ? "Not counted: what surveying finds, which no watch has seen yet" : "",
                 "Not counted: the extras of a rare species still locked"]), 66,
             a => a.GoldPerHour, Words.Number, Better.More),
@@ -71,10 +71,10 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         {
             yield return "A failed try is tried again at the chance the game's words give:";
             foreach (string line in hunt.Quote.Split('\n')) yield return $"\"{line}\"";
-            yield return "Otherwise the animal escapes back to tracking: measured";
+            yield return "Otherwise the animal escapes back to tracking, adding its fewest steps:";
+            foreach (string line in AnimalRates.EscapeMeasured.Split('\n')) yield return line;
         }
         yield return "The surveys of a hunt: as the Hunting page last wrote them for that animal";
-        yield return "\"-\" where the window does not know how many steps an escape adds";
     }
 
     // What a try takes from the bank, as Fishing Rates says it of its bait now: one every try, preserved or not, measured;
@@ -87,20 +87,19 @@ sealed record RateColumn(string Key, string Title, string Tip, float Width, Func
         if (!use.Reading.Kept) yield return "Not counted: your Input Preservation Chance, which kept none of them";
     }
 
-    // What the middle of the XP range and of the output was measured on (AnimalRates.XpMiddleMeasuredOn): the animal,
-    // its levels then, and the catches (review 7, point 3).
-    static string MiddleTip()
+    // What the size of a catch is counted from (AnimalRates.Shares), and what was measured of it at which levels
+    // (review 11, point 2): the journal's recorded sizes, else the middle at the levels it held at, else "-".
+    static IEnumerable<string> SizeTip()
     {
         var m = AnimalRates.XpMiddleMeasuredOn;
-        return $"The middle measured on {m.Catches} catches of {m.Animal}, at animal level {m.FromLevel} to {m.ToLevel}";
-    }
-
-    // What the animal's level adds to the average XP: the page's own words, and that the window does not count it.
-    static IEnumerable<string> LevelTip()
-    {
-        if (AnimalRates.XpRule is not { Quote.Length: > 0 } xp) yield break;
-        yield return "Not counted: what an animal's level adds; the page's panel says:";
-        yield return $"\"{xp.Quote}\"";
+        var l = AnimalRates.XpLevelMeasured;
+        yield return "the size the Hunting journal records for that catch: measured,";
+        yield return $"{l.Catches} of {l.Catches} catches of {l.Animal}";
+        yield return $"Counted by the sizes the journal recorded for your last catches ({AnimalRates.FewestSizes} or more)";
+        yield return $"Else the middle of the card's range, at animal level {m.FromLevel} to {m.ToLevel} only:";
+        yield return $"{m.Catches} catches of {m.Animal} averaged it; at level {l.Level}, {l.Animal} {Words.Number(l.Mean)} times it";
+        yield return "\"-\" at a higher level until the journal has recorded enough catches";
+        if (AnimalRates.XpRule is { Quote.Length: > 0 } xp) yield return $"\"{xp.Quote}\"";
     }
 
     // What was measured for a rule, in one line ("" when nothing was).

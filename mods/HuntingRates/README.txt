@@ -12,14 +12,16 @@ its picture, its location, and:
   - Traps: traps taken from the bank per hour, one every try, preserved or not.
 
 How the steps of a hunt join into a catch is in no number of the game's: it was measured on
-a character's own hunting. An escape sends you back to tracking with more steps to go, and
-how many is known only where every reading of it gives the same number; elsewhere a column
-shows "-", and a note under the list says why. For now that is most animals. A line is
-also "-" until the Hunting page has written how many surveys a hunt of that animal takes:
-select the animal there once. The window reads what the page writes whenever the page is on
-the screen, window open or not, and keeps it for each of your characters in readings.json,
-so a line keeps its numbers from one game to the next; the tooltip says "as the Hunting page
-last wrote it" for a number kept from an earlier game.
+a character's own hunting, on Yellowtail Bird and Wild Chicken. An escape sends you back to
+tracking with the animal's fewest steps more to go. A line is "-" until the Hunting page has
+written how many surveys a hunt of that animal takes: select the animal there once. A
+catch's XP and output follow its size, as the Hunting journal records it: the window counts
+by the sizes it recorded for your last catches, or at animal level 1 to 7 by the middle of
+the range the card writes; above that, XP and Gold are "-" until the journal has 5 sizes.
+The window reads what the page writes whenever the page is on the screen, window open or
+not, and keeps it for each of your characters in readings.json, so a line keeps its numbers
+from one game to the next; the tooltip says "as the Hunting page last wrote it" for a number
+kept from an earlier game.
 
 Hover a line for the whole hour of that animal: the surveys of a hunt, the steps of tracking
 and the time of one, the time and chance of a try of the trap, the chance to try again, what

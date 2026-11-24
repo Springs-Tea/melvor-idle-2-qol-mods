@@ -161,6 +161,10 @@ public partial class HuntingRatesMod
         public readonly Dictionary<Item, int> Outside = new(ReferenceEqualityComparer.Instance);
         public ulong LastRead;
         public readonly Dictionary<ActiveHuntingAnimal, string> Start = new(ReferenceEqualityComparer.Instance);
+        // The share of a catch's XP the window counted for each animal at the watch's start (AnimalRates.MeanShare),
+        // where from, and how many sizes the journal held: what the XP verdict judges the catches against (review 11,
+        // point 2).
+        public readonly Dictionary<ActiveHuntingAnimal, (double? Share, ShareFrom From, int Sizes)> StartShare = new(ReferenceEqualityComparer.Instance);
     }
 
     DevHuntWatch? _devHunts;
@@ -192,7 +196,12 @@ public partial class HuntingRatesMod
         w.TickMs = DevTickMs(out string tickWords);
         w.SinceTick = DevTick();
         foreach (ActiveHuntingAnimal animal in action.Animals.Values)
-            if (animal != null) w.Start[animal] = DevAnimalStats(animal);
+            if (animal != null)
+            {
+                w.Start[animal] = DevAnimalStats(animal);
+                AnimalRates counted = ReadAnimal(animal);
+                w.StartShare[animal] = (counted.MeanShare, counted.Shares == null ? ShareFrom.None : counted.SharesFrom, counted.SizesRecorded);
+            }
         DevBankStart(w);
         _devHunts = w;
         DevWatchListen(w);
@@ -717,7 +726,9 @@ public partial class HuntingRatesMod
             hunt.Middles += by * (w.LastStep.Min + w.LastStep.Max) / 2;
             hunt.LinkVariance += by * Math.Pow(w.LastStep.Max - w.LastStep.Min, 2) / 12;
             if (by > 1) words.Add($"MOVED ON {by} STEPS");
-            if (m.JournalXpChanges > 0) seen.JournalStep.Add(m.JournalXp / by);
+            // Per tracking action, not per step moved: the two actions that moved on two steps (the skip chance) gave
+            // the same 1 as every other (check-chicken-watch), so a skipped step brings no journal XP.
+            if (m.JournalXpChanges > 0) seen.JournalStep.Add(m.JournalXp);
         }
 
         // The end of surveying: the surveys of the hunt by the game's own count of failed surveys, and the steps it needs.
@@ -732,8 +743,13 @@ public partial class HuntingRatesMod
             words.Add($"surveys {hunt.Surveys?.ToString() ?? "NOT READ"}, steps needed {a.RequiredSteps} of {fewest}..{most}");
         }
 
-        // A try of the trap: caught, escaped, or failed and tried again (a fail with no escape and no change of state).
-        string? outcome = m.Trapped ? "caught" : m.Escaped ? "escaped" : m.TrapFails is { } tf && tf.To > tf.From && m.State == null ? "TRIED AGAIN" : null;
+        // A try of the trap: caught, escaped, or failed and tried again. The game raises its escape event for a failed
+        // try that is tried again too: the hunt then stays in trapping with the steps it needed (Wild Chicken, 2 of 26
+        // failed tries, 1.56 expected at the reattempt chance), so a try is an escape only when the hunt went back to
+        // tracking (review 11, point 1).
+        bool escaped = m.Escaped && m.State != null;
+        bool again = !m.Trapped && !escaped && (m.Escaped || m.TrapFails is { } tf && tf.To > tf.From) && m.State == null;
+        string? outcome = m.Trapped ? "caught" : escaped ? "escaped" : again ? "TRIED AGAIN" : null;
         if (outcome != null)
         {
             var link = new DevLink(linkReal, linkGame, w.LastSet, w.LastTrap.Min, w.LastTrap.Max);
@@ -741,7 +757,8 @@ public partial class HuntingRatesMod
             hunt.Tries++;
             hunt.Middles += (w.LastTrap.Min + w.LastTrap.Max) / 2;
             hunt.LinkVariance += Math.Pow(w.LastTrap.Max - w.LastTrap.Min, 2) / 12;
-            words.Add($"a try {outcome}, the trap {trapDelta:+0;-0}, the bait {baitDelta:+0;-0}");
+            words.Add($"a try {outcome}, the trap {trapDelta:+0;-0}, the bait {baitDelta:+0;-0}" +
+                (again && m.Escaped ? " (the game raised its escape event, and the hunt stayed in trapping with the steps it needed: the reattempt)" : ""));
         }
         else
         {
@@ -751,7 +768,7 @@ public partial class HuntingRatesMod
         }
 
         // An escape: where it went and how many steps it added, against every reading of EscapeSteps.
-        if (m.Escaped)
+        if (escaped)
         {
             int now = m.Required ?? a.RequiredSteps;
             var (fewest, most) = a.Stats.TrackingSteps.Value;
@@ -1027,12 +1044,17 @@ public partial class HuntingRatesMod
         int inRange = xps.Count(x => double.IsFinite(x.Low) && x.Xp >= x.Each * x.Low - 0.5 && x.Xp <= x.Each * x.High + 0.5);
         var (shareMean, shareTol, _) = DevMean(xps.Select(x => x.Xp / x.Each));
         double rangeMiddle = ours.XpRange is { } xr ? (xr.Low + xr.High) / 2 : double.NaN;
+        var counted = w.StartShare.GetValueOrDefault(seen.Animal, (null, ShareFrom.None, 0));
         Say("XP", xps.Count < FewestCatches ? $"NOT DECIDED ({xps.Count} CATCHES)"
                 : (seen.XpElsewhere > 0 ? "XP OUTSIDE A CATCH TOO, " : "XP ONLY WITH A CATCH, ") +
                   (!double.IsFinite(rangeMiddle) ? "THE PAGE'S RANGE NOT READ" : inRange == xps.Count ? "EVERY CATCH IN THE PAGE'S RANGE" : $"{xps.Count - inRange} CATCHES OUTSIDE THE PAGE'S RANGE") +
-                  (double.IsFinite(shareTol) && double.IsFinite(rangeMiddle) ? Math.Abs(shareMean - rangeMiddle) <= shareTol ? ", AS ITS MIDDLE" : ", NOT AS ITS MIDDLE" : ""),
+                  (double.IsFinite(shareTol) && double.IsFinite(rangeMiddle) ? Math.Abs(shareMean - rangeMiddle) <= shareTol ? ", AS ITS MIDDLE" : ", NOT AS ITS MIDDLE" : "") +
+                  (counted.Share is not { } share ? ", THE WINDOW COUNTED NO SHARE AT THE START"
+                      : double.IsFinite(shareTol) && Math.Abs(shareMean - share) <= shareTol ? ", AS THE SHARE THE WINDOW COUNTED" : ", NOT AS THE SHARE THE WINDOW COUNTED"),
             $"catches [{string.Join(", ", xps.Select(x => N(x.Xp, 1)))}], a catch's XP over the animal's {N(shareMean)} on average (twice its standard error {N(shareTol)}) against the " +
-            $"middle of the page's multipliers {N(rangeMiddle)}; {seen.XpElsewhere} frames with XP outside a catch, {N(seen.XpElsewhereSum, 1)} XP");
+            $"middle of the page's multipliers {N(rangeMiddle)} and the share the window counted at the start {(counted.Share is { } c ? N(c) : "-")} (by " +
+            $"{(counted.From == ShareFrom.Journal ? $"the journal's {counted.Sizes} recorded sizes" : counted.From == ShareFrom.Middle ? "the middle" : "nothing")}); " +
+            $"{seen.XpElsewhere} frames with XP outside a catch, {N(seen.XpElsewhereSum, 1)} XP");
         // The page says "Animal Levels increase the average Skill XP & Item quantity output.": the share of each catch beside
         // the animal's level and the size the journal recorded, so that a later turn can count what a level adds.
         var levels = xps.Select(x => x.Level).Distinct().ToList();
@@ -1082,18 +1104,26 @@ public partial class HuntingRatesMod
             $"{string.Join(", ", findReadings.Select(r => $"{r.Name.ToLowerInvariant()} {N(r.Expected, 2)} (within {N(r.Expected <= 0 ? 0 : Math.Max(1, 2 * Math.Sqrt(r.Expected)), 2)})"))}; " +
             $"[{string.Join(", ", ours.SurveyFinds.Select(d => $"{d.Item.Id} {R(d.Chance)} x{d.Quantity}"))}]");
 
-        // The output of a catch: each product against the game's quantity times the catch's share of the XP, rounded down
-        // (judged on every catch), and its mean against the window's.
+        // The output of a catch: each product against the game's quantity times the catch's share of the XP, rounded
+        // down and at least one, or twice that (each product doubled on its own), judged on every catch; and its mean
+        // against the window's. What the bank gained outside a catch is said apart: this animal's survey finds, which
+        // come with a survey, and anything else.
         var products = ours.Products.Where(d => d.Chance >= 0.999).ToList();
+        static int Shared(int quantity, double share) => Math.Max(1, (int)Math.Floor(quantity * share + 1e-9));
         int follow = seen.Catches.Count(c => products.All(d => c.Items.GetValueOrDefault(d.Item) is var got &&
-            (got == (int)Math.Floor(d.Quantity * c.Share + 1e-9) || got == 2 * (int)Math.Floor(d.Quantity * c.Share + 1e-9))));
+            (got == Shared(d.Quantity, c.Share) || got == 2 * Shared(d.Quantity, c.Share))));
+        var findItems = new HashSet<Item>(ours.SurveyFinds.Select(d => d.Item), ReferenceEqualityComparer.Instance);
+        var outsideFinds = seen.OutputElsewhere.Where(o => findItems.Contains(o.Key)).ToList();
+        var outsideOther = seen.OutputElsewhere.Where(o => !findItems.Contains(o.Key)).ToList();
         var output = ours.Products.Select(d => (d.Item, Ours: d.Chance * d.Each, Seen: DevMean(seen.Catches.Select(c => (double)c.Items.GetValueOrDefault(d.Item))))).ToList();
         bool asOurs = output.All(o => double.IsFinite(o.Seen.Tolerance) && Math.Abs(o.Seen.Mean - o.Ours) <= Math.Max(o.Seen.Tolerance, 0.5));
         Say("the output of a catch", seen.Catches.Count < FewestCatches ? $"NOT DECIDED ({seen.Catches.Count} CATCHES)"
-                : (products.Count == 0 ? "" : follow == seen.Catches.Count ? "IT FOLLOWS THE CATCH'S SHARE OF THE XP, ROUNDED DOWN, " : $"{seen.Catches.Count - follow} CATCHES DO NOT FOLLOW THE CATCH'S XP, ") +
-                  (asOurs ? "AS OURS" : "NOT AS OURS") + (seen.OutputElsewhere.Count > 0 ? ", ITEMS OUTSIDE A CATCH" : ""),
+                : (products.Count == 0 ? "" : follow == seen.Catches.Count ? "IT FOLLOWS THE CATCH'S SHARE OF THE XP, ROUNDED DOWN, AT LEAST ONE, "
+                      : $"{seen.Catches.Count - follow} OF {seen.Catches.Count} CATCHES DO NOT FOLLOW THE CATCH'S SHARE, ") +
+                  (asOurs ? "AS OURS" : "NOT AS OURS") + (outsideOther.Count > 0 ? ", OTHER ITEMS OUTSIDE A CATCH" : ""),
             $"{string.Join(", ", output.Select(o => $"{o.Item.Id} {N(o.Seen.Mean)} a catch (twice its standard error {N(o.Seen.Tolerance)}) against ours {N(o.Ours)}"))}; " +
-            $"the products that always come followed the catch's XP on {follow} of {seen.Catches.Count} catches; outside a catch [{string.Join(", ", seen.OutputElsewhere.Select(o => $"{o.Key.Id} +{o.Value}"))}]");
+            $"the products that always come followed the catch's share, rounded down and at least one, on {follow} of {seen.Catches.Count} catches; outside a " +
+            $"catch: survey finds [{string.Join(", ", outsideFinds.Select(o => $"{o.Key.Id} +{o.Value}"))}], other [{string.Join(", ", outsideOther.Select(o => $"{o.Key.Id} +{o.Value}"))}]");
 
         // The time of a hunt by its own links: each whole hunt against its own surveys, steps and tries at the middles of the
         // page's ranges. The number of escapes, which makes most of a hunt's spread, is taken out, so this is tight: it says

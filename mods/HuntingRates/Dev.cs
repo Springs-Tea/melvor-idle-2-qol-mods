@@ -1273,9 +1273,9 @@ public partial class HuntingRatesMod
                 $"its trap's bonuses after a failed try {a.TrapFailBonuses}, " +
                 $"products [{Items(s.Products)}], survey finds [{Items(s.SurveyingProducts)}], tool {h.Tool?.Id ?? "none"}, trap type {h.TrapType?.Id ?? "none"}, " +
                 $"its trap {a.Trap?.Id ?? "none"} ({a.TrapsInBank} in the bank), trapless {a.Trapless} (enabled by the game {h.EnableTrapless}), bait {h.PreferredBait?.Id ?? "none"} " +
-                $"used {a.UseBait} ({a.BaitInBank} in the bank), its card's button {(Native.Card(_page!, a.Active) is { } cd && Native.CardButton(cd) is { } cb ? $"disabled {cb.Disabled}" : "not on the page")} | counted: XP range {(a.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")} " +
+                $"used {a.UseBait} ({a.BaitInBank} in the bank), its card's button {(Native.Card(_page!, a.Active) is { } cd && Native.CardButton(cd) is { } cb ? $"disabled {cb.Disabled}" : "not on the page")} | counted: XP range {(a.XpRange is { } r ? $"{R(r.Low)}..{R(r.High)}" : "NOT READ")}, a catch's size {(a.MeanShare is { } ms ? R(Math.Round(ms, 4)) : "NOT KNOWN")} by {(a.Shares == null ? "nothing" : a.SharesFrom.ToString())} ({a.SizesRecorded} sizes recorded by the journal) " +
                 $"the middle {R(a.XpMiddle)} (a catch by the XP rule {R(a.XpPerCatch)}), catch gold {R(a.CatchGold)}, survey gold {R(a.SurveyGold)}, an escape adds " +
-                $"[{string.Join(", ", a.EscapeReadings ?? [])}] by [{string.Join(", ", Enum.GetValues<EscapeSteps>())}], so {R(a.EscapeAdds)}, a catch " +
+                $"[{string.Join(", ", a.EscapeReadings ?? [])}] by [{string.Join(", ", AnimalRates.HuntRule?.Reading.Escape ?? [])}], so {R(a.EscapeAdds)}, a catch " +
                 $"{(a.PerCatch is { } k ? $"{R(Math.Round(k.Surveys, 3))} surveys, {R(Math.Round(k.Steps, 3))} steps, {R(Math.Round(k.Tries, 3))} tries, {R(Math.Round(k.Escapes, 3))} escapes" : "NOT COUNTED")}, " +
                 $"time per catch {R(a.SecondsPerCatch)}, catches/h {R(a.CatchesPerHour)}, XP/h {R(a.XpPerHour)}, journal XP/h {R(a.JournalXpPerHour)}, gold/h {R(a.GoldPerHour)}, " +
                 $"traps/h {R(a.TrapsPerHour)}, bait/h {R(a.BaitPerHour)} | " +
